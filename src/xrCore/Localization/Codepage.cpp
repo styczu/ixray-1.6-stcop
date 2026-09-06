@@ -130,6 +130,37 @@ ECodepage Localization::CodepageForLanguage(const char* Language)
 	return ECodepage::CP1251;
 }
 
+xr_string Localization::AnsiToUtf8(const xr_string& Ansi, ECodepage Codepage)
+{
+	xr_string Result;
+	Result.reserve(Ansi.size() + Ansi.size() / 2);
+
+	for (const char RawChar : Ansi)
+	{
+		const wchar_t Symbol = TranslateSymbol(RawChar, Codepage);
+		if (Symbol == 0)
+			continue;
+
+		if (Symbol < 0x80)
+		{
+			Result += char(Symbol);
+		}
+		else if (Symbol < 0x800)
+		{
+			Result += char(0xC0 | (Symbol >> 6));
+			Result += char(0x80 | (Symbol & 0x3F));
+		}
+		else
+		{
+			Result += char(0xE0 | (Symbol >> 12));
+			Result += char(0x80 | ((Symbol >> 6) & 0x3F));
+			Result += char(0x80 | (Symbol & 0x3F));
+		}
+	}
+
+	return Result;
+}
+
 wchar_t Localization::TranslateSymbol(char Symbol, ECodepage Codepage)
 {
 	const unsigned char RawSymbol = static_cast<unsigned char>(Symbol);

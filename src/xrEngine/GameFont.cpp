@@ -462,7 +462,10 @@ void CGameFont::MasterOut(
 
 	if (!IsUTF8(rs.string))
 	{
-		rs.string_utf8 = Platform::ANSI_TO_UTF8(rs.string);
+		// Tekst lokalizacji - strona kodowa jezyka. Celowo NIE
+		// Platform::ANSI_TO_UTF8, ktore obsluguje sciezki plikow i musi
+		// zostac przy stalym CP1251.
+		rs.string_utf8 = Localization::AnsiToUtf8(rs.string, Localization::GetActiveCodepage());
 	}
 	
 	rs.string[sizeof(rs.string) - 1] = 0;

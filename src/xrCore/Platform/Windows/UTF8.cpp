@@ -1,6 +1,5 @@
 #pragma once
 #include "stdafx.h"
-#include "../../Localization/Codepage.h"
 
 XRCORE_API wchar_t* Platform::ANSI_TO_TCHAR(const char* C)
 {
@@ -15,13 +14,10 @@ XRCORE_API wchar_t* Platform::ANSI_TO_TCHAR(const char* C)
 
 XRCORE_API xr_string Platform::ANSI_TO_UTF8(const xr_string& ansi)
 {
-	// Strona kodowa zalezy od wybranego jezyka - patrz Localization::Codepage.
-	const UINT AnsiCodepage = (UINT)Localization::GetActiveCodepage();
-
 	wchar_t* wcs = nullptr;
-	int need_length = MultiByteToWideChar(AnsiCodepage, 0, ansi.c_str(), (int)ansi.size(), wcs, 0);
+	int need_length = MultiByteToWideChar(1251, 0, ansi.c_str(), (int)ansi.size(), wcs, 0);
 	wcs = new wchar_t[need_length + 1];
-	MultiByteToWideChar(AnsiCodepage, 0, ansi.c_str(), (int)ansi.size(), wcs, need_length);
+	MultiByteToWideChar(1251, 0, ansi.c_str(), (int)ansi.size(), wcs, need_length);
 	wcs[need_length] = L'\0';
 
 	char* u8s = nullptr;
@@ -36,12 +32,8 @@ XRCORE_API xr_string Platform::ANSI_TO_UTF8(const xr_string& ansi)
 	return result;
 }
 
-// Nazwa historyczna: konwersja idzie do strony kodowej aktywnego jezyka,
-// niekoniecznie CP1251. Zachowana, zeby nie ruszac kilkunastu wywolan w edytorach.
 XRCORE_API xr_string Platform::UTF8_to_CP1251(xr_string const& utf8)
 {
-	const UINT AnsiCodepage = (UINT)Localization::GetActiveCodepage();
-
 	if (!utf8.empty() && IsUTF8(utf8.data()))
 	{
 		int wchlen = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), utf8.size(), nullptr, 0);
@@ -50,7 +42,7 @@ XRCORE_API xr_string Platform::UTF8_to_CP1251(xr_string const& utf8)
 			xr_vector<wchar_t> wbuf(wchlen);
 			MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), utf8.size(), &wbuf[0], wchlen);
 			xr_vector<char> buf(wchlen);
-			WideCharToMultiByte(AnsiCodepage, 0, &wbuf[0], wchlen, &buf[0], wchlen, 0, 0);
+			WideCharToMultiByte(1251, 0, &wbuf[0], wchlen, &buf[0], wchlen, 0, 0);
 
 			return xr_string(&buf[0], wchlen);
 		}
@@ -75,7 +67,7 @@ XRCORE_API xr_string Platform::TCHAR_TO_ANSI_U8(const wchar_t* input)
 	static thread_local char buf[256] = {};
 	std::memset(&buf, 0, 256);
 
-	WideCharToMultiByte((UINT)Localization::GetActiveCodepage(), 0, input, (int)wcslen(input), buf, size, nullptr, nullptr);
+	WideCharToMultiByte(1251, 0, input, (int)wcslen(input), buf, size, nullptr, nullptr);
 	return buf;
 }
 
