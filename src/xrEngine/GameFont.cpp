@@ -4,6 +4,7 @@
 #include "string_table.h"
 
 #include "../xrCore/API/xrAPI.h"
+#include "../xrCore/Localization/Codepage.h"
 #include "../Include/xrRender/RenderFactory.h"
 #include "../Include/xrRender/FontRender.h"
 #include <freetype/freetype.h>
@@ -87,8 +88,6 @@ void CGameFont::Prepare(const char* name, const char* shader, const char* style,
 	Initialize2(name, shader, style, size);
 }
 
-wchar_t TranslateSymbolUsingCP1251(char Symbol);
-
 xr_vector<xr_string> split(const xr_string& s, char delim)
 {
 	xr_vector<xr_string> elems;
@@ -166,24 +165,38 @@ void CGameFont::Initialize2(const char* name, const char* shader, const char* st
 
 	auto fHeight = float(size * res_scale * ppi_scale);
 
-	CStringTable::LangName();
-	xr_string NameWithExt = CStringTable::LangName() + "\\" + name + ".ttf";
+	const xr_string Language = CStringTable::LangName();
 
-	string_path FullPath;
-	FS.update_path(FullPath, _game_fonts_, NameWithExt.c_str());
+	// Strona kodowa wynika z jezyka. Pobierana wprost z tablicy stringow,
+	// a nie z globalnego stanu, zeby nie zalezec od kolejnosci inicjalizacji.
+	const ECodepage Codepage = Localization::CodepageForLanguage(Language.c_str());
 
-	IReader* FontFile = FS.r_open(FullPath);
-	if (FontFile == nullptr)
+	// Kolejnosc szukania: font jezyka -> default jezyka -> font eng -> default eng.
+	// Fallback na eng pozwala dodac jezyk bez tworzenia dla niego katalogu
+	// w gamedata/fonts/ - bez tego gra wywalala sie na R_ASSERT przy starcie.
+	const xr_string FontCandidates[] =
 	{
-		Msg("! Can't open font file %s", name);
+		Language + "\\" + name + ".ttf",
+		Language + "\\default.ttf",
+		xr_string("eng\\") + name + ".ttf",
+		xr_string("eng\\default.ttf"),
+	};
 
-		string_path DefPath;
-		NameWithExt = CStringTable::LangName() + "\\default.ttf";
-		FS.update_path(DefPath, _game_fonts_, NameWithExt.c_str());
-		FontFile = FS.r_open(DefPath);
+	string_path FullPath = {};
+	IReader* FontFile = nullptr;
 
-		R_ASSERT3(FontFile != nullptr, "Can't find default font: %s", DefPath);
+	for (const xr_string& Candidate : FontCandidates)
+	{
+		FS.update_path(FullPath, _game_fonts_, Candidate.c_str());
+
+		FontFile = FS.r_open(FullPath);
+		if (FontFile != nullptr)
+			break;
+
+		Msg("! Can't open font file %s", FullPath);
 	}
+
+	R_ASSERT3(FontFile != nullptr, "Can't find any font file for", name);
 
 	FT_Error FTError = FT_New_Memory_Face(FreetypeLib, (FT_Byte*)FontFile->pointer(), FontFile->length(), 0, &OurFont);
 	R_ASSERT3(FTError == 0, "FT_New_Memory_Face return error", FullPath);
@@ -286,14 +299,24 @@ void CGameFont::Initialize2(const char* name, const char* shader, const char* st
 		u32 TrueGlyph = glyphID;
 		if (Data.OpenType)
 		{
-			// Если символ входит в CP1251 (0-255) — конвертируем
+			// Bajt tekstu (0-255) tlumaczymy na codepoint Unicode wg strony
+			// kodowej jezyka. Obraz glifu bierzemy stamtad, ale zapisujemy go
+			// pod kluczem rownym oryginalnemu bajtowi.
 			if (glyphID <= 0xFF)
 			{
-				TrueGlyph = TranslateSymbolUsingCP1251((char)glyphID);
+				TrueGlyph = Localization::TranslateSymbol((char)glyphID, Codepage);
 			}
 		}
 
 		FT_UInt FreetypeCharacter = FT_Get_Char_Index(OurFont, TrueGlyph);
+
+		// Stare fonty maja cyrylice wstawiona wprost w sloty Latin-1 - dla nich
+		// przetlumaczony codepoint nie istnieje, ale surowy bajt owszem.
+		if (FreetypeCharacter == 0 && TrueGlyph != glyphID)
+		{
+			FreetypeCharacter = FT_Get_Char_Index(OurFont, glyphID);
+		}
+
 		if (FreetypeCharacter == 0 && glyphID != 0)
 		{
 			Msg("! Glyph not found: %d, TrueGlyph: %d", glyphID, TrueGlyph);
@@ -334,6 +357,33 @@ void CGameFont::Initialize2(const char* name, const char* shader, const char* st
 	{
 		LoadGlyph(glyphID);
 		glyphID = FT_Get_Next_Char(OurFont, glyphID, &index);
+	}
+
+	// Petla wyzej odwiedza wylacznie codepointy obecne w cmapie fontu, wiec dla
+	// bajtu, ktorego wartosc nie wystepuje w cmapie, nie powstaje wpis w
+	// GlyphData. Dotyczy to calego zakresu C1 (0x80-0x9F), ktorego normalne
+	// fonty Unicode nie maja - a w CP1250 siedza tam m.in. S-kreska i Z-kropka,
+	// w CP1251 myslnik i wielokropek.
+	//
+	// Sam znak i tak sie narysuje, bo dxFontRender ma fallback po codepoincie
+	// Unicode. Ale WidthOf() liczy szerokosc po surowym bajcie i bez wpisu
+	// zwraca metryke przypadkowego glifu, co rozjezdza centrowanie, zawijanie
+	// wierszy i przycinanie tekstu.
+	if (Data.OpenType)
+	{
+		for (int Byte = 0x80; Byte <= 0xFF; ++Byte)
+		{
+			if (GlyphData.find(Byte) != GlyphData.end())
+				continue;
+
+			const wchar_t Translated = Localization::TranslateSymbol((char)Byte, Codepage);
+			if (Translated == 0)
+				continue;
+
+			const auto Source = GlyphData.find(Translated);
+			if (Source != GlyphData.end())
+				GlyphData[Byte] = Source->second;
+		}
 	}
 
 	fCurrentHeight = FontSizeInPixels;
@@ -538,92 +588,4 @@ float CGameFont::WidthOf(const char* str)
 	}
 
 	return size;
-}
-
-wchar_t CP1251ConvertationTable[] =
-{
-	0x0402, // Ђ
-	0x0403, // Ѓ
-	0x201A, // ‚
-	0x0453, // ѓ
-	0x201E, // „
-	0x2026, // …
-	0x2020, // †
-	0x2021, // ‡
-	0x20AC, // €
-	0x2030, // ‰
-	0x0409, // Љ
-	0x2039, // ‹
-	0x040A, // Њ
-	0x040C, // Ќ
-	0x040B, // Ћ
-	0x040F, // Џ
-
-	0x0452, // ђ
-	0x2018, // ‘
-	0x2019, // ’
-	0x201C, // “
-	0x201D, // ”
-	0x2022, // •
-	0x2013, // –
-	0x2014, // —
-	0x0,    // empty (0x98)
-	0x2122, // ™
-	0x0459, // љ
-	0x203A, // ›
-	0x045A, // њ
-	0x045C, // ќ
-	0x045B, // ћ
-	0x045F, // џ
-
-	0x00A0, //  
-	0x040E, // Ў
-	0x045E, // ў
-	0x0408, // Ј
-	0x00A4, // ¤
-	0x0490, // Ґ
-	0x00A6, // ¦
-	0x00A7, // §
-	0x0401, // Ё
-	0x00A9, // ©
-	0x0404, // Є
-	0x00AB, // «
-	0x00AC, // ¬
-	0x00AD, // 
-	0x00AE, // ®
-	0x0407, // Ї
-
-	0x00B0, // °
-	0x00B1, // ±
-	0x0406, // І
-	0x0456, // і
-	0x0491, // ґ
-	0x00B5, // µ
-	0x00B6, // ¶
-	0x00B7, // ·
-	0x0451, // ё
-	0x2116, // №
-	0x0454, // є
-	0x00BB, // »
-	0x0458, // ј
-	0x0405, // Ѕ
-	0x0455, // ѕ
-	0x0457, // ї
-};
-
-wchar_t TranslateSymbolUsingCP1251(char Symbol)
-{
-	unsigned char RawSymbol = *(unsigned char*)&Symbol;
-
-	if (RawSymbol < 0x80)
-	{
-		return wchar_t(RawSymbol);
-	}
-
-	if (RawSymbol < 0xc0)
-	{
-		return CP1251ConvertationTable[RawSymbol - 0x80];
-	}
-
-	return wchar_t(RawSymbol - 0xc0) + 0x410;
 }

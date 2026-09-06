@@ -2,6 +2,8 @@
 #include "string_table.h"
 #include "xr_level_controller.h"
 #include "../xrCore/FormatParsers/XML/xrXMLParser.h"
+#include "../xrCore/Localization/Codepage.h"
+#include "FontManager.h"
 #include "XR_IOConsole.h"
 
 ENGINE_API CStringTable* g_pStringTable = nullptr;
@@ -122,6 +124,11 @@ void CStringTable::Init		()
 	{
 		pData->m_sLanguage = languages_token[0].name;
 	}
+
+	// Teksty lokalizacji sa jednobajtowe, wiec xrCore musi wiedziec, w ktorej
+	// stronie kodowej je czytac. Sam nie moze o to zapytac - CStringTable
+	// mieszka w xrEngine.
+	Localization::SetActiveCodepageForLanguage(pData->m_sLanguage.c_str());
 
 	FS_FileSet fset;
 	FS_FileSet efset;
@@ -266,6 +273,8 @@ void CStringTable::ReloadLanguage(const char* lang)
 	pData = new STRING_TABLE_DATA();
 	pData->m_sLanguage = lang;
 
+	Localization::SetActiveCodepageForLanguage(pData->m_sLanguage.c_str());
+
 	// Get preferred fallback language from EngineExternal
 	pData->m_sFallbackLanguage = EngineExternal().GetPreferredFallbackLanguage();
 
@@ -320,6 +329,14 @@ void CStringTable::ReloadLanguage(const char* lang)
 	}
 
 	ReparseKeyBindings();
+
+	// Atlas glifow jest budowany pod konkretna strone kodowa, wiec po zmianie
+	// jezyka trzeba go przebudowac - inaczej az do restartu gry widac znaki
+	// z poprzedniego kodowania.
+	if (g_FontManager != nullptr)
+	{
+		g_FontManager->OnDeviceReset();
+	}
 }
 
 xr_string CStringTable::LangName()
