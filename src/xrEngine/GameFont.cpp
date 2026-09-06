@@ -141,6 +141,12 @@ void CGameFont::Initialize2(const char* name, const char* shader, const char* st
 	}
 	ZeroMemory(FontBitmap.data(), sizeof(u32) * (TextureDimension * TextureDimension));
 
+	// Atlas budowany jest od zera, wiec stare wpisy wskazuja na nieaktualne
+	// miejsca w teksturze. Bez tego czyszczenia zmiana jezyka (a wiec i strony
+	// kodowej), rozmiaru albo pliku fontu zostawiala w mapie glify z poprzedniej
+	// budowy - np. aliasy zakresu C1 utworzone jeszcze dla CP1251.
+	GlyphData.clear();
+
 	// есть кучу способов высчитать размер шрифта для скейлинга
 	// 1. основываясь на DPI(PPI), однако, как не вычисляй его он всегда считается исходя из разрешения моника(системы) и 23 дюймов(мб с дровами на моник - из реальных дюймов)
 	// 2. основываясь на том, как ПЫС делают скейлинг из UI_BASE_HEIGHT/UI_BASE_WIDTH и тд...
