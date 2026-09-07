@@ -32,6 +32,104 @@
 #include "../ActorHelmet.h"
 #include "../Inventory.h"
 #include "../Artefact.h"
+#include "../BoneProtections.h"
+#include "../../xrEngine/bone.h"
+#include "../../Include/xrRender/Kinematics.h"
+#include "../../xrEngine/string_table.h"
+
+namespace
+{
+	// Grupy kosci pokazywane w tooltipie klasy pancerza. Dlonie i stopy sa
+	// swiadomie pominiete - maja wszedzie wartosci szczatkowe. Twarz jest
+	// osobno, bo bywa slabsza od czaszki i w jednej grupie z glowa znikalaby
+	// pod maksimum.
+	struct SArmorGroup
+	{
+		LPCSTR	label_key;
+		LPCSTR	bones[8];
+	};
+
+	static const SArmorGroup kArmorGroups[] =
+	{
+		{ "ui_armor_tt_head",  { "bip01_head", nullptr } },
+		{ "ui_armor_tt_face",  { "eyelid_1", "eye_left", "eye_right", "jaw_1", nullptr } },
+		{ "ui_armor_tt_neck",  { "bip01_neck", nullptr } },
+		{ "ui_armor_tt_torso", { "bip01_pelvis", "bip01_spine", "bip01_spine1", "bip01_spine2",
+								 "bip01_l_clavicle", "bip01_r_clavicle", nullptr } },
+		{ "ui_armor_tt_arms",  { "bip01_l_upperarm", "bip01_r_upperarm",
+								 "bip01_l_forearm", "bip01_r_forearm", nullptr } },
+		{ "ui_armor_tt_legs",  { "bip01_l_thigh", "bip01_r_thigh",
+								 "bip01_l_calf", "bip01_r_calf", nullptr } },
+	};
+
+	// Nazwa klasy pancerza dla progu przebicia. Tabela siedzi w danych:
+	//   [ui_armor_classes]
+	//   thresholds = 0.00, 0.21, 0.33, ...
+	//   names      = 0, 0a, 1, ...
+	// Progi musza byc rosnaco. Brak sekcji = tooltip pokazuje same liczby.
+	LPCSTR ArmorClassName(float value)
+	{
+		static bool						s_loaded = false;
+		static xr_vector<float>			s_thresholds;
+		static xr_vector<shared_str>	s_names;
+
+		if (!s_loaded)
+		{
+			s_loaded = true;
+			if (pSettings->section_exist("ui_armor_classes") &&
+				pSettings->line_exist("ui_armor_classes", "thresholds") &&
+				pSettings->line_exist("ui_armor_classes", "names"))
+			{
+				LPCSTR t = pSettings->r_string("ui_armor_classes", "thresholds");
+				LPCSTR n = pSettings->r_string("ui_armor_classes", "names");
+				string64 buf;
+				const int t_count = _GetItemCount(t);
+				for (int i = 0; i < t_count; ++i)
+					s_thresholds.push_back((float)atof(_GetItem(t, i, buf)));
+
+				const int n_count = _GetItemCount(n);
+				for (int i = 0; i < n_count; ++i)
+					s_names.push_back(_GetItem(n, i, buf));
+			}
+		}
+
+		LPCSTR result = nullptr;
+		const u32 count = _min((u32)s_thresholds.size(), (u32)s_names.size());
+		for (u32 i = 0; i < count; ++i)
+		{
+			if (value + EPS_L >= s_thresholds[i])
+				result = s_names[i].c_str();
+		}
+		return result;
+	}
+
+	// Najwyzszy efektywny prog przebicia w grupie. -1 = zadna kosc grupy
+	// nie jest kryta przez zadna warstwe.
+	float GroupArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, const SArmorGroup& group)
+	{
+		float best = -1.0f;
+		for (u32 i = 0; group.bones[i] != nullptr; ++i)
+		{
+			const u16 bone_id = ikv->LL_BoneID(group.bones[i]);
+			if (BI_NONE == bone_id)
+				continue;
+
+			if (outfit)
+			{
+				const float a = outfit->GetBoneArmor((s16)bone_id);
+				if (a >= 0.0f)
+					best = _max(best, a * outfit->GetCondition());
+			}
+			if (helmet)
+			{
+				const float a = helmet->GetBoneArmor((s16)bone_id);
+				if (a >= 0.0f)
+					best = _max(best, a * helmet->GetCondition());
+			}
+		}
+		return best;
+	}
+}
 
 ui_actor_state_wnd::~ui_actor_state_wnd()
 {
@@ -210,7 +308,6 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 		u16 spine_bone = ikv->LL_BoneID("bip01_spine");
 
 		value = outfit->GetBoneArmor(spine_bone);
-		m_state[stt_armor]->set_text(value);
 
 		fwou_value += value * outfit->GetCondition();
 		if(!outfit->bIsHelmetAvaliable)
@@ -218,10 +315,6 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 			u16 spine_bone_ = ikv->LL_BoneID("bip01_head");
 			fwou_value += outfit->GetBoneArmor(spine_bone_)*outfit->GetCondition();
 		}
-	}
-	else
-	{
-		m_state[stt_armor]->set_text(0.0f);
 	}
 
 	if(helmet)
@@ -291,7 +384,82 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 	}
 // -----------------------------------------------------------------------------------
 
+	UpdateArmorInfo( actor, outfit, helmet );
+
 	UpdateHitZone();
+}
+
+void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet)
+{
+	ui_actor_state_item* item = m_state[stt_armor];
+	if (item == nullptr)
+	{
+		return;
+	}
+
+	// shared_str trzymany w zmiennej, a nie .c_str() z tymczasowego obiektu.
+	const shared_str s_dash   = g_pStringTable->translate("ui_armor_tt_none");
+	const shared_str s_title  = g_pStringTable->translate("ui_armor_tt_title");
+	const shared_str s_class  = g_pStringTable->translate("ui_armor_tt_class");
+	LPCSTR dash = s_dash.c_str();
+
+	IKinematics* ikv = PKinematics(actor->Visual());
+	if (ikv == nullptr)
+	{
+		item->set_text_str(dash);
+		return;
+	}
+
+	// Liczba obok paska: "helm/kombinezon" w setnych progu przebicia.
+	// Brak warstwy -> kreska w jej miejscu.
+	string32 helm_txt, outf_txt;
+	const float helm_armor = helmet ? helmet->GetMaxBoneArmor() : -1.0f;
+	const float outf_armor = outfit ? outfit->GetMaxBoneArmor() : -1.0f;
+
+	if (helm_armor < 0.0f)
+		xr_strcpy(helm_txt, sizeof(helm_txt), dash);
+	else
+		xr_sprintf(helm_txt, sizeof(helm_txt), "%d", iFloor(helm_armor * 100.0f + 0.5f));
+
+	if (outf_armor < 0.0f)
+		xr_strcpy(outf_txt, sizeof(outf_txt), dash);
+	else
+		xr_sprintf(outf_txt, sizeof(outf_txt), "%d", iFloor(outf_armor * 100.0f + 0.5f));
+
+	string64 value_txt;
+	xr_sprintf(value_txt, sizeof(value_txt), "%s/%s", helm_txt, outf_txt);
+	item->set_text_str(value_txt);
+
+	// Tooltip: jedna linia na grupe kosci.
+	xr_string hint = s_title.c_str();
+	hint += "\n";
+
+	LPCSTR class_prefix = s_class.c_str();
+
+	for (u32 g = 0; g < sizeof(kArmorGroups) / sizeof(kArmorGroups[0]); ++g)
+	{
+		const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
+
+		const shared_str s_label = g_pStringTable->translate(kArmorGroups[g].label_key);
+
+		string256 line;
+		if (a < 0.0f)
+		{
+			xr_sprintf(line, sizeof(line), "%-10s %5s   %s %s",
+				s_label.c_str(), dash, class_prefix, dash);
+		}
+		else
+		{
+			LPCSTR cls = ArmorClassName(a);
+			xr_sprintf(line, sizeof(line), "%-10s %5d   %s %s",
+				s_label.c_str(), iFloor(a * 100.0f + 0.5f), class_prefix, cls ? cls : dash);
+		}
+
+		hint += line;
+		hint += "\n";
+	}
+
+	item->set_hint_text(hint.c_str());
 }
 
 void ui_actor_state_wnd::update_round_states(EStateType stt_type, float initial, float max_power)
@@ -431,6 +599,17 @@ bool ui_actor_state_item::set_text( float value )
 	string32 text_res;
 	xr_sprintf( text_res, sizeof(text_res), "%d", v );
 	m_static->TextItemControl()->SetText( text_res );
+	return true;
+}
+
+bool ui_actor_state_item::set_text_str( LPCSTR text )
+{
+	if (!m_static)
+	{
+		return false;
+	}
+
+	m_static->TextItemControl()->SetText( text );
 	return true;
 }
 
