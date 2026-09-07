@@ -151,6 +151,19 @@ protected:
 
 	Fvector2		m_TextureOffset;
 
+	// Formatowanie wyniku wyrazenia (atrybuty XML: decimals, decimal_sep,
+	// sign, suffix, no_value). m_iDecimals == -1 oznacza zachowanie sprzed
+	// tej zmiany, czyli xr_string::ToString - zadna istniejaca kontrolka
+	// nie zmienia przez to wygladu.
+	int				m_iDecimals;
+	char			m_cDecimalSep;
+	bool			m_bShowSign;
+	shared_str		m_sSuffix;
+	shared_str		m_sNoValue;
+
+	// Zamienia liczbe na napis wg powyzszych ustawien.
+	xr_string		FormatExpressionValue	(float value) const;
+
 public:
 	CUILines*		TextItemControl						();
 	shared_str		m_stat_hint_text;
