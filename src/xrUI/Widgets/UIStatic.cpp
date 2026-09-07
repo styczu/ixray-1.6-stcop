@@ -37,6 +37,49 @@ m_pTextControl(nullptr)
 	m_TextureOffset.set		(0.0f,0.0f);
 	m_lanim_xform.set_defaults	();
 	m_bEnableTextHighlighting = false;
+
+	m_iDecimals				= -1;
+	m_cDecimalSep			= '.';
+	m_bShowSign				= false;
+}
+
+xr_string CUIStatic::FormatExpressionValue(float value) const
+{
+	// Wartosc ujemna przy ustawionym no_value oznacza "brak danych".
+	// W danych gry -1 jest znacznikiem braku oslony kosci, wiec ten sam
+	// zapis obsluguje i pancerz, i kazdy inny wskaznik bez wartosci.
+	if (m_sNoValue.size() && value < 0.0f)
+		return xr_string(m_sNoValue.c_str());
+
+	xr_string result;
+
+	if (m_iDecimals < 0)
+	{
+		result = xr_string::ToString(value);
+	}
+	else
+	{
+		string64 fmt = { 0 };
+		xr_sprintf(fmt, sizeof(fmt), "%%.%df", m_iDecimals);
+		string64 buf = { 0 };
+		xr_sprintf(buf, sizeof(buf), fmt, value);
+		result = buf;
+	}
+
+	if (m_cDecimalSep != '.')
+	{
+		const size_t dot = result.find('.');
+		if (dot != xr_string::npos)
+			result[dot] = m_cDecimalSep;
+	}
+
+	if (m_bShowSign && value > 0.0f)
+		result = xr_string("+") + result;
+
+	if (m_sSuffix.size())
+		result += m_sSuffix.c_str();
+
+	return result;
 }
 
 CUIStatic::~CUIStatic()
@@ -178,9 +221,9 @@ void CUIStatic::Update()
 		xr_string NewText;
 		switch (Result.VarType)
 		{
-		case ExpressionVarVariadic::EVariadicType::eFloat:	NewText = xr_string::ToString(Result.Flt); break;
+		case ExpressionVarVariadic::EVariadicType::eFloat:	NewText = FormatExpressionValue(Result.Flt); break;
 		case ExpressionVarVariadic::EVariadicType::eStr:	NewText = Result.Str.c_str(); break;
-		case ExpressionVarVariadic::EVariadicType::eInt:	NewText = xr_string::ToString(Result.Int); break;
+		case ExpressionVarVariadic::EVariadicType::eInt:	NewText = FormatExpressionValue((float)Result.Int); break;
 		case ExpressionVarVariadic::EVariadicType::eBool:	NewText = Result.Boolean ? "true" : "false"; break;
 		}
 
