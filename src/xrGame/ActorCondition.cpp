@@ -70,6 +70,7 @@ CActorCondition::CActorCondition(CActor *object) :
 	m_f_time_affected = Device.fTimeGlobal;
 
 	m_max_power_restore_speed	= 0.0f;
+	m_max_health_restore_speed	= 0.0f;
 	m_max_wound_protection		= 0.0f;
 	m_max_fire_wound_protection = 0.0f;
 
@@ -169,6 +170,7 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 	m_zone_max_power[ALife::infl_electra]= pSettings->r_float(section, "electra_zone_max_power" );
 
 	m_max_power_restore_speed = READ_IF_EXISTS(pSettings, r_float, section, "max_power_restore_speed", 1.0f);
+	m_max_health_restore_speed = READ_IF_EXISTS(pSettings, r_float, section, "max_health_restore_speed", 0.001f);
 	m_max_wound_protection = READ_IF_EXISTS(pSettings,r_float,section,"max_wound_protection",1.0f);
 	m_max_fire_wound_protection = READ_IF_EXISTS(pSettings,r_float,section,"max_fire_wound_protection",1.0f);
 

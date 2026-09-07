@@ -149,6 +149,36 @@ float CHelmet::GetBoneArmor(s16 element)
 	return m_boneProtection->getBoneArmor(element);
 }
 
+// Ta sama logika co w CCustomOutfit - patrz komentarz tam.
+static float _MaxBoneArmorHelm(const SBoneProtections* bp, float condition)
+{
+	if (bp == nullptr)
+		return -1.0f;
+
+	float best = -1.0f;
+	for (SBoneProtections::storage_type::const_iterator it = bp->m_bones_koeff.begin();
+		 it != bp->m_bones_koeff.end(); ++it)
+	{
+		if (it->second.armor > best)
+			best = it->second.armor;
+	}
+
+	if (best < 0.0f)
+		return -1.0f;
+
+	return best * condition;
+}
+
+float CHelmet::GetMaxBoneArmor() const
+{
+	return _MaxBoneArmorHelm(m_boneProtection, GetCondition());
+}
+
+float CHelmet::GetHitFractionActor() const
+{
+	return (m_boneProtection != nullptr) ? m_boneProtection->m_fHitFracActor : 1.0f;
+}
+
 bool CHelmet::install_upgrade_impl( LPCSTR section, bool test )
 {
 	bool result = inherited::install_upgrade_impl( section, test );

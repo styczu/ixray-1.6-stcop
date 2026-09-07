@@ -29,6 +29,11 @@ public:
 	float					GetHitTypeProtection	(ALife::EHitType hit_type, s16 element);
 	float					GetBoneArmor			(s16 element);
 
+	// Jak w CCustomOutfit - maksimum po krytych kosciach, razy stan.
+	float					GetMaxBoneArmor			() const;
+	float					GetHitFractionActor		() const;
+	const SBoneProtections*	GetBoneProtections		() const { return m_boneProtection; }
+
 	float					HitThroughArmor			(float hit_power, s16 element, float ap, bool& add_wound, ALife::EHitType hit_type);
 
 	bool					GlassPresent = false;

@@ -91,6 +91,7 @@ public:
 	virtual bool			ApplyInfluence			(const SMedicineInfluenceValues& V, const shared_str& sect, bool use_sound = true);
 	virtual bool			ApplyBooster			(const SBooster& B, const shared_str& sect, bool use_sound = true);
 	float	GetMaxPowerRestoreSpeed					() {return m_max_power_restore_speed;};
+	float	GetMaxHealthRestoreSpeed				() {return m_max_health_restore_speed;};
 	float	GetMaxWoundProtection					() {return m_max_wound_protection;};
 	float	GetMaxFireWoundProtection				() {return m_max_fire_wound_protection;};
 	float	GetHealthBoost();
@@ -128,6 +129,9 @@ public:
 	float	m_zone_danger[ALife::infl_max_count];
 	float	m_f_time_affected;
 	float	m_max_power_restore_speed;
+	// Odniesienie dla paska regeneracji zdrowia. Klucz wylacznie do
+	// wyswietlania - nie wchodzi w zadne obliczenie kondycji.
+	float	m_max_health_restore_speed;
 	float	m_max_wound_protection;
 	float	m_max_fire_wound_protection;
 
