@@ -19,6 +19,8 @@ class CUIXml;
 class CUIArrow;
 class CInventoryOwner;
 class CActor;
+class CCustomOutfit;
+class CHelmet;
 
 class ui_actor_state_item;
 
@@ -66,6 +68,10 @@ public:
 private:
 			void			update_round_states		(EStateType stt_type, float initial, float max_power);
 
+			// Wiersz klasy pancerza: liczba "helm/kombinezon" oraz tooltip
+			// z rozbiciem na grupy kosci.
+			void			UpdateArmorInfo			(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet);
+
 };
 
 class ui_actor_state_item : public UIHintWindow
@@ -88,6 +94,7 @@ public:
 			void	init_from_xml			( CUIXml& xml, LPCSTR path );
 	
 			bool	set_text				( float value ); // 0..1
+			bool	set_text_str			( LPCSTR text ); // dowolny napis w tym samym statyku
 			bool	set_progress			( float value ); // 0..1
 			bool	set_progress_shape		( float value ); // 0..1
 			int		set_arrow				( float value ); // 0..1
