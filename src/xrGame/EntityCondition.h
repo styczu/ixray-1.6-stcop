@@ -293,4 +293,8 @@ public:
 	IC float&						wound_bone_scale	()			{return		(m_fWoundBoneScale);	}
 	IC SConditionChangeV&			change_v			()			{return		(m_change_v);			}
 
+	// Przyspieszenie zablizniania ran z kombinezonu i artefaktow. Pole jest
+	// chronione, a panel stanu postaci musi je pokazac w podpowiedzi krwawienia.
+	IC float						GetBoostBleedingRestore	() const	{return		(m_fBoostBleedingRestore);}
+
 };
