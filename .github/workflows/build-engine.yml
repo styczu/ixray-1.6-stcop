@@ -109,6 +109,10 @@ jobs:
   pack-assets:
     name: 'Pack assets (${{ matrix.variant }})'
     needs: [build-engine]
+    # Na gałęziach roboczych potrzebne są tylko engine-binaries.
+    # Pakowanie zasobów i publikacja czterech wariantów to ~250 MB
+    # artefaktów na push, z których nic nie instalujemy.
+    if: github.ref == 'refs/heads/default'
     strategy:
       matrix:
         system: [windows-2022]
