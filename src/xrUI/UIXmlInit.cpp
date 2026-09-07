@@ -194,6 +194,22 @@ bool CUIXmlInit::InitStatic(CUIXml& xml_doc, const char* path, int index, CUISta
 			}
 		}
 	}
+	// Formatowanie liczby wyliczanej z atrybutu expression.
+	// Brak atrybutow = zachowanie sprzed tej zmiany.
+	pWnd->m_iDecimals	= xml_doc.ReadAttribInt(path, index, "decimals", -1);
+	pWnd->m_bShowSign	= xml_doc.ReadAttribInt(path, index, "sign", 0) != 0;
+
+	LPCSTR dec_sep		= xml_doc.ReadAttrib(path, index, "decimal_sep", nullptr);
+	if (dec_sep && dec_sep[0])
+		pWnd->m_cDecimalSep = dec_sep[0];
+
+	LPCSTR suffix		= xml_doc.ReadAttrib(path, index, "suffix", nullptr);
+	if (suffix)
+		pWnd->m_sSuffix = suffix;
+
+	LPCSTR no_value		= xml_doc.ReadAttrib(path, index, "no_value", nullptr);
+	if (no_value)
+		pWnd->m_sNoValue = no_value;
 
 	int flag = xml_doc.ReadAttribInt(path, index, "heading", 0);
 	pWnd->EnableHeading( (flag)?true:false);
