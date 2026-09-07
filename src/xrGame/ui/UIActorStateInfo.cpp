@@ -43,24 +43,33 @@ namespace
 	// swiadomie pominiete - maja wszedzie wartosci szczatkowe. Twarz jest
 	// osobno, bo bywa slabsza od czaszki i w jednej grupie z glowa znikalaby
 	// pod maksimum.
+	//
+	// "section" dzieli tabele na dwie czesci pokazywane w tooltipie osobno:
+	// 0 = to, co kryje glowe (helm ALBO zintegrowany kaptur kombinezonu),
+	// 1 = reszta sylwetki. Z maksimum kazdej sekcji bierze sie para liczb
+	// przy pasku, wiec liczba po lewej nie zalezy od tego, czy w slocie helmu
+	// cos siedzi - exoszkielet ma oslone glowy we wlasnym bones_koeff_protection.
 	struct SArmorGroup
 	{
+		int		section;
 		LPCSTR	label_key;
 		LPCSTR	bones[8];
 	};
 
 	static const SArmorGroup kArmorGroups[] =
 	{
-		{ "ui_armor_tt_head",  { "bip01_head", nullptr } },
-		{ "ui_armor_tt_face",  { "eyelid_1", "eye_left", "eye_right", "jaw_1", nullptr } },
-		{ "ui_armor_tt_neck",  { "bip01_neck", nullptr } },
-		{ "ui_armor_tt_torso", { "bip01_pelvis", "bip01_spine", "bip01_spine1", "bip01_spine2",
-								 "bip01_l_clavicle", "bip01_r_clavicle", nullptr } },
-		{ "ui_armor_tt_arms",  { "bip01_l_upperarm", "bip01_r_upperarm",
-								 "bip01_l_forearm", "bip01_r_forearm", nullptr } },
-		{ "ui_armor_tt_legs",  { "bip01_l_thigh", "bip01_r_thigh",
-								 "bip01_l_calf", "bip01_r_calf", nullptr } },
+		{ 0, "ui_armor_tt_head",  { "bip01_head", nullptr } },
+		{ 0, "ui_armor_tt_face",  { "eyelid_1", "eye_left", "eye_right", "jaw_1", nullptr } },
+		{ 0, "ui_armor_tt_neck",  { "bip01_neck", nullptr } },
+		{ 1, "ui_armor_tt_torso", { "bip01_pelvis", "bip01_spine", "bip01_spine1", "bip01_spine2",
+								   "bip01_l_clavicle", "bip01_r_clavicle", nullptr } },
+		{ 1, "ui_armor_tt_arms",  { "bip01_l_upperarm", "bip01_r_upperarm",
+								   "bip01_l_forearm", "bip01_r_forearm", nullptr } },
+		{ 1, "ui_armor_tt_legs",  { "bip01_l_thigh", "bip01_r_thigh",
+								   "bip01_l_calf", "bip01_r_calf", nullptr } },
 	};
+
+	static const u32 kArmorGroupCount = sizeof(kArmorGroups) / sizeof(kArmorGroups[0]);
 
 	// Nazwa klasy pancerza dla progu przebicia. Tabela siedzi w danych:
 	//   [ui_armor_classes]
@@ -128,6 +137,54 @@ namespace
 			}
 		}
 		return best;
+	}
+
+	// Maksimum po grupach jednej sekcji. -1 = zadna kosc sekcji nie jest kryta
+	// przez zadna warstwe.
+	float SectionArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, int section)
+	{
+		float best = -1.0f;
+		for (u32 g = 0; g < kArmorGroupCount; ++g)
+		{
+			if (kArmorGroups[g].section != section)
+				continue;
+
+			const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
+			if (a > best)
+				best = a;
+		}
+		return best;
+	}
+
+	// Kolory tooltipa. Podawane jako argumenty %s, nigdy w napisie formatu -
+	// "%c" w formacie zjadloby printf. Format CUILines to %c[a,r,g,b].
+	static LPCSTR kColTitle = "%c[255,224,230,234]";
+	static LPCSTR kColSep   = "%c[255,96,104,108]";
+	static LPCSTR kColLabel = "%c[255,176,182,186]";
+	static LPCSTR kColValue = "%c[255,232,178,84]";
+	static LPCSTR kColUnit  = "%c[255,132,140,144]";
+	static LPCSTR kColClass = "%c[255,200,208,212]";
+
+	// CUILines lamie linie na dwuznaku BACKSLASH+N, nie na znaku nowej linii
+	// (UILine.cpp: ProcessNewLines szuka "\\n", tak samo galaz multibyte
+	// w UILines.cpp). Prawdziwy '\n' przechodzi bez sladu - stad ten dwuznak.
+	static LPCSTR kBreak = "\\n";
+
+	// Liczba z separatorem dziesietnym z tablicy stringow. Panel uzywa
+	// przecinka, wiec tooltip nie moze zostac przy kropce.
+	void FormatRate(string32& out, float value, int decimals)
+	{
+		string32 fmt = { 0 };
+		xr_sprintf(fmt, sizeof(fmt), "%%.%df", decimals);
+		xr_sprintf(out, sizeof(out), fmt, value);
+
+		const shared_str sep = g_pStringTable->translate("ui_uip_decimal_sep");
+		if (sep.size() && sep.c_str()[0] != '.')
+		{
+			char* dot = strchr(out, '.');
+			if (dot != nullptr)
+				*dot = sep.c_str()[0];
+		}
 	}
 }
 
@@ -385,6 +442,7 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 // -----------------------------------------------------------------------------------
 
 	UpdateArmorInfo( actor, outfit, helmet );
+	UpdateRateHints( actor );
 
 	UpdateHitZone();
 }
@@ -398,9 +456,10 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 	}
 
 	// shared_str trzymany w zmiennej, a nie .c_str() z tymczasowego obiektu.
-	const shared_str s_dash   = g_pStringTable->translate("ui_armor_tt_none");
-	const shared_str s_title  = g_pStringTable->translate("ui_armor_tt_title");
-	const shared_str s_class  = g_pStringTable->translate("ui_armor_tt_class");
+	const shared_str s_dash  = g_pStringTable->translate("ui_armor_tt_none");
+	const shared_str s_title = g_pStringTable->translate("ui_armor_tt_title");
+	const shared_str s_class = g_pStringTable->translate("ui_armor_tt_class");
+	const shared_str s_sep   = g_pStringTable->translate("ui_armor_tt_sep");
 	LPCSTR dash = s_dash.c_str();
 
 	IKinematics* ikv = PKinematics(actor->Visual());
@@ -410,56 +469,140 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 		return;
 	}
 
-	// Liczba obok paska: "helm/kombinezon" w setnych progu przebicia.
-	// Brak warstwy -> kreska w jej miejscu.
-	string32 helm_txt, outf_txt;
-	const float helm_armor = helmet ? helmet->GetMaxBoneArmor() : -1.0f;
-	const float outf_armor = outfit ? outfit->GetMaxBoneArmor() : -1.0f;
+	// Liczba obok paska: "glowa/korpus" w setnych progu przebicia.
+	// Obie polowy licza sie z OBU warstw naraz, wiec pusty slot helmu nie daje
+	// kreski, jesli glowe kryje sam kombinezon (exoszkielet, kombinezony
+	// z helmet_avaliable = false). Kreska oznacza teraz naprawde "nic nie kryje".
+	const float head_armor = SectionArmor(ikv, outfit, helmet, 0);
+	const float body_armor = SectionArmor(ikv, outfit, helmet, 1);
 
-	if (helm_armor < 0.0f)
-		xr_strcpy(helm_txt, sizeof(helm_txt), dash);
+	string32 head_txt, body_txt;
+	if (head_armor < 0.0f)
+		xr_strcpy(head_txt, sizeof(head_txt), dash);
 	else
-		xr_sprintf(helm_txt, sizeof(helm_txt), "%d", iFloor(helm_armor * 100.0f + 0.5f));
+		xr_sprintf(head_txt, sizeof(head_txt), "%d", iFloor(head_armor * 100.0f + 0.5f));
 
-	if (outf_armor < 0.0f)
-		xr_strcpy(outf_txt, sizeof(outf_txt), dash);
+	if (body_armor < 0.0f)
+		xr_strcpy(body_txt, sizeof(body_txt), dash);
 	else
-		xr_sprintf(outf_txt, sizeof(outf_txt), "%d", iFloor(outf_armor * 100.0f + 0.5f));
+		xr_sprintf(body_txt, sizeof(body_txt), "%d", iFloor(body_armor * 100.0f + 0.5f));
 
 	string64 value_txt;
-	xr_sprintf(value_txt, sizeof(value_txt), "%s/%s", helm_txt, outf_txt);
+	xr_sprintf(value_txt, sizeof(value_txt), "%s/%s", head_txt, body_txt);
 	item->set_text_str(value_txt);
 
-	// Tooltip: jedna linia na grupe kosci.
-	xr_string hint = s_title.c_str();
-	hint += "\n";
+	// Tooltip: naglowek, pusta linia, potem dwie sekcje rozdzielone kreskowana
+	// linia - najpierw to, co kryje glowe, potem reszta sylwetki.
+	xr_string hint = kColTitle;
+	hint += s_title.c_str();
+	hint += kBreak;
+	hint += kBreak;
 
-	LPCSTR class_prefix = s_class.c_str();
-
-	for (u32 g = 0; g < sizeof(kArmorGroups) / sizeof(kArmorGroups[0]); ++g)
+	int last_section = -1;
+	for (u32 g = 0; g < kArmorGroupCount; ++g)
 	{
-		const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
+		if (kArmorGroups[g].section != last_section)
+		{
+			last_section = kArmorGroups[g].section;
+			hint += kColSep;
+			hint += s_sep.c_str();
+			hint += kBreak;
+		}
 
+		const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
 		const shared_str s_label = g_pStringTable->translate(kArmorGroups[g].label_key);
 
+		// Kolumny trzymaja sie tylko przy foncie o stalej szerokosci - hint_wnd
+		// panelu uzywa [ui_font_panel_tt] (consola). Strony kodowe 1250/1251/1252
+		// sa jednobajtowe, wiec dopelnienie printf liczy znaki, nie bajty.
 		string256 line;
 		if (a < 0.0f)
 		{
-			xr_sprintf(line, sizeof(line), "%-10s %5s   %s %s",
-				s_label.c_str(), dash, class_prefix, dash);
+			xr_sprintf(line, sizeof(line), "%s%-8s %s%3s  %s%s %s%s",
+				kColLabel, s_label.c_str(), kColValue, dash,
+				kColUnit, s_class.c_str(), kColClass, dash);
 		}
 		else
 		{
 			LPCSTR cls = ArmorClassName(a);
-			xr_sprintf(line, sizeof(line), "%-10s %5d   %s %s",
-				s_label.c_str(), iFloor(a * 100.0f + 0.5f), class_prefix, cls ? cls : dash);
+			xr_sprintf(line, sizeof(line), "%s%-8s %s%3d  %s%s %s%s",
+				kColLabel, s_label.c_str(), kColValue, iFloor(a * 100.0f + 0.5f),
+				kColUnit, s_class.c_str(), kColClass, cls ? cls : dash);
 		}
 
 		hint += line;
-		hint += "\n";
+		hint += kBreak;
 	}
 
 	item->set_hint_text(hint.c_str());
+}
+
+// Wartosci sekcji pancerza dla systemu wyrazen. Tabela kosci stoi wyzej
+// w tym pliku, wiec delegaty nie moga jej dublowac.
+namespace ActorArmor
+{
+	float SectionValue(CActor* actor, int section)
+	{
+		if (actor == nullptr)
+			return -1.0f;
+
+		IKinematics* ikv = PKinematics(actor->Visual());
+		if (ikv == nullptr)
+			return -1.0f;
+
+		return SectionArmor(ikv, actor->GetOutfit(), actor->GetHelmet(), section);
+	}
+}
+
+// Podpowiedzi wierszy, ktore musza pokazac wyliczona liczbe. System wyrazen
+// nie sklada napisow (UI_ADD dziala tylko na int i float), wiec tekst
+// powstaje tutaj - tak samo jak tooltip pancerza.
+void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
+{
+	auto& cv = actor->conditions().change_v();
+	string32 num;
+
+	// Skazenie: ubytek zdrowia to radiation_health_v * poziom skazenia,
+	// w ulamku zdrowia na sekunde (EntityCondition.cpp, UpdateRadiation).
+	if (m_state[stt_radiation] != nullptr)
+	{
+		const float drain = cv.m_fV_RadiationHealth * actor->conditions().GetRadiation();
+
+		xr_string hint = g_pStringTable->translate("ui_uip_tt_rad").c_str();
+		hint += kBreak;
+		hint += g_pStringTable->translate("ui_uip_tt_rad_drain").c_str();
+		hint += " ";
+		FormatRate(num, drain * 100.0f, 3);
+		hint += num;
+		hint += " ";
+		hint += g_pStringTable->translate("ui_uip_unit_hps").c_str();
+
+		m_state[stt_radiation]->set_hint_text(hint.c_str());
+	}
+
+	// Krwawienie: ubytek to BleedingSpeed() * bleeding_v, a rany zablizniaja sie
+	// tempem wound_incarnation_v + bleeding_restore_speed z kombinezonu
+	// i artefaktow (UpdateHealth -> ChangeBleeding). Stad obie liczby w jednej
+	// podpowiedzi - to dwie strony tego samego licznika.
+	if (m_state[stt_bleeding] != nullptr)
+	{
+		const float drain = actor->conditions().BleedingSpeed() * cv.m_fV_Bleeding;
+		const float heal  = cv.m_fV_WoundIncarnation + actor->conditions().GetBoostBleedingRestore();
+
+		xr_string hint = g_pStringTable->translate("ui_uip_tt_bleed").c_str();
+		hint += kBreak;
+		hint += g_pStringTable->translate("ui_uip_tt_bleed_drain").c_str();
+		hint += " ";
+		FormatRate(num, drain * 100.0f, 3);
+		hint += num;
+		hint += " ";
+		hint += g_pStringTable->translate("ui_uip_unit_hps").c_str();
+		hint += kBreak;
+		hint += g_pStringTable->translate("ui_uip_tt_bleed_heal").c_str();
+		hint += " ";
+		FormatRate(num, heal * 1000.0f, 1);
+		hint += num;
+	}
 }
 
 void ui_actor_state_wnd::update_round_states(EStateType stt_type, float initial, float max_power)

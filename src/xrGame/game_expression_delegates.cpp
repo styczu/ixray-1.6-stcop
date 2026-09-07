@@ -9,6 +9,7 @@
 #include "PDA.h"
 #include "Level.h"
 #include "actor_mp_client.h"
+#include "ui/UIActorStateInfo.h"
 
 inline CActor* GetActor()
 {
@@ -173,12 +174,27 @@ float GetActorOutfitArmorMax()
     return (pOutfit != nullptr) ? pOutfit->GetMaxBoneArmor() : -1.0f;
 }
 
-// Wyzsza z dwoch warstw - to ona trafia na pasek klasy pancerza.
+// Prog przebicia dla sekcji sylwetki. Liczony po grupach kosci z tabeli
+// w UIActorStateInfo.cpp, a nie przez GetMaxBoneArmor: to drugie bierze
+// maksimum po WSZYSTKICH kosciach warstwy, wiec obojczyk (0.99 w body_armor_6a)
+// przykrywal soba tulow (0.98) i barki (0.33). Sekcje dziela sie tak samo,
+// jak dwie czesci tooltipa.
+float GetActorArmorHead()
+{
+    return ActorArmor::SectionValue(GetActor(), 0);
+}
+
+float GetActorArmorBody()
+{
+    return ActorArmor::SectionValue(GetActor(), 1);
+}
+
+// Lepsza z dwoch sekcji - to ona trafia na pasek klasy pancerza.
 float GetActorArmorClass()
 {
-    const float fHelmet = GetActorHelmetArmorMax();
-    const float fOutfit = GetActorOutfitArmorMax();
-    return (fHelmet > fOutfit) ? fHelmet : fOutfit;
+    const float fHead = GetActorArmorHead();
+    const float fBody = GetActorArmorBody();
+    return (fHead > fBody) ? fHead : fBody;
 }
 
 // Ulamek mocy pocisku pochlaniany przy zatrzymaniu, 0..1.
@@ -290,6 +306,8 @@ void RegisterExpressionDelegates ()
 
     //Pancerz balistyczny
     g_uiExpressionMgr->RegisterVariable("fltActorArmorClass",                       GetActorArmorClass);
+    g_uiExpressionMgr->RegisterVariable("fltActorArmorHead",                        GetActorArmorHead);
+    g_uiExpressionMgr->RegisterVariable("fltActorArmorBody",                        GetActorArmorBody);
     g_uiExpressionMgr->RegisterVariable("fltActorHelmetArmor",                      GetActorHelmetArmorMax);
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitArmor",                      GetActorOutfitArmorMax);
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitBallistic",                  GetActorOutfitBallistic);

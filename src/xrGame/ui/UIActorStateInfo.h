@@ -24,6 +24,15 @@ class CHelmet;
 
 class ui_actor_state_item;
 
+// Prog przebicia dla sekcji sylwetki: 0 = to, co kryje glowe (helm albo
+// zintegrowany kaptur kombinezonu), 1 = reszta. -1 = nic nie kryje.
+// Tabela kosci siedzi w UIActorStateInfo.cpp - delegaty wyrazen wolaja to
+// stad, zeby jej nie dublowac.
+namespace ActorArmor
+{
+	float SectionValue(CActor* actor, int section);
+}
+
 class ui_actor_state_wnd : public CUIWindow
 {
 private:
@@ -68,9 +77,13 @@ public:
 private:
 			void			update_round_states		(EStateType stt_type, float initial, float max_power);
 
-			// Wiersz klasy pancerza: liczba "helm/kombinezon" oraz tooltip
+			// Wiersz klasy pancerza: liczba "glowa/korpus" oraz tooltip
 			// z rozbiciem na grupy kosci.
 			void			UpdateArmorInfo			(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet);
+
+			// Podpowiedzi, ktore musza pokazac wyliczona liczbe (skazenie, krwawienie).
+			// System wyrazen nie sklada napisow, wiec tekst powstaje w C++.
+			void			UpdateRateHints			(CActor* actor);
 
 };
 
