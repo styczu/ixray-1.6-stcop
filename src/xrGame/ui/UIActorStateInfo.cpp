@@ -34,6 +34,7 @@
 #include "../Artefact.h"
 #include "../BoneProtections.h"
 #include "../../xrEngine/bone.h"
+#include "../../xrEngine/device.h"
 #include "../../Include/xrRender/Kinematics.h"
 #include "../../xrEngine/string_table.h"
 
@@ -561,11 +562,19 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 {
 	auto& cv = actor->conditions().change_v();
 
+	// UpdateConditionTime uzywa w SP zegara swiata, a ten bazuje na czasie Device.
+	// Przeliczamy wskazniki na sekunde rzeczywistej, niepauzowanej gry.
+	// Odczyt biezacego mnoznika obsluguje tez jego zmiane podczas rozgrywki;
+	// normal_time_factor jest wartoscia odniesienia, nie aktualnym mnoznikiem.
+	// W MP UpdateConditionTime korzysta bezposrednio z zegara serwera.
+	const float real_time_factor = IsGameTypeSingle()
+		? Level().GetGameTimeFactor() * Device.time_factor() : 1.0f;
+
 	// Dopisuje linie "podpis liczba jednostka". unit_key = nullptr -> bez jednostki.
-	auto add_line = [](xr_string& hint, LPCSTR label_key, float value, int decimals, LPCSTR unit_key)
+	auto add_line = [real_time_factor](xr_string& hint, LPCSTR label_key, float value, int decimals, LPCSTR unit_key)
 	{
 		string32 num;
-		FormatRate(num, value, decimals);
+		FormatRate(num, value * real_time_factor, decimals);
 
 		hint += kBreak;
 		hint += g_pStringTable->translate(label_key).c_str();
@@ -604,15 +613,10 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		m_state[stt_bleeding]->set_hint_text(hint.c_str());
 	}
 
-	// Regeneracja. GetRestoreSpeed zbiera komplet - baze z actor.ltx, sytosc,
-	// pragnienie, artefakty z pasa i kombinezon - i zwraca ULAMEK PASKA NA SEKUNDE,
-	// wiec razy 100 daje procent na sekunde.
-	//
-	// Liczba przy pasku jest tym samym tempem razy 1000 (czyli promile na sekunde),
-	// bo w polu 48 px nie miesci sie "0,020 %/s". To NIE jest ta sama skala,
-	// co "+N" w opisie ulepszenia kombinezonu: tam property_functor_a wypisuje
-	// surowe "value" z sekcji ulepszenia, recznie wpisana liczbe bez zwiazku
-	// z parametrem (np. health_restore_speed = 0.0006 opisany jako "+4").
+	// Wskazniki regeneracji zachowuja nominalne wartosci z GetRestoreSpeed.
+	// Mnozenie przez 100 przelicza ulamek paska na procent, a add_line
+	// dodatkowo zamienia sekundy zegara swiata na sekundy rzeczywiste.
+	// Liczby przy paskach nadal maja osobna, dotychczasowa skale x1000.
 	if (m_state[stt_thirst] != nullptr)
 	{
 		const float rate = actor->GetRestoreSpeed(ALife::eHealthRestoreSpeed);
