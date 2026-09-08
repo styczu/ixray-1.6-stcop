@@ -560,7 +560,23 @@ namespace ActorArmor
 void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 {
 	auto& cv = actor->conditions().change_v();
-	string32 num;
+
+	// Dopisuje linie "podpis liczba jednostka". unit_key = nullptr -> bez jednostki.
+	auto add_line = [](xr_string& hint, LPCSTR label_key, float value, int decimals, LPCSTR unit_key)
+	{
+		string32 num;
+		FormatRate(num, value, decimals);
+
+		hint += kBreak;
+		hint += g_pStringTable->translate(label_key).c_str();
+		hint += " ";
+		hint += num;
+		if (unit_key != nullptr)
+		{
+			hint += " ";
+			hint += g_pStringTable->translate(unit_key).c_str();
+		}
+	};
 
 	// Skazenie: ubytek zdrowia to radiation_health_v * poziom skazenia,
 	// w ulamku zdrowia na sekunde (EntityCondition.cpp, UpdateRadiation).
@@ -569,14 +585,7 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		const float drain = cv.m_fV_RadiationHealth * actor->conditions().GetRadiation();
 
 		xr_string hint = g_pStringTable->translate("ui_uip_tt_rad").c_str();
-		hint += kBreak;
-		hint += g_pStringTable->translate("ui_uip_tt_rad_drain").c_str();
-		hint += " ";
-		FormatRate(num, drain * 100.0f, 3);
-		hint += num;
-		hint += " ";
-		hint += g_pStringTable->translate("ui_uip_unit_hps").c_str();
-
+		add_line(hint, "ui_uip_tt_rad_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
 		m_state[stt_radiation]->set_hint_text(hint.c_str());
 	}
 
@@ -590,18 +599,36 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		const float heal  = cv.m_fV_WoundIncarnation + actor->conditions().GetBoostBleedingRestore();
 
 		xr_string hint = g_pStringTable->translate("ui_uip_tt_bleed").c_str();
-		hint += kBreak;
-		hint += g_pStringTable->translate("ui_uip_tt_bleed_drain").c_str();
-		hint += " ";
-		FormatRate(num, drain * 100.0f, 3);
-		hint += num;
-		hint += " ";
-		hint += g_pStringTable->translate("ui_uip_unit_hps").c_str();
-		hint += kBreak;
-		hint += g_pStringTable->translate("ui_uip_tt_bleed_heal").c_str();
-		hint += " ";
-		FormatRate(num, heal * 1000.0f, 1);
-		hint += num;
+		add_line(hint, "ui_uip_tt_bleed_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
+		add_line(hint, "ui_uip_tt_bleed_heal",  heal * 100.0f,  3, "ui_uip_unit_wound_s");
+		m_state[stt_bleeding]->set_hint_text(hint.c_str());
+	}
+
+	// Regeneracja. GetRestoreSpeed zbiera komplet - baze z actor.ltx, sytosc,
+	// pragnienie, artefakty z pasa i kombinezon - i zwraca ULAMEK PASKA NA SEKUNDE,
+	// wiec razy 100 daje procent na sekunde.
+	//
+	// Liczba przy pasku jest tym samym tempem razy 1000 (czyli promile na sekunde),
+	// bo w polu 48 px nie miesci sie "0,020 %/s". To NIE jest ta sama skala,
+	// co "+N" w opisie ulepszenia kombinezonu: tam property_functor_a wypisuje
+	// surowe "value" z sekcji ulepszenia, recznie wpisana liczbe bez zwiazku
+	// z parametrem (np. health_restore_speed = 0.0006 opisany jako "+4").
+	if (m_state[stt_thirst] != nullptr)
+	{
+		const float rate = actor->GetRestoreSpeed(ALife::eHealthRestoreSpeed);
+
+		xr_string hint = g_pStringTable->translate("ui_uip_tt_reg_health").c_str();
+		add_line(hint, "ui_uip_reg_rate", rate * 100.0f, 3, "ui_uip_unit_hp_s");
+		m_state[stt_thirst]->set_hint_text(hint.c_str());
+	}
+
+	if (m_state[stt_power] != nullptr)
+	{
+		const float rate = actor->GetRestoreSpeed(ALife::ePowerRestoreSpeed);
+
+		xr_string hint = g_pStringTable->translate("ui_uip_tt_reg_power").c_str();
+		add_line(hint, "ui_uip_reg_rate", rate * 100.0f, 3, "ui_uip_unit_st_s");
+		m_state[stt_power]->set_hint_text(hint.c_str());
 	}
 }
 
