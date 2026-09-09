@@ -25,7 +25,8 @@ protected:
 	UIBoosterInfoItem*	m_booster_anabiotic;
 	UIBoosterInfoItem*	m_booster_time;
 
-	CUIStatic*			m_Prop_line;
+	CUIStatic*			m_Prop_line = nullptr;
+    CUITextWnd* m_satiety_note = nullptr;
 
 }; // class CUIBoosterInfo
 
@@ -40,6 +41,15 @@ public:
 		void	Init				( CUIXml& xml, LPCSTR section );
 		void	SetCaption			( LPCSTR name );
 		void	SetRadiationRate		( float value );
+        void SetRegenerationRate(float value, bool satietyDependent = false);
+        virtual void Update() override;
+        float m_regeneration_rate = 0.0f;
+        bool m_has_regeneration_rate = false;
+        bool m_satiety_dependent = false;
+        bool m_duration = false;
+        float m_duration_seconds = 0.0f;
+        void SetDuration(float seconds);
+
 		void	SetValue			( float value );
 	
 	virtual CUIWindow* ui_cast_window() { return this; }

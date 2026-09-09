@@ -255,11 +255,17 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			}
 
 			val = pSettings->r_float(af_section, af_restore_section_names[i]);
-			if (fis_zero(val))
+			if ((i == ALife::eHealthRestoreSpeed || i == ALife::ePowerRestoreSpeed) ? val == 0.0f : fis_zero(val))
 			{
 				continue;
 			}
-			if (i == ALife::eRadiationRestoreSpeed && ConditionUi::RadiationUnitsEnabled())
+            if ((i == ALife::eHealthRestoreSpeed || i == ALife::ePowerRestoreSpeed) && ConditionUi::RegenerationUnitsEnabled())
+            {
+                m_restore_item[i]->SetCaption(g_pStringTable->translate(i == ALife::eHealthRestoreSpeed
+                    ? "ui_uip_item_reg_health" : "ui_uip_item_reg_power").c_str());
+                m_restore_item[i]->SetRegenerationRate(val * pInvItem.GetCondition());
+            }
+            else if (i == ALife::eRadiationRestoreSpeed && ConditionUi::RadiationUnitsEnabled())
 			{
 				LPCSTR key = val > 0.0f ? "ui_uip_item_rad_emission" : "ui_uip_item_rad_absorption";
 				m_restore_item[i]->SetCaption(g_pStringTable->translate(key).c_str());
@@ -404,4 +410,23 @@ void UIArtefactParamItem::SetRadiationRate(float value)
 	m_value->SetTextColor(ConditionUi::RadiationColor(value));
 	if (m_texture_minus.size())
 		m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIArtefactParamItem::SetRegenerationRate(float value)
+{
+    m_regeneration_rate = value;
+    m_has_regeneration_rate = true;
+    string64 text;
+    ConditionUi::FormatRegenerationRate(text, value);
+    m_value->SetText(text);
+    m_value->SetTextColor(value < 0.0f ? red_clr : green_clr);
+    if (m_texture_minus.size())
+        m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIArtefactParamItem::Update()
+{
+    if (m_has_regeneration_rate)
+        SetRegenerationRate(m_regeneration_rate);
+    CUIWindow::Update();
 }

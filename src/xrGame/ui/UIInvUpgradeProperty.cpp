@@ -10,6 +10,7 @@
 #include "pch_script.h"
 #include "UIInvUpgradeProperty.h"
 #include "UIInvUpgradeInfo.h"
+#include "UIConditionFormat.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/xrUIXmlParser.h"
@@ -84,6 +85,10 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 		return false;
 	}
 
+    const bool health = xr_strcmp(m_property_id.c_str(), "prop_restore_health") == 0;
+    const bool regeneration = ConditionUi::RegenerationUnitsEnabled() &&
+        (health || xr_strcmp(m_property_id.c_str(), "prop_power") == 0);
+    float regenerationValue = 0.0f;
 	int prop_count = 0;
 	string2048 buf; buf[0] = 0;
 	ItemUpgrades_type::const_iterator ib_upg = item_upgrades.begin();
@@ -97,6 +102,13 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 			if (upgr->get_property_name(i)._get() == m_property_id._get())
 			{
 				LPCSTR upgr_section = upgr->section();
+                if (regeneration)
+                {
+                    float value;
+                    if (!read_value_from_section(upgr_section, health ? "health_restore_speed" : "power_restore_speed", value))
+                        continue;
+                    regenerationValue += value;
+                }
 				if (prop_count > 0)
 				{
 					xr_strcat(buf, sizeof(buf), ", ");
@@ -108,6 +120,14 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	}
 	if (prop_count > 0)
 	{
+        if (regeneration)
+        {
+            string64 rate;
+            ConditionUi::FormatRegenerationRate(rate, regenerationValue);
+            xr_strconcat(m_text, g_pStringTable->translate(health ? "ui_uip_item_reg_health" : "ui_uip_item_reg_power").c_str(), ": ", rate);
+            m_ui_text->SetText(m_text);
+            return true;
+        }
 		return show_result(buf);
 	}
 	return false;
@@ -214,63 +234,49 @@ void UIInvUpgPropertiesWnd::init_from_xml(LPCSTR xml_name)
 	ui_xml.SetLocalRoot(stored_root);
 }
 
-void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades)
+void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration)
 {
-	Fvector2 new_size;
-	new_size.set(GetWndPos());
-	float height = 0.f;
-	float visiblePropertiesHeight = 0.0f;
-	m_iNumUpgr = 0;
-	new_size.x = GetWndSize().x;
-
-	if (m_Upgr_line)
-	{
-		height += m_Upgr_line->GetWndSize().y + 3.0f;
-	}
-
-	for (auto& ui_property : m_properties_ui)
-	{
-		ui_property->Show(false);
-
-		if (ui_property->compute_value(item_upgrades))
-		{
-			new_size.set(ui_property->GetWndPos());
-			new_size.x = 0.f;
-			UpdateStatsPos(height, new_size, ui_property, m_iNumUpgr);
-
-			visiblePropertiesHeight += ui_property->GetWndSize().y;
-			ui_property->Show(true);
-		}
-	}
-
-	// Для финальной высоты нужно добавить высоту последнего элемента, если количество нечетное
-	if (m_iNumUpgr > 0)
-	{
-		UIProperty* last_property = nullptr;
-		for (auto& ui_property : m_properties_ui)
-		{
-			if (ui_property->IsShown())
-			{
-				last_property = ui_property;
-			}
-		}
-		
-		if (last_property)
-		{
-			if (m_iNumUpgr % 2 != 0)
-			{
-				height += last_property->GetWndSize().y;
-			}
-			else
-			{
-				height += last_property->GetWndSize().y;
-			}
-		}
-	}
-	SetHeight(height);
+    float h = m_Upgr_line ? m_Upgr_line->GetHeight() + 3.0f : 0.0f;
+    float rowHeight = 0.0f;
+    bool rightColumn = false;
+    m_iNumUpgr = 0;
+    for (auto& property : m_properties_ui)
+    {
+        property->Show(false);
+        if (property->is_regeneration() && !supports_regeneration)
+            continue;
+        if (!property->compute_value(item_upgrades))
+            continue;
+        if (property->is_regeneration())
+        {
+            if (rightColumn)
+            {
+                h += rowHeight;
+                rightColumn = false;
+                rowHeight = 0.0f;
+            }
+            property->fit_regeneration_row(GetWidth());
+            property->SetWndPos(Fvector2().set(0.0f, h));
+            h += _max(m_fnext_line_pos, property->GetHeight());
+        }
+        else
+        {
+            property->SetWndPos(Fvector2().set(rightColumn ? m_fsec_col_pos : 0.0f, h));
+            rowHeight = _max(rowHeight, _max(m_fnext_line_pos, property->GetHeight()));
+            if (rightColumn)
+            {
+                h += rowHeight;
+                rowHeight = 0.0f;
+            }
+            rightColumn = !rightColumn;
+        }
+        property->Show(true);
+        ++m_iNumUpgr;
+    }
+    SetHeight(h + (rightColumn ? rowHeight : 0.0f));
 }
 
-void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade)
+void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration)
 {
 	if (!upgrade.is_known())
 	{
@@ -280,10 +286,26 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade)
 
 	m_temp_upgrade_vector.resize(0);
 	m_temp_upgrade_vector.push_back(upgrade.id());
-	set_info(m_temp_upgrade_vector);
+	set_info(m_temp_upgrade_vector, supports_regeneration);
 }
 
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
-	set_info(item.upgardes());
+	set_info(item.upgardes(), item.cast_helmet() == nullptr);
+}
+
+bool UIProperty::is_regeneration() const
+{
+    return ConditionUi::RegenerationUnitsEnabled() &&
+        (xr_strcmp(m_property_id.c_str(), "prop_restore_health") == 0 ||
+         xr_strcmp(m_property_id.c_str(), "prop_power") == 0);
+}
+
+void UIProperty::fit_regeneration_row(float width)
+{
+    SetWidth(width);
+    m_ui_text->SetWidth(_max(1.0f, width - m_ui_text->GetWndPos().x));
+    m_ui_text->SetTextComplexMode(true);
+    m_ui_text->AdjustHeightToText();
+    SetHeight(_max(m_ui_icon->GetHeight(), m_ui_text->GetWndPos().y + m_ui_text->GetHeight()));
 }

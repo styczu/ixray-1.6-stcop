@@ -31,6 +31,7 @@ CUIBoosterInfo::~CUIBoosterInfo()
 	xr_delete(m_booster_sleepiness);
 	xr_delete(m_booster_anabiotic);
 	xr_delete(m_booster_time);
+    xr_delete(m_satiety_note);
 	if (m_Prop_line)
 		xr_delete(m_Prop_line);
 }
@@ -128,6 +129,14 @@ void CUIBoosterInfo::InitFromXml(CUIXml& xml)
 		m_booster_time->SetCaption(name);
 	}
 
+    xml.SetLocalRoot(base_node);
+    if (xml.NavigateToNode("regeneration_note"))
+    {
+        m_satiety_note = UIHelper::CreateTextWnd(xml, "regeneration_note", this);
+        m_satiety_note->SetAutoDelete(false);
+        m_satiety_note->SetTextST("ui_uip_item_reg_satiety");
+        m_satiety_note->AdjustHeightToText();
+    }
 	xml.SetLocalRoot( stored_root );
 }
 
@@ -155,7 +164,7 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 		if(pSettings->line_exist(section.c_str(), ef_boosters_section_names[i]) && ef_boosters_section_names[i] && m_booster_items[i])
 		{
 			val	= pSettings->r_float(section, ef_boosters_section_names[i]);
-			if(fis_zero(val))
+			if ((i == eBoostHpRestore || i == eBoostPowerRestore) ? val == 0.0f : fis_zero(val))
 				continue;
 
 			EBoostParams type = (EBoostParams)i;
@@ -190,7 +199,14 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 					break;
 			}
 			val /= max_val;
-			if (type == eBoostRadiationRestore && ConditionUi::RadiationUnitsEnabled())
+            if ((type == eBoostHpRestore || type == eBoostPowerRestore) && ConditionUi::RegenerationUnitsEnabled())
+            {
+                const bool power = type == eBoostPowerRestore;
+                m_booster_items[i]->SetCaption(g_pStringTable->translate(power
+                    ? "ui_uip_item_reg_power" : "ui_uip_item_reg_health").c_str());
+                m_booster_items[i]->SetRegenerationRate(val, power);
+            }
+            else if (type == eBoostRadiationRestore && ConditionUi::RadiationUnitsEnabled())
 			{
 				LPCSTR key = val < 0.0f ? "ui_uip_item_rad_removal" : "ui_uip_item_rad_increase";
 				m_booster_items[i]->SetCaption(g_pStringTable->translate(key).c_str());
@@ -268,7 +284,13 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 		val	= pSettings->r_float(section, "boost_time");
 		if(!fis_zero(val))
 		{
-			m_booster_time->SetValue(val);
+            if (ConditionUi::RegenerationUnitsEnabled())
+                {
+                    m_booster_time->SetCaption(g_pStringTable->translate("ui_uip_item_reg_duration").c_str());
+                    m_booster_time->SetDuration(val);
+                }
+            else
+                m_booster_time->SetValue(val);
 			pos.set(m_booster_time->GetWndPos());
 			pos.y = h;
 			m_booster_time->SetWndPos(pos);
@@ -277,6 +299,13 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 			AttachChild(m_booster_time);
 		}
 	}
+    if (m_satiety_note && pSettings->line_exist(section, "boost_power_restore") &&
+        pSettings->r_float(section, "boost_power_restore") != 0.0f)
+    {
+        m_satiety_note->SetWndPos(Fvector2().set(0.0f, h));
+        AttachChild(m_satiety_note);
+        h += m_satiety_note->GetHeight();
+    }
 	SetHeight(h);
 }
 
@@ -366,4 +395,41 @@ void UIBoosterInfoItem::SetRadiationRate(float value)
 	m_value->SetTextColor(ConditionUi::RadiationColor(value));
 	if (m_texture_minus.size())
 		m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIBoosterInfoItem::SetRegenerationRate(float value, bool satietyDependent)
+{
+    m_regeneration_rate = value;
+    m_has_regeneration_rate = true;
+    m_satiety_dependent = satietyDependent;
+    if (satietyDependent && Actor())
+        value = Actor()->conditions().PowerRestoreEffect(value);
+    string64 text;
+    ConditionUi::FormatRegenerationRate(text, value);
+    m_value->SetText(text);
+    m_value->SetTextColor(value < 0.0f ? color_rgba(210,50,50,255) : color_rgba(170,170,170,255));
+    if (m_texture_minus.size())
+        m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIBoosterInfoItem::SetDuration(float seconds)
+{
+    m_duration = true;
+    m_duration_seconds = seconds;
+    const float factor = IsGameTypeSingle() ? Device.time_factor() : 1.0f;
+    string32 number;
+    ConditionUi::FormatNumber(number, factor > 0.0f ? seconds / factor : seconds,
+        ConditionUi::DecimalSeparator(), false);
+    string64 text;
+    xr_strconcat(text, number, " ", g_pStringTable->translate("ui_inv_seconds_short").c_str());
+    m_value->SetText(text);
+}
+
+void UIBoosterInfoItem::Update()
+{
+    if (m_has_regeneration_rate)
+        SetRegenerationRate(m_regeneration_rate, m_satiety_dependent);
+    if (m_duration)
+        SetDuration(m_duration_seconds);
+    CUIWindow::Update();
 }

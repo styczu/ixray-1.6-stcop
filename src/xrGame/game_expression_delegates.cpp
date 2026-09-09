@@ -216,8 +216,9 @@ float GetActorOutfitBallistic()
 // ============================================================================
 // Regeneracja
 // ----------------------------------------------------------------------------
-// GetRestoreSpeed(eHealthRestoreSpeed) liczy juz komplet: baze, sytosc,
-// pragnienie, artefakty z pasa i kombinezon. Moze wyjsc ujemne przy glodzie.
+// Legacy expression variables return resource units per game second.
+// The regeneration panel uses GetRegenerationSources directly for one atomic
+// number/bar/hint update; these delegates retain compatibility with other XML.
 
 float GetPlayerHealthRestoreSpeed()
 {

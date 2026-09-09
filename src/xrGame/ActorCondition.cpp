@@ -1228,3 +1228,75 @@ float CActorCondition::GetHealthBoost()
 
 	return total;
 }
+
+
+// Match UpdateSatiety's gates, including multiplayer's unscaled source.
+float CActorCondition::PowerRestoreEffect(float nominal) const
+{
+    if (psActorFlags.test(AF_GODMODE))
+        return 0.0f;
+    if (!IsGameTypeSingleCompatible())
+        return nominal;
+    return CanBeHarmed() && !psActorFlags.test(AF_DISABLE_CONDITION_TEST)
+        ? nominal * Satiety.Current : 0.0f;
+}
+
+ConditionUi::RegenerationSources CActorCondition::GetRegenerationSources(bool health) const
+{
+    ConditionUi::RegenerationSources result;
+    if (!object().g_Alive() || GodMode() ||
+        (!object().Local() && m_object != Level().CurrentViewEntity()))
+        return result;
+
+    // These are the same source coefficients and conditions as UpdateHealth,
+    // UpdateSatiety/Thirst/Sleepiness and ConditionStand. No resource clamp,
+    // bleeding/radiation damage, movement costs or outfit power_loss here.
+    const bool bodyEnabled = CanBeHarmed() && !psActorFlags.test(AF_DISABLE_CONDITION_TEST);
+    if (health)
+    {
+        result.natural = m_change_v.m_fV_HealthRestore;
+        result.temporary = m_fBoostHpRestore;
+        if (bodyEnabled && IsGameTypeSingleCompatible() && !psActorFlags.test(AF_GODMODE))
+        {
+            const float k = (Satiety.Current - Satiety.Critical) /
+                (Satiety.Current >= Satiety.Critical ? 1 - Satiety.Critical : Satiety.Critical);
+            result.natural += Satiety.HealthBoost * k;
+        }
+    }
+    else
+    {
+        result.natural = PowerRestoreEffect(Satiety.PowerBoost);
+        result.temporary = PowerRestoreEffect(m_fBoostPowerRestore);
+        if (object().Holder() == nullptr && !(object().mstate_real & mcAnyMove))
+            result.rest = -m_fStandPower;
+    }
+
+    if (bodyEnabled && EngineExternal()[EEngineExternalGame::EnableThirst] &&
+        !psActorFlags.test(AF_GODMODE))
+    {
+        const float k = (Thirst.Current - Thirst.Critical) /
+            (Thirst.Current >= Thirst.Critical ? 1 - Thirst.Critical : Thirst.Critical);
+        result.natural += health ? Thirst.HealthBoost * k : Thirst.PowerBoost * Thirst.Current;
+    }
+    if (bodyEnabled && EngineExternal()[EEngineExternalGame::EnableSleepiness])
+    {
+        const float k = ((1.f - Sleepiness.Current) - Sleepiness.Critical) /
+            (Sleepiness.Current < Sleepiness.Critical ? 1 - Sleepiness.Critical : Sleepiness.Critical);
+        result.natural += health ? Sleepiness.HealthBoost * k : Sleepiness.PowerBoost * (1.f - Sleepiness.Current);
+    }
+
+    // UpdateArtefactsOnBeltAndOutfit applies each source independently. Helmets
+    // are not part of that path; negative health modifiers respect ChangeHealth.
+    const auto addEquipment = [&](float value)
+    {
+        if (!health || CanBeHarmed() || value > 0.0f)
+            result.equipment += value;
+    };
+    for (const PIItem item : object().inventory().m_belt)
+        if (CArtefact* artefact = item->cast_artefact())
+            addEquipment((health ? artefact->m_fHealthRestoreSpeed : artefact->m_fPowerRestoreSpeed)
+                * artefact->GetCondition());
+    if (CCustomOutfit* outfit = object().GetOutfit())
+        addEquipment(health ? outfit->m_fHealthRestoreSpeed : outfit->m_fPowerRestoreSpeed);
+    return result;
+}

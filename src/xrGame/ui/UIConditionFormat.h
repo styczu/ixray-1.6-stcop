@@ -31,6 +31,19 @@ namespace ConditionUi
         xr_strconcat(out, number, " ", g_pStringTable->translate("ui_uip_unit_kbq_s").c_str());
     }
 
+    inline bool RegenerationUnitsEnabled()
+    {
+        const shared_str unit = g_pStringTable->translate("ui_uip_unit_regeneration");
+        return unit.size() && xr_strcmp(unit.c_str(), "ui_uip_unit_regeneration") != 0;
+    }
+
+    inline void FormatRegenerationRate(string64& out, float ratePerGameSecond)
+    {
+        string32 number;
+        FormatNumber(number, PercentPerSecond(ratePerGameSecond, CurrentTimeFactor()), DecimalSeparator(), true);
+        xr_strconcat(out, number, g_pStringTable->translate("ui_uip_unit_regeneration").c_str());
+    }
+
     inline u32 RadiationColor(float rate)
     {
         return rate < 0.0f ? color_rgba(110, 190, 115, 255)

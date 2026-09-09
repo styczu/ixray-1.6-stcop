@@ -54,6 +54,11 @@ public:
 		bool	Init				( CUIXml& xml, LPCSTR section );
 		void	SetCaption			( LPCSTR name );
 		void	SetRadiationRate		( float value );
+        void SetRegenerationRate(float value);
+        virtual void Update() override;
+        float m_regeneration_rate = 0.0f;
+        bool m_has_regeneration_rate = false;
+
 		void	SetValue			( float value );
 	
 	virtual CUIWindow* ui_cast_window() { return this; }

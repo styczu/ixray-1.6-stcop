@@ -654,27 +654,40 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		m_state[stt_bleeding]->set_hint_text(hint.c_str());
 	}
 
-	// Wskazniki regeneracji zachowuja nominalne wartosci z GetRestoreSpeed.
-	// Mnozenie przez 100 przelicza ulamek paska na procent, a add_line
-	// dodatkowo zamienia sekundy zegara swiata na sekundy rzeczywiste.
-	// Liczby przy paskach nadal maja osobna, dotychczasowa skale x1000.
-	if (m_state[stt_thirst] != nullptr)
-	{
-		const float rate = actor->GetRestoreSpeed(ALife::eHealthRestoreSpeed);
+    const auto updateRegeneration = [&](EStateType state, bool health)
+    {
+        ui_actor_state_item* item = m_state[state];
+        if (!item)
+            return;
+        const auto sources = actor->conditions().GetRegenerationSources(health);
+        xr_string hint = g_pStringTable->translate(health ? "ui_uip_tt_reg_health" : "ui_uip_tt_reg_power").c_str();
+        const auto line = [&](LPCSTR key, float value, bool always = false)
+        {
+            if (!always && value == 0.0f)
+                return;
+            string64 formatted;
+            ConditionUi::FormatRegenerationRate(formatted, value);
+            hint += "\\n%c[255,170,170,170]";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": %c[255,224,230,234]";
+            hint += formatted;
+        };
+        line("ui_uip_reg_rate", sources.Total(), true);
+        line("ui_uip_reg_natural", sources.natural);
+        line("ui_uip_reg_rest", sources.rest);
+        line("ui_uip_reg_equipment", sources.equipment);
+        line("ui_uip_reg_temporary", sources.temporary);
+        item->set_hint_text(hint.c_str());
+        if (item->m_regeneration)
+            item->set_regeneration(ConditionUi::PercentPerSecond(sources.Total(), real_time_factor),
+                health ? ConditionUi::HealthRegenerationMaximum : ConditionUi::PowerRegenerationMaximum);
+    };
+    if (ConditionUi::RegenerationUnitsEnabled())
+    {
+        updateRegeneration(stt_thirst, true);
+        updateRegeneration(stt_power, false);
+    }
 
-		xr_string hint = g_pStringTable->translate("ui_uip_tt_reg_health").c_str();
-		add_line(hint, "ui_uip_reg_rate", rate * 100.0f, 3, "ui_uip_unit_hp_s");
-		m_state[stt_thirst]->set_hint_text(hint.c_str());
-	}
-
-	if (m_state[stt_power] != nullptr)
-	{
-		const float rate = actor->GetRestoreSpeed(ALife::ePowerRestoreSpeed);
-
-		xr_string hint = g_pStringTable->translate("ui_uip_tt_reg_power").c_str();
-		add_line(hint, "ui_uip_reg_rate", rate * 100.0f, 3, "ui_uip_unit_st_s");
-		m_state[stt_power]->set_hint_text(hint.c_str());
-	}
 }
 
 void ui_actor_state_wnd::update_round_states(EStateType stt_type, float initial, float max_power)
@@ -747,6 +760,7 @@ ui_actor_state_item::~ui_actor_state_item()
 void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 {
 	CUIXmlInit::InitWindow( xml, path, 0, this);
+    m_regeneration = xml.ReadAttribInt(path, 0, "regeneration", 0) != 0;
 
 	XML_NODE* stored_root = xml.GetLocalRoot();
 	XML_NODE* new_root = xml.NavigateToNode( path, 0 );
@@ -797,6 +811,16 @@ void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 		m_magnitude = xml.ReadAttribFlt("icon3", 0, "magnitude", 1.0f);
 		m_static3->TextItemControl()->SetText("");
 	}
+    if (xml.NavigateToNode("overflow"))
+    {
+        m_overflow = UIHelper::CreateStatic(xml, "overflow", this);
+        m_overflow->Show(false);
+    }
+    if (xml.NavigateToNode("overflow_fill"))
+    {
+        m_overflow_fill = UIHelper::CreateStatic(xml, "overflow_fill", this);
+        m_overflow_fill->Show(false);
+    }
 	if (xml.NavigateToNode("value"))
 		m_value = UIHelper::CreateStatic(xml, "value", this);
 	set_arrow( 0.0f );
@@ -895,4 +919,18 @@ void ui_actor_state_item::set_value_text(LPCSTR text)
 {
 	if (m_value)
 		m_value->TextItemControl()->SetText(text);
+}
+
+void ui_actor_state_item::set_regeneration(float percentPerSecond, float maximum)
+{
+    string32 number;
+    ConditionUi::FormatNumber(number, percentPerSecond, ConditionUi::DecimalSeparator(), true);
+    set_value_text(number);
+    if (m_progress)
+        m_progress->SetProgressPosImmediate(percentPerSecond / maximum);
+    const bool overflow = percentPerSecond > maximum;
+    if (m_overflow)
+        m_overflow->Show(overflow);
+    if (m_overflow_fill)
+        m_overflow_fill->Show(overflow);
 }

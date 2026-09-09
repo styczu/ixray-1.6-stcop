@@ -6,6 +6,24 @@
 
 namespace ConditionUi
 {
+    struct RegenerationSources
+    {
+        float natural = 0.0f;
+        float rest = 0.0f;
+        float equipment = 0.0f;
+        float temporary = 0.0f;
+
+        float Total() const { return natural + rest + equipment + temporary; }
+    };
+
+    constexpr float HealthRegenerationMaximum = 2.5f;
+    constexpr float PowerRegenerationMaximum = 20.0f;
+
+    inline float PercentPerSecond(float rate, float timeFactor)
+    {
+        return rate * timeFactor * 100.0f;
+    }
+
     // Presentation scale: the engine's 0..1 radiation resource is 0..100 kBq.
     constexpr float RadiationScale = 100.0f;
 

@@ -58,6 +58,14 @@ public:
 	void				SetProgressPos				(float _Pos);
 	float				GetProgressPos				()							{ return m_ProgressPos.y; }
 
+    // Atomic numeric/bar updates for a source rate, without the slow animation.
+    void SetProgressPosImmediate(float value)
+    {
+        clamp(value, m_MinPos, m_MaxPos);
+        m_ProgressPos.set(value, value);
+        UpdateProgressBar();
+    }
+
 	void				ShowBackground				(bool status)				{ m_bBackgroundPresent = status; }
 	bool				IsShownBackground			()							{ return m_bBackgroundPresent; }
 

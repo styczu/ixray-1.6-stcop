@@ -47,6 +47,9 @@ public:
 	virtual void		UpdateCondition				();
 			void		UpdateBoosters				();
 
+    ConditionUi::RegenerationSources GetRegenerationSources(bool health) const;
+    float PowerRestoreEffect(float nominal) const;
+
 	float GetRadiationChangeRate() const { return m_radiation_change_rate.Get(); }
 	float				GetBoosterValueByType		(EBoostParams type) const;
 

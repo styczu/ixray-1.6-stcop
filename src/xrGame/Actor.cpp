@@ -2836,25 +2836,7 @@ float CActor::GetRestoreSpeed( ALife::EConditionRestoreType const& type )
 	switch ( type )
 	{
 	case ALife::eHealthRestoreSpeed:
-	{
-		res = conditions().change_v().m_fV_HealthRestore;
-		res += conditions().V_SatietyHealth() * ( (conditions().GetSatiety() > 0.0f) ? 1.0f : -1.0f );
-		res += conditions().V_ThirstHealth() * ( (conditions().GetThirst() > 0.0f) ? 1.0f : -1.0f );
-
-		for (const PIItem item : inventory().m_belt)
-		{
-			if (CArtefact* artefact = item->cast_artefact())
-			{
-				res += (artefact->m_fHealthRestoreSpeed * artefact->GetCondition());
-			}
-		}
-
-		if (CCustomOutfit* outfit = GetOutfit())
-		{
-			res += outfit->m_fHealthRestoreSpeed;
-		}
-		break;
-	}
+		return conditions().GetRegenerationSources(true).Total();
 	case ALife::eRadiationRestoreSpeed:
 	{	
 		for (const PIItem item : inventory().m_belt)
@@ -2908,29 +2890,7 @@ float CActor::GetRestoreSpeed( ALife::EConditionRestoreType const& type )
 		break;
 	}
 	case ALife::ePowerRestoreSpeed:
-	{
-		res = conditions().GetSatietyPower();
-
-		for (const PIItem item : inventory().m_belt)
-		{
-			if (CArtefact* artefact = item->cast_artefact())
-			{
-				res += (artefact->m_fPowerRestoreSpeed * artefact->GetCondition());
-			}
-		}
-
-		if (CCustomOutfit* outfit = GetOutfit())
-		{
-			res += outfit->m_fPowerRestoreSpeed;
-			VERIFY(outfit->m_fPowerLoss!=0.0f);
-			res /= outfit->m_fPowerLoss;
-		}
-		else
-		{
-			res /= 0.5f;
-		}
-		break;
-	}
+		return conditions().GetRegenerationSources(false).Total();
 	case ALife::eBleedingRestoreSpeed:
 	{
 		res = conditions().change_v().m_fV_WoundIncarnation;
