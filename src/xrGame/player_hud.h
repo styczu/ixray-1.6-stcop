@@ -343,6 +343,7 @@ private:
 	bool								m_bhands_visible;
 	bool								m_binverted;
 	int									item_idx_priority;
+	void reload_motions();
 	void  LeftArmCallback(CBoneInstance* B);
 };
 
