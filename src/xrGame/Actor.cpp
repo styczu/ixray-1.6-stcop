@@ -306,6 +306,7 @@ THudVertexAssignedPatricles* CActor::GetHudVertexAssignedPatriclesComponent()
 void CActor::reinit	()
 {
 	LightPerception.Reset();
+	m_artefact_update_time = 0.0f;
 	character_physics_support()->movement()->CreateCharacter		();
 	character_physics_support()->movement()->SetPhysicsRefObject	(this);
 	CEntityAlive::reinit						();
@@ -3381,21 +3382,16 @@ void CActor::MoveArtefactBelt(const CArtefact* artefact, bool on_belt)
 
 void CActor::UpdateArtefactsOnBeltAndOutfit()
 {
-	static float update_time = 0;
 	const static bool enableSleepiness = EngineExternal()[EEngineExternalGame::EnableSleepiness];
 
-	float f_update_time = 0;
-
-	if(update_time<ARTEFACTS_UPDATE_TIME)
-	{
-		update_time += conditions().fdelta_time();
+	// Include this update's time before checking the batching threshold.
+	// Previously the update that applied effects discarded its own delta.
+	m_artefact_update_time += std::max(0.0f, conditions().fdelta_time());
+	if (m_artefact_update_time < ARTEFACTS_UPDATE_TIME)
 		return;
-	}
-	else
-	{
-		f_update_time	= update_time;
-		update_time		= 0.0f;
-	}
+
+	const float f_update_time = m_artefact_update_time;
+	m_artefact_update_time = 0.0f;
 
 	for (const PIItem item : inventory().m_belt)
 	{
