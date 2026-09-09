@@ -232,9 +232,16 @@ void CActorCondition::UpdateCondition()
 	}
 
 	if (GodMode())
+	{
+		m_radiation_change_rate.Reset();
 		return;
+	}
 
-	if (!object().g_Alive())	return;
+	if (!object().g_Alive())
+	{
+		m_radiation_change_rate.Reset();
+		return;
+	}
 	if (!object().Local() && m_object != Level().CurrentViewEntity())		return;	
 	
 	float base_weight			= object().MaxCarryWeight();
@@ -308,7 +315,17 @@ void CActorCondition::UpdateCondition()
 
 	UpdateSleepiness();
 
+	const float radiation_before = GetRadiation();
 	inherited::UpdateCondition();
+
+	// Measure the net result after all pending hits/equipment/medicine and
+	// the 0..1 clamp, rather than reconstructing an incomplete source list.
+	const float time_factor = ConditionUi::RealTimeFactor(IsGameTypeSingle(),
+		Level().GetGameTimeFactor(), Device.time_factor());
+	if (time_factor > 0.0f)
+		m_radiation_change_rate.Add(GetRadiation() - radiation_before, m_fDeltaTime / time_factor);
+	else
+		m_radiation_change_rate.Reset();
 
 	if( IsGameTypeSingle() )
 		UpdateTutorialThresholds();
@@ -651,6 +668,7 @@ void CActorCondition::save(NET_Packet &output_packet)
 
 void CActorCondition::load(IReader &input_packet)
 {
+	m_radiation_change_rate.Reset();
 	inherited::load		(input_packet);
 	load_data			(Alcohol.Current, input_packet);
 	load_data			(m_condition_flags, input_packet);
@@ -684,6 +702,7 @@ void CActorCondition::load(IReader &input_packet)
 
 void CActorCondition::reinit()
 {
+	m_radiation_change_rate.Reset();
 	inherited::reinit();
 	m_bLimping = false;
 	Satiety.Current = 1.0f;

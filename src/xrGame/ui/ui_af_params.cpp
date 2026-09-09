@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "ui_af_params.h"
+#include "UIConditionFormat.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 
 #include "../Actor.h"
@@ -258,7 +259,14 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			{
 				continue;
 			}
-			m_restore_item[i]->SetValue(val * pInvItem.GetCondition());
+			if (i == ALife::eRadiationRestoreSpeed && ConditionUi::RadiationUnitsEnabled())
+			{
+				LPCSTR key = val > 0.0f ? "ui_uip_item_rad_emission" : "ui_uip_item_rad_absorption";
+				m_restore_item[i]->SetCaption(g_pStringTable->translate(key).c_str());
+				m_restore_item[i]->SetRadiationRate(val * pInvItem.GetCondition());
+			}
+			else
+				m_restore_item[i]->SetValue(val * pInvItem.GetCondition());
 
 			pos.set(m_restore_item[i]->GetWndPos());
 			pos.y = h;
@@ -386,4 +394,14 @@ void UIArtefactParamItem::SetValue( float value )
 		}
 	}
 
+}
+
+void UIArtefactParamItem::SetRadiationRate(float value)
+{
+	string64 text;
+	ConditionUi::FormatRadiationRate(text, value);
+	m_value->SetText(text);
+	m_value->SetTextColor(ConditionUi::RadiationColor(value));
+	if (m_texture_minus.size())
+		m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
 }

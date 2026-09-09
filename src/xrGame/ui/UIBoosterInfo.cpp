@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "UIBoosterInfo.h"
+#include "UIConditionFormat.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "object_broker.h"
 #include "../EntityCondition.h"
@@ -189,7 +190,14 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 					break;
 			}
 			val /= max_val;
-			m_booster_items[i]->SetValue(val);
+			if (type == eBoostRadiationRestore && ConditionUi::RadiationUnitsEnabled())
+			{
+				LPCSTR key = val < 0.0f ? "ui_uip_item_rad_removal" : "ui_uip_item_rad_increase";
+				m_booster_items[i]->SetCaption(g_pStringTable->translate(key).c_str());
+				m_booster_items[i]->SetRadiationRate(val);
+			}
+			else
+				m_booster_items[i]->SetValue(val);
 
 			pos.set(m_booster_items[i]->GetWndPos());
 			pos.y = h;
@@ -348,4 +356,14 @@ void UIBoosterInfoItem::SetValue(float value)
 		else
 			m_caption->InitTexture(m_texture_minus.c_str());
 	}
+}
+
+void UIBoosterInfoItem::SetRadiationRate(float value)
+{
+	string64 text;
+	ConditionUi::FormatRadiationRate(text, value);
+	m_value->SetText(text);
+	m_value->SetTextColor(ConditionUi::RadiationColor(value));
+	if (m_texture_minus.size())
+		m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
 }

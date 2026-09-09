@@ -93,6 +93,7 @@ class ui_actor_state_item : public UIHintWindow
 
 protected:
 	CUIStatic*				m_static;
+	CUIStatic*				m_value = nullptr;
 	CUIStatic*				m_static2;
 	CUIStatic*				m_static3;
 	CUIProgressShape*		m_sensor;
@@ -106,6 +107,7 @@ public:
 	virtual			~ui_actor_state_item	();
 			void	init_from_xml			( CUIXml& xml, LPCSTR path );
 	
+			void	set_value_text			( LPCSTR text );
 			bool	set_text				( float value ); // 0..1
 			bool	set_text_str			( LPCSTR text ); // dowolny napis w tym samym statyku
 			bool	set_progress			( float value ); // 0..1

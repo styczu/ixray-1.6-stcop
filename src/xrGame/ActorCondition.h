@@ -1,6 +1,7 @@
 // ActorCondition.h: класс состояния игрока
 #pragma once
 #include "EntityCondition.h"
+#include "ConditionUiValues.h"
 #include "actor_defs.h"
 #include "../xrScripts/script_export_space.h"
 
@@ -29,6 +30,7 @@ private:
 private:
 	CActor*											m_object;
 	CActorDeathEffector*							m_death_effector;
+	ConditionUi::RadiationRate m_radiation_change_rate;
 	void				UpdateTutorialThresholds	();
 			void 		UpdateSatiety				();
 			void 		UpdateThirst				();
@@ -45,6 +47,7 @@ public:
 	virtual void		UpdateCondition				();
 			void		UpdateBoosters				();
 
+	float GetRadiationChangeRate() const { return m_radiation_change_rate.Get(); }
 	float				GetBoosterValueByType		(EBoostParams type) const;
 
 	void 				BoostParameters				(const SBooster& B);

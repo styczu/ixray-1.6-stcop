@@ -7,6 +7,7 @@
 
 #include "stdafx.h"
 #include "UIActorStateInfo.h"
+#include "UIConditionFormat.h"
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrUI/Widgets/UIProgressShape.h"
 #include "../../xrUI/Widgets/UIScrollView.h"
@@ -591,10 +592,50 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 	// w ulamku zdrowia na sekunde (EntityCondition.cpp, UpdateRadiation).
 	if (m_state[stt_radiation] != nullptr)
 	{
-		const float drain = cv.m_fV_RadiationHealth * actor->conditions().GetRadiation();
+		const float radiation = actor->conditions().GetRadiation();
+		const float drain = actor->conditions().CanBeHarmed() && !GodMode()
+			? cv.m_fV_RadiationHealth * radiation : 0.0f;
 
 		xr_string hint = g_pStringTable->translate("ui_uip_tt_rad").c_str();
-		add_line(hint, "ui_uip_tt_rad_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
+		if (ConditionUi::RadiationUnitsEnabled())
+		{
+			auto add_radiation_line = [&hint](LPCSTR label, float value, bool sign, LPCSTR unit, LPCSTR color)
+			{
+				string32 number;
+				ConditionUi::FormatNumber(number, value, ConditionUi::DecimalSeparator(), sign);
+				hint += kBreak;
+				hint += "%c[255,176,182,186]";
+				hint += g_pStringTable->translate(label).c_str();
+				hint += " ";
+				hint += color;
+				hint += number;
+				const shared_str suffix = g_pStringTable->translate(unit);
+				if (suffix.c_str()[0] != '%')
+					hint += " ";
+				hint += suffix.c_str();
+			};
+
+			float change = actor->conditions().GetRadiationChangeRate() * ConditionUi::RadiationScale;
+			// At a resource boundary there is no outward change to display.
+			if ((radiation <= 0.0f && change < 0.0f) || (radiation >= 1.0f && change > 0.0f))
+				change = 0.0f;
+			LPCSTR change_color = change < 0.0f ? "%c[255,110,190,115]"
+				: (change > 0.0f ? "%c[255,210,80,65]" : "%c[255,224,230,234]");
+			add_radiation_line("ui_uip_tt_rad_level", radiation * ConditionUi::RadiationScale, false,
+				"ui_uip_unit_kbq", "%c[255,224,230,234]");
+			add_radiation_line("ui_uip_tt_rad_change", change, true, "ui_uip_unit_kbq_s", change_color);
+			add_radiation_line("ui_uip_tt_rad_drain", drain * real_time_factor * 100.0f, false,
+				"ui_uip_unit_hp_percent_s", drain > 0.0f ? "%c[255,210,80,65]" : "%c[255,224,230,234]");
+
+			string32 number;
+			string64 value_text;
+			ConditionUi::FormatNumber(number, radiation * ConditionUi::RadiationScale,
+				ConditionUi::DecimalSeparator(), false, 0);
+			xr_strconcat(value_text, number, " ", g_pStringTable->translate("ui_uip_unit_kbq").c_str());
+			m_state[stt_radiation]->set_value_text(value_text);
+		}
+		else
+			add_line(hint, "ui_uip_tt_rad_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
 		m_state[stt_radiation]->set_hint_text(hint.c_str());
 	}
 
@@ -756,6 +797,8 @@ void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 		m_magnitude = xml.ReadAttribFlt("icon3", 0, "magnitude", 1.0f);
 		m_static3->TextItemControl()->SetText("");
 	}
+	if (xml.NavigateToNode("value"))
+		m_value = UIHelper::CreateStatic(xml, "value", this);
 	set_arrow( 0.0f );
 	xml.SetLocalRoot( stored_root );
 }
@@ -846,4 +889,10 @@ bool ui_actor_state_item::show_static( bool status, u8 number )
 		return false;
 	}
 	return true;
+}
+
+void ui_actor_state_item::set_value_text(LPCSTR text)
+{
+	if (m_value)
+		m_value->TextItemControl()->SetText(text);
 }
