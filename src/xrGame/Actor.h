@@ -289,6 +289,9 @@ public:
 	const xr_vector<const CArtefact*>& ArtefactsOnBelt() {return m_ArtefactsOnBelt;}
 
 protected:
+	// Per-actor pending condition time, never shared between actors or saves.
+	float m_artefact_update_time = 0.0f;
+
 	//звук тяжелого дыхания
 	ref_sound			m_HeavyBreathSnd = {};
 	ref_sound			m_BloodSnd = {};
