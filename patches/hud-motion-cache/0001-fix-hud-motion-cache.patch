@@ -1,0 +1,275 @@
+From 5c10cedbe44ea62abb1d25796f88474e7a35ad75 Mon Sep 17 00:00:00 2001
+From: tmz <styczu@gmail.com>
+Date: Wed, 9 Sep 2026 22:40:35 +0200
+Subject: [PATCH] Refresh cached HUD motions when the hands model changes
+
+---
+ src/Layers/xrRender/SkeletonAnimated.h        |   2 +-
+ .../Visual/XRayKinematicsAnimated.h           |   2 +-
+ src/xrEngine/SkeletonMotions.h                |   2 +-
+ src/xrGame/player_hud.cpp                     |  40 +++++-
+ src/xrGame/player_hud.h                       |   1 +
+ tests/hud-motions/test_hud_motions.py         | 114 ++++++++++++++++++
+ 6 files changed, 154 insertions(+), 7 deletions(-)
+ create mode 100644 tests/hud-motions/test_hud_motions.py
+
+diff --git a/src/Layers/xrRender/SkeletonAnimated.h b/src/Layers/xrRender/SkeletonAnimated.h
+index a1c7cf04fd01cc068af48dba535a44182edc6801..a706216b37e559c46742024c8677f711569f5bfb 100644
+--- a/src/Layers/xrRender/SkeletonAnimated.h
++++ b/src/Layers/xrRender/SkeletonAnimated.h
+@@ -127,7 +127,7 @@ public:
+ 	u16							LL_MotionsSlotCount(){return (u16)m_Motions.size();}
+ 	const shared_motions&		LL_MotionsSlot	(u16 idx){return m_Motions[idx].motions;}
+ 
+-	IC CMotionDef*				LL_GetMotionDef	(MotionID id){return m_Motions[id.slot].motions.motion_def(id.idx);}
++	IC CMotionDef*				LL_GetMotionDef	(MotionID id){return id.valid() && id.slot < m_Motions.size() ? m_Motions[id.slot].motions.motion_def(id.idx) : nullptr;}
+ 	IC CMotion*					LL_GetRootMotion(MotionID id){return &m_Motions[id.slot].bone_motions[iRoot]->at(id.idx);}
+ 	IC CMotion*					LL_GetMotion	(MotionID id, u16 bone_id){return &m_Motions[id.slot].bone_motions[bone_id]->at(id.idx);}
+ 	IC 
+diff --git a/src/Layers/xrRenderDS_R0/Visual/XRayKinematicsAnimated.h b/src/Layers/xrRenderDS_R0/Visual/XRayKinematicsAnimated.h
+index a68a1c4a3f86ea33ca0e662e8f22091e9345b19d..39cbd20b32a9a9cb8f37bcb772eb3f59bf79e225 100644
+--- a/src/Layers/xrRenderDS_R0/Visual/XRayKinematicsAnimated.h
++++ b/src/Layers/xrRenderDS_R0/Visual/XRayKinematicsAnimated.h
+@@ -120,7 +120,7 @@ public:
+ 	u16							LL_MotionsSlotCount() { return (u16)m_Motions.size(); }
+ 	const shared_motions& LL_MotionsSlot(u16 idx) { return m_Motions[idx].motions; }
+ 
+-	IC CMotionDef* LL_GetMotionDef(MotionID id) { return m_Motions[id.slot].motions.motion_def(id.idx); }
++	IC CMotionDef* LL_GetMotionDef(MotionID id) { return id.valid() && id.slot < m_Motions.size() ? m_Motions[id.slot].motions.motion_def(id.idx) : nullptr; }
+ 	IC CMotion* LL_GetRootMotion(MotionID id) { return &m_Motions[id.slot].bone_motions[iRoot]->at(id.idx); }
+ 	IC CMotion* LL_GetMotion(MotionID id, u16 bone_id) { return &m_Motions[id.slot].bone_motions[bone_id]->at(id.idx); }
+ 
+diff --git a/src/xrEngine/SkeletonMotions.h b/src/xrEngine/SkeletonMotions.h
+index 7ed2f8f7978e397dc4343c6d05993a930dcbe0e0..28df3a544bd9ffea808b2566afc297ae81aaa591 100644
+--- a/src/xrEngine/SkeletonMotions.h
++++ b/src/xrEngine/SkeletonMotions.h
+@@ -285,7 +285,7 @@ public:
+ 	accel_map*			fx				()							{	if (p_ == nullptr) return nullptr; return &p_->m_fx;					}
+ 	CPartition*			partition		()							{	if (p_ == nullptr) return nullptr; return &p_->m_partition;			}
+     MotionDefVec*		motion_defs		()							{	if (p_ == nullptr) return nullptr; return &p_->m_mdefs;				}
+-    CMotionDef*			motion_def		(u16 idx)					{	if (p_ == nullptr) return nullptr; return &p_->m_mdefs[idx];			}
++    CMotionDef*			motion_def		(u16 idx)					{	if (p_ == nullptr || idx >= p_->m_mdefs.size()) return nullptr; return &p_->m_mdefs[idx];			}
+ 	anim_notify_prefetched& motion_notify	(u16 idx, u16 bone)		{	VERIFY(p_); return p_->m_notifies[idx][bone];			}
+ 
+ 	const shared_str	&id				() const					{	VERIFY(p_); return p_->m_id;					}
+diff --git a/src/xrGame/player_hud.cpp b/src/xrGame/player_hud.cpp
+index fd57ea78463605d0dde40995de526c2a4e42f500..1044bc14e05508abaa25f5a0c708debb1c530f2b 100644
+--- a/src/xrGame/player_hud.cpp
++++ b/src/xrGame/player_hud.cpp
+@@ -62,6 +62,12 @@ bool player_hud_motion_container::has_motion(const shared_str& name)
+ 
+ void player_hud_motion_container::load(IKinematicsAnimated* model, const shared_str& sect, IKinematicsAnimated* item_model)
+ {
++	// Motion IDs belong to the hands model used for this load.
++	m_anims.clear();
++	m_item_anims.clear();
++	m_names.clear();
++	m_banned_bone_parts.clear();
++
+ 	CInifile::Sect& _sect = pSettings->r_section(sect);
+ 
+ 	for (const auto& data : _sect.Data)
+@@ -1361,6 +1367,9 @@ void player_hud::load(const shared_str& player_hud_sect)
+ 		}
+ 	}
+ 
++	// Refresh hidden items too, before attachment callbacks can play animations.
++	reload_motions();
++
+ 	if(!b_reload) {
+ 		m_model->PlayCycle("hand_idle_doun");
+ 	}
+@@ -1492,10 +1501,11 @@ void player_hud::render_hud()
+ 
+ u32 player_hud::motion_length(const shared_str& anim_name, const shared_str& hud_name, const CMotionDef*& md)
+ {
++	md = nullptr;
+ 	float speed						= CalcMotionSpeed(anim_name);
+ 	attachable_hud_item* pi			= create_hud_item(hud_name);
+ 	player_hud_motion*	pm			= pi->m_hand_motions.find_motion(anim_name);
+-	if(!pm)
++	if (!pm || pm->m_animations.empty())
+ 		return						100; // ms TEMPORARY
+ 	R_ASSERT2						(pm, 
+ 		make_string<const char*>("hudItem model [%s] has no motion with alias [%s]", hud_name.c_str(), anim_name.c_str() )
+@@ -1505,9 +1515,14 @@ u32 player_hud::motion_length(const shared_str& anim_name, const shared_str& hud
+ 
+ u32 player_hud::motion_length(const MotionID& M, const CMotionDef*& md, float speed)
+ {
+-	md = m_model->LL_GetMotionDef(M);
+-	VERIFY(md);
+-	if (md != nullptr && md->flags & esmStopAtEnd)
++	md = m_model ? m_model->LL_GetMotionDef(M) : nullptr;
++	if (!md)
++	{
++		Msg("! HUD motion unavailable: section [%s], slot [%u], index [%u]",
++			m_sect_name.c_str(), unsigned(M.slot), unsigned(M.idx));
++		return 0;
++	}
++	if (md->flags & esmStopAtEnd)
+ 	{
+ 		CMotion* motion = m_model->LL_GetRootMotion(M);
+ 		return iFloor(0.5f + 1000.f * motion->GetLength() / (md->Dequantize(md->speed) * speed));
+@@ -1616,6 +1631,14 @@ void player_hud::update(const Fmatrix& cam_trans)
+ 
+ u32 player_hud::anim_play(u16 part, const MotionID& M, BOOL bMixIn, const CMotionDef*& md, float speed)
+ {
++	md = m_model ? m_model->LL_GetMotionDef(M) : nullptr;
++	if (!md)
++	{
++		Msg("! Cannot play HUD motion: section [%s], slot [%u], index [%u]",
++			m_sect_name.c_str(), unsigned(M.slot), unsigned(M.idx));
++		return 0;
++	}
++
+ 	///partitions info
+ 	// 0==default (root_bone)
+ 	// 1==left_hand (left hand bone hierarchy)
+@@ -1736,6 +1759,15 @@ void player_hud::UpdateWeaponOffset(u32 delta)
+ 	}
+ }
+ 
++void player_hud::reload_motions()
++{
++	for (attachable_hud_item* item : m_pool)
++	{
++		item->m_hand_motions.load(m_model, item->m_sect_name,
++			item->m_model->dcast_PKinematicsAnimated());
++	}
++}
++
+ attachable_hud_item* player_hud::create_hud_item(const shared_str& sect)
+ {
+ 	xr_vector<attachable_hud_item*>::iterator it = m_pool.begin();
+diff --git a/src/xrGame/player_hud.h b/src/xrGame/player_hud.h
+index 807eafba1cf0aa21c98212f975b85213ccb18d24..e3adcda375f69b14f316c43a10f3bd171eb2a3d5 100644
+--- a/src/xrGame/player_hud.h
++++ b/src/xrGame/player_hud.h
+@@ -343,6 +343,7 @@ private:
+ 	bool								m_bhands_visible;
+ 	bool								m_binverted;
+ 	int									item_idx_priority;
++	void reload_motions();
+ 	void  LeftArmCallback(CBoneInstance* B);
+ };
+ 
+diff --git a/tests/hud-motions/test_hud_motions.py b/tests/hud-motions/test_hud_motions.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd9db44f296e6038e18cd6c80b0295588f96fb34
+--- /dev/null
++++ b/tests/hud-motions/test_hud_motions.py
+@@ -0,0 +1,114 @@
++"""Compile production HUD cache reload and motion lookup against model fixtures."""
++from pathlib import Path
++import os, subprocess, tempfile
++root=Path(os.environ.get('IXRAY_TEST_ROOT',str(Path(__file__).resolve().parents[2])))
++def body(text, signature):
++ start=text.index('{',text.index(signature));depth=1;end=start+1
++ while depth:
++  if text[end]=='{':depth+=1
++  elif text[end]=='}':depth-=1
++  end+=1
++ return text[start:end]
++hud=(root/'src/xrGame/player_hud.cpp').read_text()
++shared=body((root/'src/xrEngine/SkeletonMotions.h').read_text(),'motion_def\t')
++lookup=body((root/'src/Layers/xrRender/SkeletonAnimated.h').read_text(),'LL_GetMotionDef\t')
++code=r'''
++#define MASTER_GOLD
++#define ICF inline
++#include <cassert>
++#include <cmath>
++#include <cstring>
++#include <string>
++#include <vector>
++#include <map>
++#include <algorithm>
++#include <cstdint>
++using u16=uint16_t;using u32=uint32_t;using shared_str=std::string;
++#include "animation_motion.h"
++#define R_ASSERT2(...) ((void)0)
++#define Msg(...) ((void)0)
++int iFloor(float x){return std::floor(x);}
++const int esmStopAtEnd=2;
++struct CMotionDef{int flags=2; float speed=1; static float Dequantize(float x){return x;}};
++struct CMotion{float GetLength(){return 1.25f;}};
++struct Value{std::vector<CMotionDef> m_mdefs;};
++struct shared_motions{Value* p_=nullptr; CMotionDef* motion_def(u16 idx) SHARED};
++struct Slot{shared_motions motions;};
++struct IKinematicsAnimated{
++ std::vector<Slot> m_Motions; MotionID named; CMotion motion;
++ CMotionDef* LL_GetMotionDef(MotionID id) LOOKUP
++ CMotion* LL_GetRootMotion(MotionID){return &motion;}
++ IKinematicsAnimated* dcast_PKinematicsAnimated(){return this;}
++};
++struct CInifile{struct Item{shared_str first,second;};struct Sect{std::vector<Item> Data;};Sect sect;Sect& r_section(const shared_str&){return sect;}} settings;
++CInifile* pSettings=&settings;
++struct motion_descr{MotionID mid;};
++struct player_hud_motion{std::string name;std::vector<motion_descr> m_animations;};
++struct player_hud_motion_container{
++ std::vector<player_hud_motion> m_anims;std::vector<MotionID> m_item_anims;
++ std::map<shared_str,bool> m_names;std::vector<shared_str> m_banned_bone_parts;
++ player_hud_motion* find_motion(const shared_str& name){for(auto& a:m_anims)if(a.name==name)return &a;return nullptr;}
++ void load_default_motions(IKinematicsAnimated* m,const CInifile::Item& d){m_anims.push_back({d.first,{{m->named}}});m_names[d.first]=true;}
++ void load_bonepart_motions(IKinematicsAnimated* m,const CInifile::Item& d){if(m){m_item_anims.push_back(m->named);m_banned_bone_parts.push_back(d.second);m_names[d.first]=true;}}
++ void load(IKinematicsAnimated*,const shared_str&,IKinematicsAnimated*);
++};
++struct attachable_hud_item{player_hud_motion_container m_hand_motions;shared_str m_sect_name;IKinematicsAnimated* m_model;};
++struct player_hud{
++ IKinematicsAnimated* m_model;shared_str m_sect_name="hands";std::vector<attachable_hud_item*> m_pool;
++ void reload_motions();
++ float CalcMotionSpeed(const shared_str&){return 1;}
++ attachable_hud_item* create_hud_item(const shared_str&){return m_pool.front();}
++ u32 motion_length(const shared_str&,const shared_str&,const CMotionDef*&);
++ u32 motion_length(const MotionID&,const CMotionDef*&,float);
++};
++'''.replace('SHARED',shared).replace('LOOKUP',lookup)
++for signature in ['void player_hud_motion_container::load(', 'void player_hud::reload_motions()', 'u32 player_hud::motion_length(const shared_str&', 'u32 player_hud::motion_length(const MotionID&']:
++ start=hud.index(signature); brace=hud.index('{',start);code+=hud[start:brace]+body(hud,signature)+'\n'
++code+=r'''
++int main(){
++ Value oldDefs{{CMotionDef{},CMotionDef{}}}, newDefs{{CMotionDef{}}}, empty;
++ IKinematicsAnimated oldModel,newModel,itemModel;
++ oldModel.m_Motions.resize(246);oldModel.m_Motions[245].motions.p_=&oldDefs;oldModel.named.set(245,1);
++ newModel.m_Motions={{{&newDefs}}};newModel.named.set(0,0);itemModel.named.set(7,3);
++ settings.sect.Data={{"anm_idle","idle"},{"anm_bp_idle","finger"}};
++ attachable_hud_item visible{{},"weapon",&itemModel}, hidden{{},"detector",&itemModel};
++ player_hud hud{&oldModel,"old",{&visible,&hidden}};
++ hud.reload_motions();
++ assert(hidden.m_hand_motions.m_anims.front().m_animations.front().mid==MotionID(245,1));
++ hud.m_model=&newModel;
++ for(int i=0;i<20;++i){
++  hud.reload_motions();
++  for(auto* item:hud.m_pool){
++   auto& c=item->m_hand_motions;
++   assert(c.m_anims.size()==1 && c.m_item_anims.size()==1 && c.m_banned_bone_parts.size()==1 && c.m_names.size()==2);
++   assert(c.m_anims.front().m_animations.front().mid==MotionID(0,0));
++   assert(c.m_item_anims.front()==MotionID(7,3));
++  }
++ }
++ const CMotionDef* md=&oldDefs.m_mdefs.front();
++ assert(hud.motion_length("anm_idle","weapon",md)==1250 && md==&newDefs.m_mdefs[0]);
++ assert(hud.motion_length(MotionID(245,1),md,1)==0 && md==nullptr);
++ assert(hud.motion_length(MotionID(0,1),md,1)==0 && md==nullptr);
++ assert(hud.motion_length(MotionID(),md,1)==0 && md==nullptr);
++ newModel.m_Motions[0].motions.p_=&empty;
++ assert(hud.motion_length(MotionID(0,0),md,1)==0 && md==nullptr);
++ newModel.m_Motions[0].motions.p_=nullptr;
++ assert(hud.motion_length(MotionID(0,0),md,1)==0 && md==nullptr);
++ hud.m_model=nullptr;
++ assert(hud.motion_length(MotionID(0,0),md,1)==0 && md==nullptr);
++ md=&oldDefs.m_mdefs[0];assert(hud.motion_length("missing","weapon",md)==100 && md==nullptr);
++ visible.m_hand_motions.m_anims.front().m_animations.clear();
++ md=&oldDefs.m_mdefs[0];assert(hud.motion_length("anm_idle","weapon",md)==100 && md==nullptr);
++ settings.sect.Data.clear();hud.m_model=&newModel;hud.reload_motions();
++ assert(visible.m_hand_motions.m_names.empty() && visible.m_hand_motions.m_banned_bone_parts.empty());
++}
++'''
++# Reload must precede callbacks, otherwise attachment can consume stale IDs.
++load=body(hud,'void player_hud::load(')
++assert load.index('reload_motions();') < load.index('on_a_hud_attach()')
++with tempfile.TemporaryDirectory(prefix='ixray-hud-test-') as d:
++ p=Path(d)/'test.cpp';p.write_text(code)
++ subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-g','-I',str(root/'src/Include/xrRender'),str(p),'-o',str(p.with_suffix(''))],check=True)
++ # LeakSanitizer cannot run inside the desktop sandbox; retain address/UB checks.
++ subprocess.run([str(p.with_suffix(''))],check=True, env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
++print('PASS: production HUD cache reload (20 switches, visible/hidden items), valid duration, invalid slot/index, empty/null definitions, missing/empty alias; ASan/UBSan')

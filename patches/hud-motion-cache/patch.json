@@ -1,0 +1,11 @@
+{
+  "name": "hud-motion-cache",
+  "original_integrated_commit": "5c10cedbe44ea62abb1d25796f88474e7a35ad75",
+  "original_parent": "48c1669ed4738efa8e286770d098da13490528aa",
+  "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "patch": "0001-fix-hud-motion-cache.patch",
+  "sha256": "04a75bc393701ec2dba37cf720862d9040798b4fa55cfd74189a499eb73723ab",
+  "dependencies": [],
+  "ui_changes": false,
+  "format": "git format-patch; git am --keep-cr --3way"
+}
