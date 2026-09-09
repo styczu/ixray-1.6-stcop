@@ -1,5 +1,10 @@
 #pragma once
 
+// GameSpy headers alias snprintf to _snprintf in some Windows/unity units.
+// Protect both the standard headers and our calls, then restore the caller.
+#pragma push_macro("snprintf")
+#undef snprintf
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -96,3 +101,5 @@ namespace ConditionUi
         float m_rate = 0.0f;
     };
 }
+
+#pragma pop_macro("snprintf")
