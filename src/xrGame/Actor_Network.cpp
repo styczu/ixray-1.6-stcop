@@ -1479,6 +1479,7 @@ void CActor::save(NET_Packet &output_packet)
 
 void CActor::load(IReader &input_packet)
 {
+	m_artefact_update_time = 0.0f;
 	inherited::load(input_packet);
 	CInventoryOwner::load(input_packet);
 	m_bOutBorder=!!(input_packet.r_u8());

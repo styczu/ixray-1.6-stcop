@@ -244,6 +244,9 @@ public:
 			float		GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type);
 
 protected:
+	// Per-actor pending condition time, never shared between actors or saves.
+	float m_artefact_update_time = 0.0f;
+
 	//звук тяжелого дыхания
 	ref_sound			m_HeavyBreathSnd = {};
 	ref_sound			m_BloodSnd = {};
