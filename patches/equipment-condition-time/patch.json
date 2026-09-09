@@ -1,0 +1,17 @@
+{
+  "name": "equipment-condition-time",
+  "branch": "codex/equipment-condition-time",
+  "upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "commit": "0e76d116efef6e355cebc3d189d6cdb9ef9792ff",
+  "original_integrated_commit": "e396328741d6b78d97a02bb0c97886cdc228e45c",
+  "patch": "0001-fix-equipment-condition-time.patch",
+  "sha256": "31c8710015c36082296512c047bc3ec2eda3e167f3299246e7da578031780b0f",
+  "files": [
+    "src/xrGame/Actor.cpp",
+    "src/xrGame/Actor.h",
+    "src/xrGame/Actor_Network.cpp"
+  ],
+  "dependencies": [],
+  "ui_changes": false,
+  "format": "git format-patch; git am --keep-cr --3way"
+}
