@@ -924,7 +924,8 @@ void ui_actor_state_item::set_value_text(LPCSTR text)
 void ui_actor_state_item::set_regeneration(float percentPerSecond, float maximum)
 {
     string32 number;
-    ConditionUi::FormatNumber(number, percentPerSecond, ConditionUi::DecimalSeparator(), true);
+    // Positive panel values need no prefix; negative values retain their minus.
+    ConditionUi::FormatNumber(number, percentPerSecond, ConditionUi::DecimalSeparator(), false);
     set_value_text(number);
     if (m_progress)
         m_progress->SetProgressPosImmediate(percentPerSecond / maximum);
