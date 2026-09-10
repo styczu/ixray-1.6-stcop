@@ -684,6 +684,18 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		}
 		else
 			add_line(hint, "ui_uip_tt_rad_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
+        // Optional description follows the live statistics; old string tables
+        // without this key keep their original tooltip layout.
+        const shared_str description = g_pStringTable->translate("ui_uip_tt_rad_description");
+        if (description.size() && xr_strcmp(description.c_str(), "ui_uip_tt_rad_description") != 0)
+        {
+            hint += kBreak;
+            hint += kColSep;
+            hint += g_pStringTable->translate("ui_armor_tt_sep").c_str();
+            hint += kBreak;
+            hint += kColLabel;
+            hint += description.c_str();
+        }
 		m_state[stt_radiation]->set_hint_text(hint.c_str());
 	}
 
