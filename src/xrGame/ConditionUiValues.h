@@ -21,6 +21,13 @@ namespace ConditionUi
         float Total() const { return natural + rest + equipment + temporary; }
     };
 
+    constexpr float BleedingMaximum = 100.0f;
+
+    inline float BleedingIntensity(float bleedingSpeed)
+    {
+        return bleedingSpeed * 100.0f;
+    }
+
     constexpr float HealthRegenerationMaximum = 2.5f;
     constexpr float PowerRegenerationMaximum = 20.0f;
 

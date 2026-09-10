@@ -559,6 +559,54 @@ namespace ActorArmor
 // Podpowiedzi wierszy, ktore musza pokazac wyliczona liczbe. System wyrazen
 // nie sklada napisow (UI_ADD dziala tylko na int i float), wiec tekst
 // powstaje tutaj - tak samo jak tooltip pancerza.
+// BleedingSpeed is the engine's aggregate intensity (average wound size),
+// not a sum over bones. Scale it by 100 without changing damage or healing.
+void ui_actor_state_wnd::UpdateBleedingInfo(CActor* actor)
+{
+    auto& condition = actor->conditions();
+    const float bleeding = condition.BleedingSpeed();
+    const float intensity = ConditionUi::BleedingIntensity(bleeding);
+    const float timeFactor = ConditionUi::CurrentTimeFactor();
+    const float drain = condition.CanBeHarmed() && !GodMode()
+        ? ConditionUi::PercentPerSecond(bleeding * condition.change_v().m_fV_Bleeding, timeFactor) : 0.0f;
+    // GetRestoreSpeed includes natural healing, belt artefacts (with condition)
+    // and the worn outfit; temporary medicine is maintained separately.
+    // This is healing strength per wound component, not d(intensity)/dt.
+    const float reduction = ConditionUi::PercentPerSecond(
+        actor->GetRestoreSpeed(ALife::eBleedingRestoreSpeed) + condition.GetBoostBleedingRestore(), timeFactor);
+
+    xr_string hint = g_pStringTable->translate("ui_uip_tt_bleed").c_str();
+    const auto line = [&](LPCSTR label, float value, bool fixed, LPCSTR suffix, LPCSTR color)
+    {
+        string32 number;
+        if (fixed)
+            FormatRate(number, value, 2);
+        else
+            ConditionUi::FormatNumber(number, value, ConditionUi::DecimalSeparator(), false);
+        hint += kBreak;
+        hint += kColLabel;
+        hint += g_pStringTable->translate(label).c_str();
+        hint += " ";
+        hint += color;
+        hint += number;
+        if (suffix)
+            hint += g_pStringTable->translate(suffix).c_str();
+    };
+    line("ui_uip_tt_bleed_level", intensity, true, nullptr, kColTitle);
+    line("ui_uip_tt_bleed_drain", drain, false, "ui_uip_unit_hp_percent_s",
+        drain > 0.0f ? "%c[255,210,80,65]" : kColTitle);
+    line("ui_uip_tt_bleed_heal", reduction, false, "ui_uip_unit_bleed_s",
+        reduction > 0.0f ? "%c[255,110,190,115]" : kColTitle);
+    hint += kBreak;
+    hint += kColSep;
+    hint += g_pStringTable->translate("ui_armor_tt_sep").c_str();
+    hint += kBreak;
+    hint += kColLabel;
+    hint += g_pStringTable->translate("ui_uip_tt_bleed_description").c_str();
+    m_state[stt_bleeding]->set_hint_text(hint.c_str());
+    m_state[stt_bleeding]->set_bleeding(intensity);
+}
+
 void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 {
 	auto& cv = actor->conditions().change_v();
@@ -643,7 +691,9 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 	// tempem wound_incarnation_v + bleeding_restore_speed z kombinezonu
 	// i artefaktow (UpdateHealth -> ChangeBleeding). Stad obie liczby w jednej
 	// podpowiedzi - to dwie strony tego samego licznika.
-	if (m_state[stt_bleeding] != nullptr)
+	if (m_state[stt_bleeding] && m_state[stt_bleeding]->m_bleeding)
+        UpdateBleedingInfo(actor);
+    else if (m_state[stt_bleeding] != nullptr)
 	{
 		const float drain = actor->conditions().BleedingSpeed() * cv.m_fV_Bleeding;
 		const float heal  = cv.m_fV_WoundIncarnation + actor->conditions().GetBoostBleedingRestore();
@@ -761,6 +811,7 @@ void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 {
 	CUIXmlInit::InitWindow( xml, path, 0, this);
     m_regeneration = xml.ReadAttribInt(path, 0, "regeneration", 0) != 0;
+    m_bleeding = xml.ReadAttribInt(path, 0, "bleeding", 0) != 0;
 
 	XML_NODE* stored_root = xml.GetLocalRoot();
 	XML_NODE* new_root = xml.NavigateToNode( path, 0 );
@@ -930,6 +981,21 @@ void ui_actor_state_item::set_regeneration(float percentPerSecond, float maximum
     if (m_progress)
         m_progress->SetProgressPosImmediate(percentPerSecond / maximum);
     const bool overflow = percentPerSecond > maximum;
+    if (m_overflow)
+        m_overflow->Show(overflow);
+    if (m_overflow_fill)
+        m_overflow_fill->Show(overflow);
+}
+
+void ui_actor_state_item::set_bleeding(float intensity)
+{
+    string32 number;
+    // Ceil the scaled float, including tiny positive bleeding. Never cap the number.
+    xr_sprintf(number, sizeof(number), "%.0f", std::ceil(intensity));
+    set_value_text(number);
+    if (m_progress)
+        m_progress->SetProgressPosImmediate(intensity / ConditionUi::BleedingMaximum);
+    const bool overflow = intensity > ConditionUi::BleedingMaximum;
     if (m_overflow)
         m_overflow->Show(overflow);
     if (m_overflow_fill)

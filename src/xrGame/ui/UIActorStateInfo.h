@@ -83,6 +83,7 @@ private:
 
 			// Podpowiedzi, ktore musza pokazac wyliczona liczbe (skazenie, krwawienie).
 			// System wyrazen nie sklada napisow, wiec tekst powstaje w C++.
+            void            UpdateBleedingInfo(CActor* actor);
 			void			UpdateRateHints			(CActor* actor);
 
 };
@@ -106,6 +107,8 @@ protected:
 public:
 	CUIProgressBar*			m_progress;
     bool m_regeneration = false;
+    bool m_bleeding = false;
+    void set_bleeding(float intensity);
     void set_regeneration(float percentPerSecond, float maximum);
 					ui_actor_state_item		();
 	virtual			~ui_actor_state_item	();
