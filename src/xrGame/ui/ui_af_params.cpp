@@ -408,8 +408,9 @@ void UIArtefactParamItem::SetRadiationRate(float value)
 	ConditionUi::FormatRadiationRate(text, value);
 	m_value->SetText(text);
 	m_value->SetTextColor(ConditionUi::RadiationColor(value));
+	// Radiation emission is harmful; absorption (a negative rate) is beneficial.
 	if (m_texture_minus.size())
-		m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+		m_caption->InitTexture(value > 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
 }
 
 void UIArtefactParamItem::SetRegenerationRate(float value)
