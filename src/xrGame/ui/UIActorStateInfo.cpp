@@ -711,20 +711,22 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
             return;
         const auto sources = actor->conditions().GetRegenerationSources(health);
         xr_string hint = g_pStringTable->translate(health ? "ui_uip_tt_reg_health" : "ui_uip_tt_reg_power").c_str();
-        const auto line = [&](LPCSTR key, float value, bool always = false)
+        const auto line = [&](LPCSTR key, float value, bool always = false, bool showSign = true)
         {
             if (!always && value == 0.0f)
                 return;
             string64 formatted;
-            ConditionUi::FormatRegenerationRate(formatted, value);
+            ConditionUi::FormatRegenerationRate(formatted, value, showSign);
             hint += "\\n%c[255,170,170,170]";
             hint += g_pStringTable->translate(key).c_str();
             hint += ": %c[255,224,230,234]";
             hint += formatted;
         };
-        line("ui_uip_reg_rate", sources.Total(), true);
-        line("ui_uip_reg_natural", sources.natural);
+        line(health ? "ui_uip_reg_rate_health" : "ui_uip_reg_rate_power", sources.Total(), true, false);
+        hint += "\\n";
+        line("ui_uip_reg_natural", sources.natural, true, false);
         line("ui_uip_reg_rest", sources.rest);
+        line("ui_uip_reg_artefacts", sources.artefacts);
         line("ui_uip_reg_equipment", sources.equipment);
         line("ui_uip_reg_temporary", sources.temporary);
         item->set_hint_text(hint.c_str());

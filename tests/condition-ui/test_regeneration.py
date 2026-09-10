@@ -135,6 +135,10 @@ int main(int argc,char**){
   c.UpdateSatiety();c.UpdateThirst();c.UpdateSleepiness();c.UpdateHealth();
   if(standing)c.ConditionStand(1);
   a.UpdateArtefactsOnBeltAndOutfit();
+  equal(c.GetRegenerationSources(true).artefacts, (harmed || bonus>0) ? bonus*.7f : 0.f, "health artefacts separate and condition weighted");
+  equal(c.GetRegenerationSources(false).artefacts, bonus*.7f, "power artefacts separate and condition weighted");
+  equal(c.GetRegenerationSources(true).equipment, .0003f, "health outfit separate");
+  equal(c.GetRegenerationSources(false).equipment, .001f, "power outfit separate");
   equal(c.GetRegenerationSources(true).Total(),c.m_fDeltaHealth,"health vs actual mechanical functions");
   equal(c.GetRegenerationSources(false).Total(),c.m_fDeltaPower+(c.m_fPower-1),"power vs actual mechanical functions");
  }

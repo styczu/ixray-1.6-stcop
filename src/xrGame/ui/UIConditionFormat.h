@@ -37,10 +37,10 @@ namespace ConditionUi
         return unit.size() && xr_strcmp(unit.c_str(), "ui_uip_unit_regeneration") != 0;
     }
 
-    inline void FormatRegenerationRate(string64& out, float ratePerGameSecond)
+    inline void FormatRegenerationRate(string64& out, float ratePerGameSecond, bool showSign = true)
     {
         string32 number;
-        FormatNumber(number, PercentPerSecond(ratePerGameSecond, CurrentTimeFactor()), DecimalSeparator(), true);
+        FormatNumber(number, PercentPerSecond(ratePerGameSecond, CurrentTimeFactor()), DecimalSeparator(), showSign);
         xr_strconcat(out, number, g_pStringTable->translate("ui_uip_unit_regeneration").c_str());
     }
 

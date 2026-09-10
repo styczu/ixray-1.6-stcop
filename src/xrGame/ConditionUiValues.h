@@ -15,10 +15,11 @@ namespace ConditionUi
     {
         float natural = 0.0f;
         float rest = 0.0f;
+        float artefacts = 0.0f;
         float equipment = 0.0f;
         float temporary = 0.0f;
 
-        float Total() const { return natural + rest + equipment + temporary; }
+        float Total() const { return natural + rest + (artefacts + equipment) + temporary; }
     };
 
     constexpr float BleedingMaximum = 100.0f;

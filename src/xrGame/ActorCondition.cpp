@@ -1287,16 +1287,16 @@ ConditionUi::RegenerationSources CActorCondition::GetRegenerationSources(bool he
 
     // UpdateArtefactsOnBeltAndOutfit applies each source independently. Helmets
     // are not part of that path; negative health modifiers respect ChangeHealth.
-    const auto addEquipment = [&](float value)
+    const auto addEquipment = [&](float& category, float value)
     {
         if (!health || CanBeHarmed() || value > 0.0f)
-            result.equipment += value;
+            category += value;
     };
     for (const PIItem item : object().inventory().m_belt)
         if (CArtefact* artefact = item->cast_artefact())
-            addEquipment((health ? artefact->m_fHealthRestoreSpeed : artefact->m_fPowerRestoreSpeed)
+            addEquipment(result.artefacts, (health ? artefact->m_fHealthRestoreSpeed : artefact->m_fPowerRestoreSpeed)
                 * artefact->GetCondition());
     if (CCustomOutfit* outfit = object().GetOutfit())
-        addEquipment(health ? outfit->m_fHealthRestoreSpeed : outfit->m_fPowerRestoreSpeed);
+        addEquipment(result.equipment, health ? outfit->m_fHealthRestoreSpeed : outfit->m_fPowerRestoreSpeed);
     return result;
 }
