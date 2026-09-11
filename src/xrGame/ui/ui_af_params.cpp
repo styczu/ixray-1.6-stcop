@@ -247,7 +247,7 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
             {
                 const ALife::EHitType hit_type = af_zone_hit_types[i];
                 max_val = actor->conditions().GetZoneMaxPower(hit_type);
-                m_immunity_item[i]->SetProtectionRatio(Protection::Ratio(val * pInvItem.GetCondition(), max_val));
+                m_immunity_item[i]->SetProtectionRatio(Protection::DisplayRatio(val * pInvItem.GetCondition(), max_val));
             }
             else
             {
@@ -422,7 +422,7 @@ void UIArtefactParamItem::SetValue( float value )
 void UIArtefactParamItem::SetProtectionRatio(float ratio)
 {
     string64 text;
-    ConditionUi::FormatProtectionPercent(text, ratio);
+    ConditionUi::FormatProtectionPoints(text, ratio);
     m_value->SetText(text);
     m_value->SetTextColor(ratio < 0.0f ? red_clr : green_clr);
     if (m_texture_minus.size())

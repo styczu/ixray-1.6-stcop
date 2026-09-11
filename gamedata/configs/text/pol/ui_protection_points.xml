@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<string_table>
+    <string id="ui_uip_unit_protection"><text>pkt</text></string>
+    <string id="ui_uip_protection_total"><text>Łącznie</text></string>
+    <string id="ui_uip_protection_outfit"><text>Kombinezon</text></string>
+    <string id="ui_uip_protection_helmet"><text>Hełm</text></string>
+    <string id="ui_uip_protection_artefacts"><text>Artefakty na pasie</text></string>
+    <string id="ui_uip_protection_description"><text>Punkty ochrony uwzględniają stan wyposażenia. Więcej punktów oznacza większą siłę pochłanianego trafienia danego typu. Nie jest to procent redukcji obrażeń. Pełny pasek to 100 pkt, a wynik może być wyższy. Skuteczność zależy od siły trafienia. Leki i regeneracja nie wchodzą do tej sumy.</text></string>
+</string_table>

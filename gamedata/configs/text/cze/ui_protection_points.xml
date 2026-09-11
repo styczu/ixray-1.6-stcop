@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<string_table>
+    <string id="ui_uip_unit_protection"><text>b.</text></string>
+    <string id="ui_uip_protection_total"><text>Celkem</text></string>
+    <string id="ui_uip_protection_outfit"><text>Oblek</text></string>
+    <string id="ui_uip_protection_helmet"><text>Helma</text></string>
+    <string id="ui_uip_protection_artefacts"><text>Artefakty na opasku</text></string>
+    <string id="ui_uip_protection_description"><text>Body ochrany zohledňují stav výbavy. Více bodů pohltí větší sílu zásahu daného typu. Nejde o procento snížení poškození. Plný ukazatel znamená 100 bodů; hodnota může být vyšší. Účinnost závisí na síle zásahu. Léky a regenerace nejsou zahrnuty.</text></string>
+</string_table>

@@ -25,7 +25,7 @@ inline CActor* GetActor()
 float GetEquipment##name##ProtectionRatio() \
 { \
     CActor* actor = GetActor(); \
-    return actor ? Protection::Ratio(actor->GetEquipmentProtection(ALife::hitType), \
+    return actor ? Protection::DisplayRatio(actor->GetEquipmentProtection(ALife::hitType), \
         actor->conditions().GetZoneMaxPower(ALife::hitType)) : 0.0f; \
 }
 

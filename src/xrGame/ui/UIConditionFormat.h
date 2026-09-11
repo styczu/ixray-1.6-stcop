@@ -44,11 +44,13 @@ namespace ConditionUi
         xr_strconcat(out, number, g_pStringTable->translate("ui_uip_unit_regeneration").c_str());
     }
 
-    inline void FormatProtectionPercent(string64& out, float ratio)
+    inline void FormatProtectionPoints(string64& out, float ratio, bool showSign = true)
     {
         string32 number;
-        FormatNumber(number, ratio * 100.0f, DecimalSeparator(), true);
-        xr_strconcat(out, number, "%");
+        FormatNumber(number, ratio * 100.0f, DecimalSeparator(), showSign);
+        const shared_str unit = g_pStringTable->translate("ui_uip_unit_protection");
+        const bool translated = unit.size() && xr_strcmp(unit.c_str(), "ui_uip_unit_protection") != 0;
+        xr_strconcat(out, number, " ", translated ? unit.c_str() : "pt");
     }
 
     inline u32 RadiationColor(float rate)

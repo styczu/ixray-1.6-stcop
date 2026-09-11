@@ -85,6 +85,7 @@ private:
 			// System wyrazen nie sklada napisow, wiec tekst powstaje w C++.
             void            UpdateBleedingInfo(CActor* actor);
 			void			UpdateRateHints			(CActor* actor);
+            void UpdateProtectionHints(CActor* actor);
 
 };
 
@@ -109,6 +110,7 @@ public:
     bool m_regeneration = false;
     bool m_bleeding = false;
     void set_bleeding(float intensity);
+    void set_protection_overflow(float ratio);
     void set_regeneration(float percentPerSecond, float maximum);
 					ui_actor_state_item		();
 	virtual			~ui_actor_state_item	();

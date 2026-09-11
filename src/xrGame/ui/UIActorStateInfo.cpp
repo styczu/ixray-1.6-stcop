@@ -417,6 +417,7 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 
 	UpdateArmorInfo( actor, outfit, helmet );
 	UpdateRateHints( actor );
+	UpdateProtectionHints( actor );
 
 	UpdateHitZone();
 }
@@ -579,6 +580,44 @@ void ui_actor_state_wnd::UpdateBleedingInfo(CActor* actor)
     m_state[stt_bleeding]->set_bleeding(intensity);
 }
 
+void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
+{
+    const shared_str description = g_pStringTable->translate("ui_uip_protection_description");
+    if (xr_strcmp(description.c_str(), "ui_uip_protection_description") == 0)
+        return;
+    const auto update = [&](EStateType state, ALife::EHitType type)
+    {
+        if (!m_state[state])
+            return;
+        const float maximum = actor->conditions().GetZoneMaxPower(type);
+        xr_string hint = g_pStringTable->translate(Protection::Caption(type)).c_str();
+        const auto line = [&](LPCSTR key, float protection)
+        {
+            string64 value;
+            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(protection, maximum), false);
+            hint += "\\n%c[255,170,170,170]";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": %c[255,224,230,234]";
+            hint += value;
+        };
+        line("ui_uip_protection_total", actor->GetEquipmentProtection(type));
+        hint += "\\n";
+        CCustomOutfit* outfit = actor->GetOutfit();
+        CHelmet* helmet = actor->GetHelmet();
+        line("ui_uip_protection_outfit", outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type) : 0.0f);
+        line("ui_uip_protection_helmet", helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type) : 0.0f);
+        line("ui_uip_protection_artefacts", actor->GetProtection_ArtefactsOnBelt(type));
+        hint += "\\n\\n%c[255,176,182,186]";
+        hint += description.c_str();
+        m_state[state]->set_hint_text(hint.c_str());
+    };
+    update(stt_fire, ALife::eHitTypeBurn);
+    update(stt_shock, ALife::eHitTypeShock);
+    update(stt_acid, ALife::eHitTypeChemicalBurn);
+    update(stt_radia, ALife::eHitTypeRadiation);
+    update(stt_psi, ALife::eHitTypeTelepatic);
+}
+
 void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 {
 	auto& cv = actor->conditions().change_v();
@@ -733,13 +772,14 @@ void ui_actor_state_wnd::update_round_states(EStateType stt_type, float initial,
     if (stt_type == stt_fire || stt_type == stt_shock || stt_type == stt_acid ||
         stt_type == stt_radia || stt_type == stt_psi)
     {
-        const float ratio = Protection::Ratio(initial, max_power);
+        const float ratio = Protection::DisplayRatio(initial, max_power);
+        state->set_protection_overflow(ratio);
         float fill = ratio;
         clamp(fill, 0.0f, 1.0f);
         state->set_progress(fill);
         state->set_arrow(fill);
         string64 text;
-        ConditionUi::FormatProtectionPercent(text, ratio);
+        ConditionUi::FormatProtectionPoints(text, ratio, false);
         state->set_text_str(text);
         return;
     }
@@ -996,6 +1036,16 @@ void ui_actor_state_item::set_bleeding(float intensity)
     if (m_progress)
         m_progress->SetProgressPosImmediate(intensity / ConditionUi::BleedingMaximum);
     const bool overflow = intensity > ConditionUi::BleedingMaximum;
+    if (m_overflow)
+        m_overflow->Show(overflow);
+    if (m_overflow_fill)
+        m_overflow_fill->Show(overflow);
+}
+
+// Use the unclamped ratio: 100 points itself is not overflow.
+void ui_actor_state_item::set_protection_overflow(float ratio)
+{
+    const bool overflow = ratio > 1.0f;
     if (m_overflow)
         m_overflow->Show(overflow);
     if (m_overflow_fill)

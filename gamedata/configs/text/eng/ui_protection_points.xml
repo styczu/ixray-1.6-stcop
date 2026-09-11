@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+    <string id="ui_uip_unit_protection"><text>pt</text></string>
+    <string id="ui_uip_protection_total"><text>Total</text></string>
+    <string id="ui_uip_protection_outfit"><text>Outfit</text></string>
+    <string id="ui_uip_protection_helmet"><text>Helmet</text></string>
+    <string id="ui_uip_protection_artefacts"><text>Belt artefacts</text></string>
+    <string id="ui_uip_protection_description"><text>Protection points account for equipment condition. More points absorb a greater hit power of this type. This is not a percentage damage reduction. The bar fills at 100 points; the score can exceed it. Effectiveness depends on hit power. Drugs and regeneration are not included.</text></string>
+</string_table>

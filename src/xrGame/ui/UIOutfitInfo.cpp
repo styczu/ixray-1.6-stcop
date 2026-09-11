@@ -103,7 +103,7 @@ void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
         clamp(comparisonFill, 0.0f, 1.0f);
         m_progress.SetTwoPos(currentFill * 100.0f, comparisonFill * 100.0f);
         string64 text;
-        ConditionUi::FormatProtectionPercent(text, cur);
+        ConditionUi::FormatProtectionPoints(text, cur);
         m_value->SetText(text);
         return;
     }
@@ -206,13 +206,13 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
 		float cur = Protection::EquipmentContribution(cur_outfit->GetDefHitTypeProtection( hit_type ), hit_type);
-		cur /= max_power; // = 0..1
+		cur = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(cur, max_power) : cur / max_power;
 		float slot = cur;
 		
 		if ( slot_outfit )
 		{
 			slot = Protection::EquipmentContribution(slot_outfit->GetDefHitTypeProtection( hit_type ), hit_type);
-			slot /= max_power; //  = 0..1
+			slot = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(slot, max_power) : slot / max_power;
 		}
 		m_items[i]->SetProgressValue( cur, slot );
 	}
@@ -267,13 +267,13 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
 		float cur = Protection::EquipmentContribution(cur_helmet->GetDefHitTypeProtection( hit_type ), hit_type);
-		cur /= max_power; // = 0..1
+		cur = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(cur, max_power) : cur / max_power;
 		float slot = cur;
 		
 		if ( slot_helmet )
 		{
 			slot = Protection::EquipmentContribution(slot_helmet->GetDefHitTypeProtection( hit_type ), hit_type);
-			slot /= max_power; //  = 0..1
+			slot = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(slot, max_power) : slot / max_power;
 		}
 		m_items[i]->SetProgressValue( cur, slot );
 	}

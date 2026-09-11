@@ -33,6 +33,14 @@ namespace Protection
         return zoneMaxPower > 0.0f ? protection / zoneMaxPower : 0.0f;
     }
 
+    // UI only: 100 points = one tenth of the configured zone reference.
+    // A linear score preserves addition and differences between items.
+    // It is not a percentage of damage absorbed or an immunity threshold.
+    inline float DisplayRatio(float protection, float zoneMaxPower)
+    {
+        return 10.0f * Ratio(protection, zoneMaxPower);
+    }
+
     inline const char* ConfigKey(ALife::EHitType type)
     {
         switch (type)

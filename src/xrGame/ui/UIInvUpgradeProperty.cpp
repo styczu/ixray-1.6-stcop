@@ -138,11 +138,11 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
             CActor* actor = Level().CurrentViewEntity() ? Level().CurrentViewEntity()->cast_actor() : nullptr;
             if (!actor)
                 return false;
-            string64 percent;
-            ConditionUi::FormatProtectionPercent(percent, Protection::Ratio(
+            string64 points;
+            ConditionUi::FormatProtectionPoints(points, Protection::DisplayRatio(
                 Protection::EquipmentContribution(protectionValue, protectionType),
                 actor->conditions().GetZoneMaxPower(protectionType)));
-            xr_strconcat(m_text, g_pStringTable->translate(Protection::Caption(protectionType)).c_str(), ": ", percent);
+            xr_strconcat(m_text, g_pStringTable->translate(Protection::Caption(protectionType)).c_str(), ": ", points);
             m_ui_text->SetText(m_text);
             return true;
         }

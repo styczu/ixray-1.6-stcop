@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+    <string id="ui_uip_unit_protection"><text>очк.</text></string>
+    <string id="ui_uip_protection_total"><text>Всего</text></string>
+    <string id="ui_uip_protection_outfit"><text>Костюм</text></string>
+    <string id="ui_uip_protection_helmet"><text>Шлем</text></string>
+    <string id="ui_uip_protection_artefacts"><text>Артефакты на поясе</text></string>
+    <string id="ui_uip_protection_description"><text>Очки защиты учитывают состояние снаряжения. Больше очков поглощает большую силу попадания этого типа. Это не процент снижения урона. Полная шкала означает 100 очков; значение может быть выше. Эффективность зависит от силы попадания. Лекарства и регенерация не включены.</text></string>
+</string_table>
