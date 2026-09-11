@@ -6,6 +6,7 @@
 #include "../xrEngine/IGame_Actor.h"
 #include "../Include/xrRender/KinematicsAnimated.h"
 #include "Actor_Flags.h"
+#include "EnvironmentalExposure.h"
 #include "actor_defs.h"
 #include "fire_disp_controller.h"
 #include "entity_alive.h"
@@ -243,10 +244,12 @@ public:
 			float		HitArtefactsOnBelt		(float hit_power, ALife::EHitType hit_type);
 			float		GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type);
             float GetEquipmentProtection(ALife::EHitType hit_type);
+            Protection::ExposureReading GetEnvironmentalExposure(ALife::EHitType hit_type) const;
 
 protected:
 	// Per-actor pending condition time, never shared between actors or saves.
 	float m_artefact_update_time = 0.0f;
+    Protection::ExposureHistory m_environmental_exposure;
 
 	//звук тяжелого дыхания
 	ref_sound			m_HeavyBreathSnd = {};

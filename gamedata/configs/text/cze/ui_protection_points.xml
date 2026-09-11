@@ -5,5 +5,15 @@
     <string id="ui_uip_protection_outfit"><text>Oblek</text></string>
     <string id="ui_uip_protection_helmet"><text>Helma</text></string>
     <string id="ui_uip_protection_artefacts"><text>Artefakty na opasku</text></string>
-    <string id="ui_uip_protection_description"><text>Body ochrany zohledòují stav výbavy. Více bodù pohltí vìtší sílu zásahu daného typu. Nejde o procento snížení poškození. Plný ukazatel znamená 100 bodù; hodnota mùže být vyšší. Úèinnost závisí na síle zásahu. Léky a regenerace nejsou zahrnuty.</text></string>
+    <string id="ui_uip_protection_description"><text>Body vyjadøují sílu pohlceného zásahu, ne procento snížení poškození. Plný ukazatel je 100 b.; hodnoty mohou být vyšší. Tenký ukazatel zobrazuje nejvyšší sílu zdroje pøed ochranou za posledních 0,75 s. Výsledek posledního zásahu po ochranì a modifikátorech je vidìt 3 s; nezahrnuje regeneraci.</text></string>
+    <string id="ui_uip_protection_source"><text>Síla zdroje</text></string>
+    <string id="ui_uip_damage_health">
+        <text>Poslední zásah: poškození zdraví</text>
+    </string>
+    <string id="ui_uip_damage_psy">
+        <text>Poslední zásah: psionické poškození</text>
+    </string>
+    <string id="ui_uip_damage_radiation">
+        <text>Poslední zásah: dávka radiace</text>
+    </string>
 </string_table>

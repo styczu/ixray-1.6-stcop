@@ -48,6 +48,8 @@ using u8=uint8_t;using u16=uint16_t;using u32=uint32_t;using s16=int16_t;
 using LPCSTR=const char*;using xr_string=std::string;
 using string32=char[32];using string64=char[64];using string256=char[256];using string2048=char[2048];
 using std::pow;using std::floor;
+u32 color_rgba(u32 r,u32 g,u32 b,u32 a){return (a<<24)|(r<<16)|(g<<8)|b;}
+struct DeviceFixture{u32 dwTimeGlobal=0;} Device;
 template<class T> void clamp(T& v,T lo,T hi){v=std::max(lo,std::min(v,hi));}
 bool fis_zero(float v){return std::fabs(v)<1e-6f;}
 #define VERIFY(x) assert(x)
@@ -61,7 +63,7 @@ template<size_t N,class...Ts>void xr_sprintf(char(&out)[N],const char*fmt,Ts...v
 struct shared_str {std::string s;shared_str(const char*v=""):s(v){}const char*c_str()const{return s.c_str();}const std::string&_get()const{return s;}size_t size()const{return s.size();}operator const char*()const{return s.c_str();}};
 '''
 cpp += 'namespace ALife {\n' + enums + '\n}\n#define XRAY_ALIFE_SPACE\n'
-cpp += '#include "ProtectionValues.h"\n#include "ConditionUiValues.h"\n'
+cpp += '#include "ProtectionValues.h"\n#include "EnvironmentalExposure.h"\n#include "EnvironmentalDamage.h"\n#include "ConditionUiValues.h"\n'
 cpp += r'''
 namespace ConditionUi {
 char separator=',';
@@ -74,7 +76,7 @@ void FormatRegenerationRate(string64&,float){}
 cpp += r'''
 struct Fvector2 {float x=0,y=0;Fvector2&set(float a,float b){x=a;y=b;return *this;}Fvector2&set(Fvector2 v){*this=v;return *this;}};
 struct Widget {std::string text;float cur=0,comp=0,height=18;Fvector2 pos;int color=0;
- void SetText(const char*s){text=s?s:"";}void SetTextColor(int c){color=c;}void InitTexture(const char*){}
+ void SetText(const char*s){text=s?s:"";}void SetTextColor(int c){color=c;}void SetTextureColor(u32 c){color=int(c);}void InitTexture(const char*){}
  void SetTwoPos(float a,float b){cur=a;comp=b;}void SetWndPos(Fvector2 p){pos=p;}Fvector2 GetWndPos(){return pos;}Fvector2 GetWndSize(){return {214,height};}
  void SetHeight(float h){height=h;}
 };
@@ -96,14 +98,15 @@ struct CArtefact:CInventoryItem {Immunities m_ArtefactHitImmunities;CArtefact*ca
 using PIItem=CInventoryItem*;
 struct Bones {float m_fHitFracActor=.1f;float getBoneProtection(s16){return 1;}} bones;
 bool IsGameTypeSingle(){return true;}
-struct CCustomOutfit:CInventoryItem {float m_HitTypeProtection[ALife::eHitTypeMax]={};Bones*m_boneProtection=&bones;
+struct CCustomOutfit:CInventoryItem {float m_HitTypeProtection[ALife::eHitTypeMax]={};Bones*m_boneProtection=&bones;bool bIsHelmetAvaliable=true;
  float GetDefHitTypeProtection(ALife::EHitType);float HitThroughArmor(float,s16,float,bool&,ALife::EHitType);
  float GetBoneArmor(s16){return .2f;}void Hit(float,ALife::EHitType){} };
 struct CHelmet:CCustomOutfit {float GetDefHitTypeProtection(ALife::EHitType);float HitThroughArmor(float,s16,float,bool&,ALife::EHitType);};
-struct CActorCondition {float m_zone_max_power[5]={.03f,.2f,.2f,.1f,.8f};float m_max_wound_protection=1;
+struct CActorCondition {Protection::DamageHistory m_environmental_damage;Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType)const;float m_zone_max_power[5]={.03f,.2f,.2f,.1f,.8f};float m_max_wound_protection=1;
  float GetZoneMaxPower(ALife::EInfluenceType)const;float GetZoneMaxPower(ALife::EHitType)const;float GetMaxFireWoundProtection(){return 1;}};
 struct Inventory {std::vector<PIItem>m_belt;};
-struct CActor {Inventory inv;CCustomOutfit*outfit=nullptr;CHelmet*helmet=nullptr;CActorCondition cond;
+struct CActor {Protection::ExposureHistory m_environmental_exposure;
+ Protection::ExposureReading GetEnvironmentalExposure(ALife::EHitType) const;Inventory inv;CCustomOutfit*outfit=nullptr;CHelmet*helmet=nullptr;CActorCondition cond;
  Inventory&inventory(){return inv;}CCustomOutfit*GetOutfit(){return outfit;}CHelmet*GetHelmet(){return helmet;}
  CActorCondition&conditions(){return cond;}CActor*cast_actor(){return this;}void*Visual(){return nullptr;}
  float HitArtefactsOnBelt(float,ALife::EHitType);float GetProtection_ArtefactsOnBelt(ALife::EHitType);float GetEquipmentProtection(ALife::EHitType);
@@ -125,7 +128,10 @@ struct CUIOutfitInfo {static constexpr u32 max_count=ALife::eHitTypeMax-2;CUIOut
  void UpdateInfo(CCustomOutfit*,CCustomOutfit*);void UpdateInfo(CHelmet*,CHelmet*);};
 enum EStateType {stt_main,stt_fire,stt_shock,stt_acid,stt_radia,stt_psi,stt_wound};
 struct OverflowMarker {bool shown=false;void Show(bool value){shown=value;}};
-struct ui_actor_state_item {OverflowMarker frame,triangle;OverflowMarker*m_overflow=&frame,*m_overflow_fill=&triangle;
+struct ExposureProgress {Widget m_UIProgressItem;float pos=0;bool shown=false;
+ void Show(bool value){shown=value;}void SetProgressPosImmediate(float value){pos=std::clamp(value,0.f,1.f);}};
+struct ui_actor_state_item {ExposureProgress sourceBar,protectionBar;ExposureProgress*m_environmental_exposure=&sourceBar,*m_progress=&protectionBar;
+ void set_environmental_exposure(ALife::EHitType,float,float,float);OverflowMarker frame,triangle;OverflowMarker*m_overflow=&frame,*m_overflow_fill=&triangle;
  void set_protection_overflow(float);float fill=0,arrow=0;std::string text,hint;void set_hint_text(const char*s){hint=s;}bool set_progress(float f){fill=f;return true;}void set_arrow(float f){arrow=f;}void set_text(float){}void set_text_str(const char*s){text=s;}};
 using State=ui_actor_state_item;
 struct ui_actor_state_wnd {State*m_state[7];void update_round_states(EStateType,float,float);void UpdateProtectionHints(CActor*);};
@@ -134,7 +140,14 @@ struct CUIArtefactParams:Widget {UIArtefactParamItem*m_immunity_item[ALife::eHit
  bool is_artefact(){return true;}bool is_backpack(){return false;}void DetachAll(){}void AttachChild(Widget*){}void SetInfo(CInventoryItem&);};
 '''
 cpp += 'namespace ConditionUi {\n' + function('src/xrGame/ui/UIConditionFormat.h', '    inline void FormatProtectionPoints') + '}\n'
+# Use the production hint style constants, including literal backslash-n breaks.
+style=read('src/xrGame/ui/UIActorStateInfo.cpp')
+for name in ['kColTitle','kColSep','kBreak']:
+    cpp += re.search(r'static LPCSTR '+name+r'\s*=.*?;',style)[0]+'\n'
 for file, signature in [
+    ('Actor.cpp', 'Protection::ExposureReading CActor::GetEnvironmentalExposure'),
+    ('ActorCondition.cpp', 'Protection::DamageReading CActorCondition::GetEnvironmentalDamage'),
+    ('ui/UIActorStateInfo.cpp', 'void ui_actor_state_item::set_environmental_exposure'),
     ('ui/UIActorStateInfo.cpp', 'void ui_actor_state_item::set_protection_overflow'),
     ('Actor.cpp', 'float CActor::HitArtefactsOnBelt'),
     ('Actor.cpp', 'float CActor::GetProtection_ArtefactsOnBelt'),
@@ -288,14 +301,134 @@ int main(){
  assert(hint.find(char(10))==std::string::npos);
  assert(hint.find("ui_uip_protection_total: %c[255,224,230,234]250 pkt")!=std::string::npos);
  assert(hint.find("ui_uip_protection_outfit: %c[255,224,230,234]50 pkt")!=std::string::npos);
- assert(hint.find("ui_uip_protection_helmet: %c[255,224,230,234]0 pkt")!=std::string::npos);
+ assert(hint.find("ui_uip_protection_helmet")==std::string::npos);
  assert(hint.find("ui_uip_protection_artefacts: %c[255,224,230,234]200 pkt")!=std::string::npos);
  assert(hint.find("POINTS_DESCRIPTION")!=std::string::npos);
+ const std::string heading=std::string(kColTitle)+Protection::Caption(ALife::eHitTypeBurn)+kBreak+kBreak+kColSep+". . . . . . . . . . . . . .";
+ assert(hint.rfind(heading,0)==0);
+ // Rows follow equipped objects, not nonzero protection in the selected channel.
+ af1.m_ArtefactHitImmunities.v[ALife::eHitTypeBurn]=0;
+ panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].hint.find("ui_uip_protection_artefacts: %c[255,224,230,234]0 pkt")!=std::string::npos);
+ a.helmet=&helmet;outfit.bIsHelmetAvaliable=true;
+ panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].hint.find("ui_uip_protection_helmet")!=std::string::npos);
+ outfit.bIsHelmetAvaliable=false;panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].hint.find("ui_uip_protection_helmet")==std::string::npos);
+ a.helmet=nullptr;outfit.bIsHelmetAvaliable=true;
+
  af1.m_ArtefactHitImmunities.v[ALife::eHitTypeBurn]=-.04f;
  panel.UpdateProtectionHints(&a);
  assert(states[stt_fire].hint.find("-200 pkt")!=std::string::npos);
  a.outfit=nullptr;a.inv.m_belt.clear();panel.UpdateProtectionHints(&a);
  assert(states[stt_fire].hint.find("ui_uip_protection_total: %c[255,224,230,234]0 pkt")!=std::string::npos);
+ for(auto state:statesForHit){
+  assert(states[state].hint.find("ui_uip_protection_outfit")==std::string::npos);
+  assert(states[state].hint.find("ui_uip_protection_helmet")==std::string::npos);
+  assert(states[state].hint.find("ui_uip_protection_artefacts")==std::string::npos);
+ }
+ // Non-artefact belt items do not create an artefact row; a standalone helmet does.
+ a.inv.m_belt={&unrelated};a.helmet=&helmet;panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].hint.find("ui_uip_protection_artefacts")==std::string::npos);
+ assert(states[stt_fire].hint.find("ui_uip_protection_outfit")==std::string::npos);
+ assert(states[stt_fire].hint.find("ui_uip_protection_helmet")!=std::string::npos);
+
+ // Incoming exposure is retained independently of equipment and actual damage.
+ a.helmet=nullptr;a.outfit=&outfit;outfit.condition=1;outfit.m_HitTypeProtection[ALife::eHitTypeBurn]=.1f;
+ a.inv.m_belt.clear();a.m_environmental_exposure.Reset();Device.dwTimeGlobal=1000;
+ a.m_environmental_exposure.Record(ALife::eHitTypeLightBurn,.006f,Device.dwTimeGlobal);
+ panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].sourceBar.shown);
+ eq(states[stt_fire].sourceBar.pos,.3f,"incoming 30 points over 50 protection");
+ eq(states[stt_fire].protectionBar.pos,.5f,"equipment layer has matching scale");
+ assert(u32(states[stt_fire].sourceBar.m_UIProgressItem.color)==color_rgba(255,160,80,255));
+ assert(states[stt_fire].hint.find("ui_uip_protection_source: %c[255,224,230,234]30 pkt")!=std::string::npos);
+ eq(a.HitArtefactsOnBelt(.006f,ALife::eHitTypeBurn),.006f,"observation never modifies hit");
+ bool wound=true;eq(outfit.HitThroughArmor(.006f,0,0,wound,ALife::eHitTypeBurn),0,"fully protected hit still displayed");
+ Device.dwTimeGlobal=1100;a.m_environmental_exposure.Record(ALife::eHitTypeBurn,.016f,Device.dwTimeGlobal);
+ panel.UpdateProtectionHints(&a);eq(states[stt_fire].sourceBar.pos,.8f,"incoming 80 points exceeds 50 protection");
+ assert(u32(states[stt_fire].sourceBar.m_UIProgressItem.color)==color_rgba(255,160,80,255));
+ // Type colors remain stable both below and above protection and the cap.
+ af1.condition=1;af1.m_ArtefactHitImmunities.v[ALife::eHitTypeBurn]=.039f;a.inv.m_belt={&af1};
+ a.m_environmental_exposure.Reset();Device.dwTimeGlobal=2000;
+ a.m_environmental_exposure.Record(ALife::eHitTypeBurn,.036f,Device.dwTimeGlobal);
+ panel.UpdateProtectionHints(&a);
+ eq(states[stt_fire].sourceBar.pos,1,"source above graphical cap");
+ eq(states[stt_fire].protectionBar.pos,1,"protection above graphical cap");
+ assert(u32(states[stt_fire].sourceBar.m_UIProgressItem.color)==color_rgba(255,160,80,255));
+ assert(states[stt_fire].hint.find("245 pkt")!=std::string::npos);
+ assert(states[stt_fire].hint.find("180 pkt")!=std::string::npos);
+ Device.dwTimeGlobal=2100;a.m_environmental_exposure.Record(ALife::eHitTypeBurn,.06f,Device.dwTimeGlobal);
+ panel.UpdateProtectionHints(&a);
+ assert(u32(states[stt_fire].sourceBar.m_UIProgressItem.color)==color_rgba(255,160,80,255));
+ assert(states[stt_fire].hint.find("300 pkt")!=std::string::npos);
+ Device.dwTimeGlobal=2750;panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].sourceBar.shown);
+ assert((u32(states[stt_fire].sourceBar.m_UIProgressItem.color)>>24)<255);
+ Device.dwTimeGlobal=2850;panel.UpdateProtectionHints(&a);
+ assert(!states[stt_fire].sourceBar.shown);
+ assert(states[stt_fire].hint.find("ui_uip_protection_source: %c[255,224,230,234]0 pkt")!=std::string::npos);
+ State unsupported;unsupported.m_environmental_exposure=nullptr;unsupported.m_progress=nullptr;
+ unsupported.set_environmental_exposure(ALife::eHitTypeBurn,3,2,1);
+ Protection::ExposureHistory history;
+ const auto burn=ALife::eHitTypeBurn;
+ eq(history.Get(burn,0).power,0,"empty history");
+ for(auto type:{ALife::eHitTypeBurn,ALife::eHitTypeShock,ALife::eHitTypeChemicalBurn,ALife::eHitTypeRadiation,ALife::eHitTypeTelepatic}){
+  history.Reset();history.Record(type,.03f,0);
+  eq(history.Get(type,0).power,.03f,"all environmental channels");
+  eq(history.Get(type,500).opacity,1,"peak hold boundary");
+  eq(history.Get(type,625).opacity,.5f,"fade changes opacity, not strength");
+  eq(history.Get(type,625).power,.03f,"strength does not decay into false safety");
+  eq(history.Get(type,750).power,0,"expiry boundary");
+ }
+ history.Reset();history.Record(burn,.2f,0);history.Record(burn,.01f,400);
+ eq(history.Get(burn,600).power,.2f,"weak hits do not erase recent strong pulse");
+ eq(history.Get(burn,751).power,.01f,"weak ongoing exposure remains after pulse");
+ history.Reset();history.Record(ALife::eHitTypeLightBurn,.04f,100);
+ eq(history.Get(burn,100).power,.04f,"ambient heat shares thermal channel");
+ eq(history.Get(ALife::eHitTypeShock,100).power,0,"channels stay independent");
+ history.Record(ALife::eHitTypeShock,.1f,100);eq(history.Get(burn,100).power,.04f,"independent shock record");
+ for(auto type:{ALife::eHitTypeWound,ALife::eHitTypeExplosion,ALife::eHitTypeMax}){
+  history.Record(type,1,100);eq(history.Get(type,100).power,0,"ignore non-environmental types");
+ }
+ history.Reset();history.Record(burn,0,0);history.Record(burn,-1,0);
+ history.Record(burn,std::nanf(""),0);history.Record(burn,INFINITY,0);
+ eq(history.Get(burn,0).power,0,"invalid readings ignored");
+ history.Record(burn,.1f,1000);eq(history.Get(burn,10).power,0,"clock rollback has no stale exposure");
+ history.Reset();history.Record(burn,.1f,UINT32_MAX-100);
+ eq(history.Get(burn,100).power,.1f,"clock wrap preserves recent sample");
+ history.Reset();history.Record(burn,.2f,0);
+ for(u32 t=1;t<2000;++t)history.Record(burn,.01f,t);
+ eq(history.Get(burn,2000).power,.01f,"bounded history under many hits");
+ eq(history.Get(burn,2000).opacity,1,"equal recent samples stay bright");
+ eq(history.Get(burn,2000).power,history.Get(burn,2000).power,"paused clock holds reading");
+ history.Reset();eq(history.Get(burn,2000).power,0,"new life clears history");
+
+ // Type-specific colors at both sides of the protection threshold.
+ const ALife::EHitType types[]={burn,ALife::eHitTypeChemicalBurn,ALife::eHitTypeShock,ALife::eHitTypeTelepatic,ALife::eHitTypeRadiation};
+ const u32 colors[]={color_rgba(255,160,80,255),color_rgba(170,235,140,255),color_rgba(130,210,255,255),color_rgba(205,165,250,255),color_rgba(245,230,120,255)};
+ for(unsigned i=0;i<5;++i)for(float source:{.2f,3.f}){
+  states[stt_fire].set_environmental_exposure(types[i],source,.5f,1);
+  assert(u32(states[stt_fire].sourceBar.m_UIProgressItem.color)==colors[i]);
+ }
+ // Actual damage uses resources, never the protection-point scale or time factor.
+ Device.dwTimeGlobal=5000;
+ a.cond.m_environmental_damage.Record(burn,.075f,0,0,5000);
+ a.cond.m_environmental_damage.Record(ALife::eHitTypeTelepatic,.01f,.08f,0,5000);
+ a.cond.m_environmental_damage.Record(ALife::eHitTypeRadiation,0,0,.024f,5000);
+ panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].hint.find("ui_uip_damage_health: %c[255,224,230,234]7,5%")!=std::string::npos);
+ assert(states[stt_fire].hint.find("ui_uip_damage_psy")==std::string::npos);
+ assert(states[stt_psi].hint.find("ui_uip_damage_psy: %c[255,224,230,234]8%")!=std::string::npos);
+ assert(states[stt_psi].hint.find("ui_uip_damage_health: %c[255,224,230,234]1%")!=std::string::npos);
+ assert(states[stt_radia].hint.find("ui_uip_damage_radiation: %c[255,224,230,234]2,4 kBq")!=std::string::npos);
+ assert(states[stt_radia].hint.find("ui_uip_damage_health")==std::string::npos);
+ a.cond.m_environmental_damage.Record(burn,0,0,0,5001);Device.dwTimeGlobal=5001;panel.UpdateProtectionHints(&a);
+ assert(states[stt_fire].hint.find("ui_uip_damage_health: %c[255,224,230,234]0%")!=std::string::npos);
+ Device.dwTimeGlobal=8001;panel.UpdateProtectionHints(&a);
+ for(auto state:{stt_fire,stt_psi,stt_radia})assert(states[state].hint.find("ui_uip_damage_")==std::string::npos);
+
+ a.outfit=nullptr;a.inv.m_belt.clear();a.m_environmental_exposure.Reset();
  panel.m_state[stt_fire]=nullptr;panel.UpdateProtectionHints(&a);
  eq(Protection::DisplayRatio(.1f,0),0,"invalid reference has finite score");
  eq(Protection::DisplayRatio(.1f,-1),0,"negative reference has finite score");
@@ -327,12 +460,23 @@ for p in [root/'gamedata/configs/ui/actor_menu.xml',root/'gamedata/configs/ui/ac
         for widget in widgets:
             row=tree.find('.//'+widget+'_sensor')
             bar=row.find('state_progress')
+            source=row.find('source_progress')
+            assert source is not None and source.get('expression') is None
+            expected={'fire':(255,160,80),'acid':(170,235,140),'shock':(130,210,255),'psi':(205,165,250),'radia':(245,230,120)}[widget]
+            assert tuple(int(source.find('progress/texture').get(c)) for c in ['r','g','b'])==expected
+            for attr in ['x','width','min','max']:
+                assert source.get(attr)==bar.get(attr)
+            assert float(source.get('y'))>float(bar.get('y'))
+            assert float(source.get('y'))+float(source.get('height'))<float(bar.get('y'))+float(bar.get('height'))
+
             for tag in ['overflow','overflow_fill']:
                 mark=row.find(tag)
                 assert mark is not None and mark.get('expression') is None
                 assert mark.findtext('texture')=='ui_uiparams_'+('overflow_frame' if tag=='overflow' else tag)
                 assert float(mark.get('x'))>float(bar.get('x'))+float(bar.get('width'))
-                assert float(mark.get('x'))+float(mark.get('width'))<=99.13
+                field=tree.find('.//auto_static[@expression="fltActor'+widgets[widget]+'ProtectionRatio * 100.0"]')
+                marker_right=float(row.get('x'))+float(mark.get('x'))+float(mark.get('width'))
+                assert marker_right<float(field.get('x'))
         for kind in widgets.values():
             fields=tree.findall('.//auto_static[@expression="fltActor'+kind+'ProtectionRatio * 100.0"]')
             assert len(fields)==1 and fields[0].get('suffix')==''
@@ -356,3 +500,12 @@ for lang in ['pol','eng','cze','rus']:
         assert f'ui_inv_outfit_{kind}_protection' in current
 assert all(s==ids[0] for s in ids)
 print('Panel/delegate wiring, five item rows, and PL/EN/CZ/RU text checks passed')
+
+# Check the actual hit/lifecycle wiring, not merely the observation class.
+actor=read('src/xrGame/Actor.cpp')
+hit=function('src/xrGame/Actor.cpp','void\tCActor::Hit(SHit* pHDS)')
+assert hit.index('m_environmental_exposure.Record(HDS.hit_type, HDS.damage(), Device.dwTimeGlobal)')<hit.index('HitArtefactsOnBelt(')
+assert actor.count('m_environmental_exposure.Reset();')==1
+assert 'm_environmental_exposure.Reset();' in function('src/xrGame/Actor.cpp','void CActor::reinit')
+assert 'm_environmental_exposure.Reset();' in function('src/xrGame/Actor_Network.cpp','BOOL CActor::net_Spawn')
+print('Incoming hit wiring, lifecycle reset, exposure history, UI layers and source hints passed')

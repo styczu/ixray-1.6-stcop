@@ -585,12 +585,33 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
     const shared_str description = g_pStringTable->translate("ui_uip_protection_description");
     if (xr_strcmp(description.c_str(), "ui_uip_protection_description") == 0)
         return;
+    CCustomOutfit* outfit = actor->GetOutfit();
+    CHelmet* helmet = actor->GetHelmet();
+    const bool showHelmet = helmet && (!outfit || outfit->bIsHelmetAvaliable);
+    bool hasArtefacts = false;
+    for (const PIItem item : actor->inventory().m_belt)
+    {
+        if (item->cast_artefact())
+        {
+            hasArtefacts = true;
+            break;
+        }
+    }
     const auto update = [&](EStateType state, ALife::EHitType type)
     {
         if (!m_state[state])
             return;
         const float maximum = actor->conditions().GetZoneMaxPower(type);
-        xr_string hint = g_pStringTable->translate(Protection::Caption(type)).c_str();
+        const float protection = actor->GetEquipmentProtection(type);
+        const auto exposure = actor->GetEnvironmentalExposure(type);
+        m_state[state]->set_environmental_exposure(type, Protection::DisplayRatio(exposure.power, maximum),
+            Protection::DisplayRatio(protection, maximum), exposure.opacity);
+        xr_string hint = kColTitle;
+        hint += g_pStringTable->translate(Protection::Caption(type)).c_str();
+        hint += kBreak;
+        hint += kBreak;
+        hint += kColSep;
+        hint += ". . . . . . . . . . . . . .";
         const auto line = [&](LPCSTR key, float protection)
         {
             string64 value;
@@ -600,13 +621,38 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
             hint += ": %c[255,224,230,234]";
             hint += value;
         };
-        line("ui_uip_protection_total", actor->GetEquipmentProtection(type));
-        hint += "\\n";
-        CCustomOutfit* outfit = actor->GetOutfit();
-        CHelmet* helmet = actor->GetHelmet();
-        line("ui_uip_protection_outfit", outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type) : 0.0f);
-        line("ui_uip_protection_helmet", helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type) : 0.0f);
-        line("ui_uip_protection_artefacts", actor->GetProtection_ArtefactsOnBelt(type));
+        line("ui_uip_protection_total", protection);
+        line("ui_uip_protection_source", exposure.power);
+        const auto damage = actor->conditions().GetEnvironmentalDamage(type);
+        if (damage.valid)
+        {
+            const auto damageLine = [&](LPCSTR key, float amount, LPCSTR unit)
+            {
+                string64 value;
+                ConditionUi::FormatNumber(value, amount, ConditionUi::DecimalSeparator(), false);
+                hint += "\\n%c[255,170,170,170]";
+                hint += g_pStringTable->translate(key).c_str();
+                hint += ": %c[255,224,230,234]";
+                hint += value;
+                hint += unit;
+            };
+            if (type == ALife::eHitTypeRadiation)
+                damageLine("ui_uip_damage_radiation", damage.radiation * ConditionUi::RadiationScale, " kBq");
+            else
+            {
+                damageLine("ui_uip_damage_health", damage.health * 100.0f, "%");
+                if (type == ALife::eHitTypeTelepatic)
+                    damageLine("ui_uip_damage_psy", damage.psy * 100.0f, "%");
+            }
+        }
+        if (outfit || showHelmet || hasArtefacts)
+            hint += kBreak;
+        if (outfit)
+            line("ui_uip_protection_outfit", Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type));
+        if (showHelmet)
+            line("ui_uip_protection_helmet", Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type));
+        if (hasArtefacts)
+            line("ui_uip_protection_artefacts", actor->GetProtection_ArtefactsOnBelt(type));
         hint += "\\n\\n%c[255,176,182,186]";
         hint += description.c_str();
         m_state[state]->set_hint_text(hint.c_str());
@@ -867,6 +913,11 @@ void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 		m_progress = UIHelper::CreateProgressBar( xml, "state_progress", this );
 		m_progress->IsExpressionSystem = xml.ReadAttrib(path, 0, "expression", nullptr) != nullptr;
 	}
+    if (xml.NavigateToNode("source_progress"))
+    {
+        m_environmental_exposure = UIHelper::CreateProgressBar(xml, "source_progress", this);
+        m_environmental_exposure->Show(false);
+    }
 	if ( xml.NavigateToNode( "progress_shape", 0 ) )	
 	{
 		m_sensor = new CUIProgressShape();
@@ -1050,4 +1101,22 @@ void ui_actor_state_item::set_protection_overflow(float ratio)
         m_overflow->Show(overflow);
     if (m_overflow_fill)
         m_overflow_fill->Show(overflow);
+}
+
+void ui_actor_state_item::set_environmental_exposure(ALife::EHitType type, float sourceRatio, float protectionRatio, float opacity)
+{
+    // Both layers compare current values without a lagging equipment animation.
+    if (m_progress)
+        m_progress->SetProgressPosImmediate(protectionRatio);
+    if (!m_environmental_exposure)
+        return;
+    const bool visible = sourceRatio > 0.0f && opacity > 0.0f;
+    m_environmental_exposure->Show(visible);
+    if (!visible)
+        return;
+    const auto color = Protection::GetSourceColor(type);
+    clamp(opacity, 0.0f, 1.0f);
+    const u32 alpha = u32(255.0f * opacity);
+    m_environmental_exposure->m_UIProgressItem.SetTextureColor(color_rgba(color.r, color.g, color.b, alpha));
+    m_environmental_exposure->SetProgressPosImmediate(sourceRatio);
 }

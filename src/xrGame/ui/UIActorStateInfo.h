@@ -98,6 +98,7 @@ protected:
 	CUIStatic*				m_value = nullptr;
     CUIStatic* m_overflow = nullptr;
     CUIStatic* m_overflow_fill = nullptr;
+    CUIProgressBar* m_environmental_exposure = nullptr;
 	CUIStatic*				m_static2;
 	CUIStatic*				m_static3;
 	CUIProgressShape*		m_sensor;
@@ -111,6 +112,7 @@ public:
     bool m_bleeding = false;
     void set_bleeding(float intensity);
     void set_protection_overflow(float ratio);
+    void set_environmental_exposure(ALife::EHitType type, float sourceRatio, float protectionRatio, float opacity);
     void set_regeneration(float percentPerSecond, float maximum);
 					ui_actor_state_item		();
 	virtual			~ui_actor_state_item	();

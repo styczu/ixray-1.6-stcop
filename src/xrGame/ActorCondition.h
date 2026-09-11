@@ -2,6 +2,7 @@
 #pragma once
 #include "EntityCondition.h"
 #include "ConditionUiValues.h"
+#include "EnvironmentalDamage.h"
 #include "actor_defs.h"
 #include "../xrScripts/script_export_space.h"
 
@@ -31,6 +32,7 @@ private:
 	CActor*											m_object;
 	CActorDeathEffector*							m_death_effector;
 	ConditionUi::RadiationRate m_radiation_change_rate;
+	Protection::DamageHistory m_environmental_damage;
 	void				UpdateTutorialThresholds	();
 			void 		UpdateSatiety				();
 			void 		UpdateThirst				();
@@ -46,6 +48,8 @@ public:
 	virtual CWound*		ConditionHit				(SHit* pHDS);
 	virtual void		UpdateCondition				();
 			void		UpdateBoosters				();
+
+    Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType type) const;
 
     ConditionUi::RegenerationSources GetRegenerationSources(bool health) const;
     float PowerRestoreEffect(float nominal) const;

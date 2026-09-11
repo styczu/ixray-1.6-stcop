@@ -257,6 +257,7 @@ CActor::~CActor()
 void CActor::reinit	()
 {
 	m_artefact_update_time = 0.0f;
+    m_environmental_exposure.Reset();
 	character_physics_support()->movement()->CreateCharacter		();
 	character_physics_support()->movement()->SetPhysicsRefObject	(this);
 	CEntityAlive::reinit						();
@@ -618,6 +619,10 @@ void	CActor::Hit(SHit* pHDS)
 		R_ASSERT2	(0, err );
 	
 	}
+    // Observe raw hit power before artefacts, armour and immunity modifiers.
+    // The engine clock pauses with gameplay; opening a paused menu keeps the reading.
+    if (g_Alive())
+        m_environmental_exposure.Record(HDS.hit_type, HDS.damage(), Device.dwTimeGlobal);
 #ifdef DEBUG
 	if(ph_dbg_draw_mask.test(phDbgCharacterControl)) {
 		DBG_OpenCashedDraw();
@@ -2687,6 +2692,11 @@ float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type)
 	}
 
 	return sum;
+}
+
+Protection::ExposureReading CActor::GetEnvironmentalExposure(ALife::EHitType hit_type) const
+{
+    return m_environmental_exposure.Get(hit_type, Device.dwTimeGlobal);
 }
 
 float CActor::GetEquipmentProtection(ALife::EHitType hit_type)

@@ -5,5 +5,15 @@
     <string id="ui_uip_protection_outfit"><text>Костюм</text></string>
     <string id="ui_uip_protection_helmet"><text>Шлем</text></string>
     <string id="ui_uip_protection_artefacts"><text>Артефакты на поясе</text></string>
-    <string id="ui_uip_protection_description"><text>Очки защиты учитывают состояние снаряжения. Больше очков поглощает большую силу попадания этого типа. Это не процент снижения урона. Полная шкала означает 100 очков; значение может быть выше. Эффективность зависит от силы попадания. Лекарства и регенерация не включены.</text></string>
+    <string id="ui_uip_protection_description"><text>Очки означают силу поглощаемого удара, а не процент снижения урона. Полная шкала равна 100 оч.; значение может быть выше. Тонкая полоска показывает пиковую силу источника до защиты за последние 0,75 с. Результат последнего удара после защиты и модификаторов виден 3 с; регенерация не учитывается.</text></string>
+    <string id="ui_uip_protection_source"><text>Сила источника</text></string>
+    <string id="ui_uip_damage_health">
+        <text>Последний удар: урон здоровью</text>
+    </string>
+    <string id="ui_uip_damage_psy">
+        <text>Последний удар: пси-урон</text>
+    </string>
+    <string id="ui_uip_damage_radiation">
+        <text>Последний удар: доза радиации</text>
+    </string>
 </string_table>

@@ -558,8 +558,26 @@ void CActorCondition::UpdateSleepiness()
 
 CWound* CActorCondition::ConditionHit(SHit* pHDS)
 {
-	if (GodMode()) return nullptr;
-	return inherited::ConditionHit(pHDS);
+    if (GodMode())
+    {
+        m_environmental_damage.Record(pHDS->hit_type, 0.0f, 0.0f, 0.0f, Device.dwTimeGlobal);
+        return nullptr;
+    }
+    // Observe the deltas assigned by the actual hit calculation, after outfit,
+    // helmet, actor immunities and boosters. Earlier regeneration/other hits
+    // already in the accumulators cancel out; do not recalculate mitigation.
+    const float healthBefore = m_fDeltaHealth;
+    const float psyBefore = m_fDeltaPsyHealth;
+    const float radiationBefore = m_fDeltaRadiation;
+    CWound* wound = inherited::ConditionHit(pHDS);
+    m_environmental_damage.Record(pHDS->hit_type, healthBefore - m_fDeltaHealth,
+        psyBefore - m_fDeltaPsyHealth, m_fDeltaRadiation - radiationBefore, Device.dwTimeGlobal);
+    return wound;
+}
+
+Protection::DamageReading CActorCondition::GetEnvironmentalDamage(ALife::EHitType type) const
+{
+    return m_environmental_damage.Get(type, Device.dwTimeGlobal);
 }
 
 void CActorCondition::PowerHit(float power, bool apply_outfit)
@@ -669,6 +687,7 @@ void CActorCondition::save(NET_Packet &output_packet)
 void CActorCondition::load(IReader &input_packet)
 {
 	m_radiation_change_rate.Reset();
+	m_environmental_damage.Reset();
 	inherited::load		(input_packet);
 	load_data			(Alcohol.Current, input_packet);
 	load_data			(m_condition_flags, input_packet);
@@ -703,6 +722,7 @@ void CActorCondition::load(IReader &input_packet)
 void CActorCondition::reinit()
 {
 	m_radiation_change_rate.Reset();
+	m_environmental_damage.Reset();
 	inherited::reinit();
 	m_bLimping = false;
 	Satiety.Current = 1.0f;

@@ -5,5 +5,15 @@
     <string id="ui_uip_protection_outfit"><text>Kombinezon</text></string>
     <string id="ui_uip_protection_helmet"><text>He³m</text></string>
     <string id="ui_uip_protection_artefacts"><text>Artefakty na pasie</text></string>
-    <string id="ui_uip_protection_description"><text>Punkty ochrony uwzglêdniaj¹ stan wyposa¿enia. Wiêcej punktów oznacza wiêksz¹ si³ê poch³anianego trafienia danego typu. Nie jest to procent redukcji obra¿eñ. Pe³ny pasek to 100 pkt, a wynik mo¿e byæ wy¿szy. Skutecznoœæ zale¿y od si³y trafienia. Leki i regeneracja nie wchodz¹ do tej sumy.</text></string>
+    <string id="ui_uip_protection_description"><text>Punkty oznaczaj¹ si³ê poch³anianego trafienia, nie procent redukcji obra¿eñ. Pe³ny pasek to 100 pkt; wynik mo¿e byæ wy¿szy. Cienki pasek pokazuje szczyt si³y Ÿród³a przed ochron¹ z ostatnich 0,75 s. Skutek ostatniego trafienia po ochronie i modyfikatorach jest widoczny przez 3 s; nie obejmuje regeneracji.</text></string>
+    <string id="ui_uip_protection_source"><text>Si³a Ÿród³a</text></string>
+    <string id="ui_uip_damage_health">
+        <text>Ostatnie trafienie: obra¿enia zdrowia</text>
+    </string>
+    <string id="ui_uip_damage_psy">
+        <text>Ostatnie trafienie: obra¿enia psioniczne</text>
+    </string>
+    <string id="ui_uip_damage_radiation">
+        <text>Ostatnie trafienie: dawka radiacji</text>
+    </string>
 </string_table>
