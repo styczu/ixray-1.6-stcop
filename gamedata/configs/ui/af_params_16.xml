@@ -68,8 +68,8 @@
 			<texture>ui_am_prop_thermo</texture>
 			<text color="ui_3" font="letterica16" vert_align="c" x="18" y="0"/>
 		</caption>
-		<value x="135" y="0" width="30" height="20" magnitude="30">
-			<text font="letterica16" vert_align="c"/>
+		<value x="155" y="0" width="59" height="20" magnitude="100" unit_str="st_proc">
+			<text font="letterica16" vert_align="c" align="r"/>
 		</value>
 	</burn_immunity>
 
@@ -78,8 +78,8 @@
 			<texture>ui_am_prop_electro</texture>
 			<text color="ui_3" font="letterica16" vert_align="c" x="18" y="0"/>
 		</caption>
-		<value x="135" y="0" width="30" height="20" magnitude="48">
-			<text font="letterica16" vert_align="c"/>
+		<value x="155" y="0" width="59" height="20" magnitude="100" unit_str="st_proc">
+			<text font="letterica16" vert_align="c" align="r"/>
 		</value>
 	</shock_immunity>
 
@@ -88,8 +88,8 @@
 			<texture>ui_am_propery_09</texture>
 			<text color="ui_3" font="letterica16" vert_align="c" x="18" y="0"/>
 		</caption>
-		<value x="135" y="0" width="30" height="20" magnitude="30">
-			<text font="letterica16" vert_align="c"/>
+		<value x="155" y="0" width="59" height="20" magnitude="100" unit_str="st_proc">
+			<text font="letterica16" vert_align="c" align="r"/>
 		</value>
 	</radiation_immunity>
 
@@ -98,8 +98,8 @@
 			<texture>ui_am_propery_11</texture>
 			<text color="ui_3" font="letterica16" vert_align="c" x="18" y="0"/>
 		</caption>
-		<value x="135" y="0" width="30" height="20" magnitude="30">
-			<text font="letterica16" vert_align="c"/>
+		<value x="155" y="0" width="59" height="20" magnitude="100" unit_str="st_proc">
+			<text font="letterica16" vert_align="c" align="r"/>
 		</value>
 	</telepatic_immunity>
 
@@ -108,8 +108,8 @@
 			<texture>ui_am_prop_chem</texture>
 			<text color="ui_3" font="letterica16" vert_align="c" x="18" y="0"/>
 		</caption>
-		<value x="135" y="0" width="30" height="20" magnitude="30">
-			<text font="letterica16" vert_align="c"/>
+		<value x="155" y="0" width="59" height="20" magnitude="100" unit_str="st_proc">
+			<text font="letterica16" vert_align="c" align="r"/>
 		</value>
 	</chemical_burn_immunity>
 

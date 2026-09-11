@@ -53,6 +53,7 @@ public:
 		
 		bool	Init				( CUIXml& xml, LPCSTR section );
 		void	SetCaption			( LPCSTR name );
+		void SetProtectionRatio(float ratio);
 		void	SetRadiationRate		( float value );
         void SetRegenerationRate(float value);
         virtual void Update() override;

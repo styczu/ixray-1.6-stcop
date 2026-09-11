@@ -242,6 +242,7 @@ public:
 	void				HitArtefactsCondition(SHit& hit);
 			float		HitArtefactsOnBelt		(float hit_power, ALife::EHitType hit_type);
 			float		GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type);
+            float GetEquipmentProtection(ALife::EHitType hit_type);
 
 protected:
 	// Per-actor pending condition time, never shared between actors or saves.

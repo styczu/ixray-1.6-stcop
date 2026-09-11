@@ -11,6 +11,9 @@
 #include "UIInvUpgradeProperty.h"
 #include "UIInvUpgradeInfo.h"
 #include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
+#include "../Actor.h"
+#include "../ActorCondition.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/xrUIXmlParser.h"
@@ -89,6 +92,9 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
     const bool regeneration = ConditionUi::RegenerationUnitsEnabled() &&
         (health || xr_strcmp(m_property_id.c_str(), "prop_power") == 0);
     float regenerationValue = 0.0f;
+    const ALife::EHitType protectionType = protection_type();
+    const bool protection = Protection::IsZoneType(protectionType);
+    float protectionValue = 0.0f;
 	int prop_count = 0;
 	string2048 buf; buf[0] = 0;
 	ItemUpgrades_type::const_iterator ib_upg = item_upgrades.begin();
@@ -102,6 +108,13 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 			if (upgr->get_property_name(i)._get() == m_property_id._get())
 			{
 				LPCSTR upgr_section = upgr->section();
+                if (protection)
+                {
+                    float value;
+                    if (!read_value_from_section(upgr_section, Protection::ConfigKey(protectionType), value))
+                        continue;
+                    protectionValue += value;
+                }
                 if (regeneration)
                 {
                     float value;
@@ -120,6 +133,19 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	}
 	if (prop_count > 0)
 	{
+        if (protection)
+        {
+            CActor* actor = Level().CurrentViewEntity() ? Level().CurrentViewEntity()->cast_actor() : nullptr;
+            if (!actor)
+                return false;
+            string64 percent;
+            ConditionUi::FormatProtectionPercent(percent, Protection::Ratio(
+                Protection::EquipmentContribution(protectionValue, protectionType),
+                actor->conditions().GetZoneMaxPower(protectionType)));
+            xr_strconcat(m_text, g_pStringTable->translate(Protection::Caption(protectionType)).c_str(), ": ", percent);
+            m_ui_text->SetText(m_text);
+            return true;
+        }
         if (regeneration)
         {
             string64 rate;
@@ -247,7 +273,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
             continue;
         if (!property->compute_value(item_upgrades))
             continue;
-        if (property->is_regeneration())
+        if (property->is_regeneration() || property->is_protection())
         {
             if (rightColumn)
             {
@@ -255,7 +281,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
                 rightColumn = false;
                 rowHeight = 0.0f;
             }
-            property->fit_regeneration_row(GetWidth());
+            property->fit_full_width_row(GetWidth());
             property->SetWndPos(Fvector2().set(0.0f, h));
             h += _max(m_fnext_line_pos, property->GetHeight());
         }
@@ -301,11 +327,26 @@ bool UIProperty::is_regeneration() const
          xr_strcmp(m_property_id.c_str(), "prop_power") == 0);
 }
 
-void UIProperty::fit_regeneration_row(float width)
+void UIProperty::fit_full_width_row(float width)
 {
     SetWidth(width);
     m_ui_text->SetWidth(_max(1.0f, width - m_ui_text->GetWndPos().x));
     m_ui_text->SetTextComplexMode(true);
     m_ui_text->AdjustHeightToText();
     SetHeight(_max(m_ui_icon->GetHeight(), m_ui_text->GetWndPos().y + m_ui_text->GetHeight()));
+}
+
+ALife::EHitType UIProperty::protection_type() const
+{
+    if (xr_strcmp(m_property_id.c_str(), "prop_thermo") == 0) return ALife::eHitTypeBurn;
+    if (xr_strcmp(m_property_id.c_str(), "prop_electro") == 0) return ALife::eHitTypeShock;
+    if (xr_strcmp(m_property_id.c_str(), "prop_chem") == 0) return ALife::eHitTypeChemicalBurn;
+    if (xr_strcmp(m_property_id.c_str(), "prop_radio") == 0) return ALife::eHitTypeRadiation;
+    if (xr_strcmp(m_property_id.c_str(), "prop_psy") == 0) return ALife::eHitTypeTelepatic;
+    return ALife::eHitTypeMax;
+}
+
+bool UIProperty::is_protection() const
+{
+    return Protection::IsZoneType(protection_type());
 }

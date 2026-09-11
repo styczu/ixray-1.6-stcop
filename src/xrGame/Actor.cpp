@@ -32,6 +32,7 @@
 #include "../xrEngine/xr_input.h"
 //
 #include "Actor.h"
+#include "ProtectionValues.h"
 #include "ActorAnimation.h"
 #include "actor_anim_defs.h"
 #include "HudItem.h"
@@ -2647,6 +2648,13 @@ float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 		}
 	}
 
+	if (Protection::IsZoneType(hit_type))
+	{
+		hit_power -= sum;
+		clamp(hit_power, 0.0f, flt_max);
+		return hit_power;
+	}
+
 	if (sum == 0.0f)
 		return hit_power;
 
@@ -2679,6 +2687,16 @@ float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type)
 	}
 
 	return sum;
+}
+
+float CActor::GetEquipmentProtection(ALife::EHitType hit_type)
+{
+    float protection = GetProtection_ArtefactsOnBelt(hit_type);
+    if (CCustomOutfit* outfit = GetOutfit())
+        protection += Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(hit_type), hit_type);
+    if (CHelmet* helmet = GetHelmet())
+        protection += Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(hit_type), hit_type);
+    return protection;
 }
 
 void	CActor::SetZoomRndSeed		(s32 Seed)

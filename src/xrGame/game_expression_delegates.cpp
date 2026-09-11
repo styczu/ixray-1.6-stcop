@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "../xrCore/FormatParsers/XML/Expression.h"
 #include "Actor.h"
+#include "ProtectionValues.h"
 #include "CustomOutfit.h"
 #include "EntityCondition.h"
 #include "Inventory.h"
@@ -18,6 +19,23 @@ inline CActor* GetActor()
 
     return smart_cast<CActor*>(Level().CurrentViewEntity());
 }
+
+// The same equipment total is used by the character panel's C++ path.
+#define DECLARE_EQUIPMENT_PROTECTION_RATIO(name, hitType) \
+float GetEquipment##name##ProtectionRatio() \
+{ \
+    CActor* actor = GetActor(); \
+    return actor ? Protection::Ratio(actor->GetEquipmentProtection(ALife::hitType), \
+        actor->conditions().GetZoneMaxPower(ALife::hitType)) : 0.0f; \
+}
+
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Burn, eHitTypeBurn);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Shock, eHitTypeShock);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(ChemicalBurn, eHitTypeChemicalBurn);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Radiation, eHitTypeRadiation);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Telepatic, eHitTypeTelepatic);
+
+#undef DECLARE_EQUIPMENT_PROTECTION_RATIO
 
 #define DECLARE_OUTFIT_PROTECTION_DELEGATE(protectionType) \
 float GetOutfit##protectionType##Protection() \
@@ -243,6 +261,12 @@ float GetPlayerPowerRestoreSpeedRaw()
 void RegisterExpressionDelegates ()
 {
     //Actor outfit protections
+    g_uiExpressionMgr->RegisterVariable("fltActorBurnProtectionRatio", GetEquipmentBurnProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorShockProtectionRatio", GetEquipmentShockProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorChemicalBurnProtectionRatio", GetEquipmentChemicalBurnProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorRadiationProtectionRatio", GetEquipmentRadiationProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorTelepaticProtectionRatio", GetEquipmentTelepaticProtectionRatio);
+
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitBurnProtection",				GetOutfiteHitTypeBurnProtection);
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitShockProtection",			GetOutfiteHitTypeShockProtection);
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitChemicalBurnProtection",		GetOutfiteHitTypeChemicalBurnProtection);

@@ -8,6 +8,7 @@
 #include "stdafx.h"
 #include "UIActorStateInfo.h"
 #include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrUI/Widgets/UIProgressShape.h"
 #include "../../xrUI/Widgets/UIScrollView.h"
@@ -332,35 +333,11 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 	m_state[stt_power]->set_progress(0.0f);
 
 	float fwou_value = 0.0f;
-	float burn_value = 0.0f;
-	float radi_value = 0.0f;
-	float cmbn_value = 0.0f;
-	float tele_value = 0.0f;
 	float woun_value = 0.0f;
-	float shoc_value = 0.0f;
-
-	const auto& cur_booster_influences = actor->conditions().GetCurBoosterInfluences();
-	CEntityCondition::BOOSTER_MAP::const_iterator it;
-	it = cur_booster_influences.find(eBoostRadiationProtection);
-	if (it != cur_booster_influences.end())
-		radi_value += it->second.fBoostValue;
-
-	it = cur_booster_influences.find(eBoostChemicalBurnProtection);
-	if (it != cur_booster_influences.end())
-		cmbn_value += it->second.fBoostValue;
-
-	it = cur_booster_influences.find(eBoostTelepaticProtection);
-	if (it != cur_booster_influences.end())
-		tele_value += it->second.fBoostValue;
 
 	if(outfit)
 	{
-		burn_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeBurn);
-		radi_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeRadiation);
-		cmbn_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeChemicalBurn);
-		tele_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeTelepatic);
 		woun_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeWound);
-		shoc_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeShock);
 
 		IKinematics* ikv = PKinematics(actor->Visual());
 		VERIFY(ikv);
@@ -378,12 +355,7 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 
 	if(helmet)
 	{
-		burn_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeBurn);
-		radi_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeRadiation);
-		cmbn_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeChemicalBurn);
-		tele_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeTelepatic);
 		woun_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeWound);
-		shoc_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeShock);
 
 		IKinematics* ikv = PKinematics(actor->Visual());
 		VERIFY(ikv);
@@ -398,23 +370,23 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 
 	// fire burn protection progress bar
 	{
-		const float max_power = getProtection(burn_value, ALife::eHitTypeBurn);
-		update_round_states(stt_fire, burn_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeBurn);
+		update_round_states(stt_fire, actor->GetEquipmentProtection(ALife::eHitTypeBurn), max_power);
 	}
 	// radiation protection progress bar
 	{
-		const float max_power = getProtection(radi_value, ALife::eHitTypeRadiation);
-		update_round_states(stt_radia, radi_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeRadiation);
+		update_round_states(stt_radia, actor->GetEquipmentProtection(ALife::eHitTypeRadiation), max_power);
 	}
 	// chemical burn protection progress bar
 	{
-		const float max_power = getProtection(cmbn_value, ALife::eHitTypeChemicalBurn);
-		update_round_states(stt_acid, cmbn_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeChemicalBurn);
+		update_round_states(stt_acid, actor->GetEquipmentProtection(ALife::eHitTypeChemicalBurn), max_power);
 	}
 	// telepathic protection progress bar
 	{
-		const float max_power = getProtection(tele_value, ALife::eHitTypeTelepatic);
-		update_round_states(stt_psi, tele_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeTelepatic);
+		update_round_states(stt_psi, actor->GetEquipmentProtection(ALife::eHitTypeTelepatic), max_power);
 	}
 	// wound protection progress bar
 	{
@@ -423,8 +395,8 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 	}
 	// shock protection progress bar
 	{
-		const float max_power = getProtection(shoc_value, ALife::eHitTypeShock);
-		update_round_states(stt_shock, shoc_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeShock);
+		update_round_states(stt_shock, actor->GetEquipmentProtection(ALife::eHitTypeShock), max_power);
 	}
 	//fire wound protection progress bar
 	{
@@ -757,6 +729,20 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 void ui_actor_state_wnd::update_round_states(EStateType stt_type, float initial, float max_power)
 {
 	auto state = m_state[stt_type];
+
+    if (stt_type == stt_fire || stt_type == stt_shock || stt_type == stt_acid ||
+        stt_type == stt_radia || stt_type == stt_psi)
+    {
+        const float ratio = Protection::Ratio(initial, max_power);
+        float fill = ratio;
+        clamp(fill, 0.0f, 1.0f);
+        state->set_progress(fill);
+        state->set_arrow(fill);
+        string64 text;
+        ConditionUi::FormatProtectionPercent(text, ratio);
+        state->set_text_str(text);
+        return;
+    }
 
 	const float progress = floor(initial / max_power * 31) / 31; // number of sticks in progress bar
 	const float arrow = initial / max_power; //  = 0..1

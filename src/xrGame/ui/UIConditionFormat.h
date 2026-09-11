@@ -44,6 +44,13 @@ namespace ConditionUi
         xr_strconcat(out, number, g_pStringTable->translate("ui_uip_unit_regeneration").c_str());
     }
 
+    inline void FormatProtectionPercent(string64& out, float ratio)
+    {
+        string32 number;
+        FormatNumber(number, ratio * 100.0f, DecimalSeparator(), true);
+        xr_strconcat(out, number, "%");
+    }
+
     inline u32 RadiationColor(float rate)
     {
         return rate < 0.0f ? color_rgba(110, 190, 115, 255)

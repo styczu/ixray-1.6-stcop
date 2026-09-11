@@ -44,7 +44,9 @@ public:
 	bool read_value_from_section(LPCSTR section, LPCSTR param, float& result);
 	bool compute_value(ItemUpgrades_type const& item_upgrades);
     bool is_regeneration() const;
-    void fit_regeneration_row(float width);
+    ALife::EHitType protection_type() const;
+    bool is_protection() const;
+    void fit_full_width_row(float width);
 	bool show_result(LPCSTR values);
 
 	virtual CUIWindow* ui_cast_window() { return this; }

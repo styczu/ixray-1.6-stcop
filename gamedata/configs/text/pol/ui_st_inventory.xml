@@ -175,22 +175,22 @@
 		<text>Waga ekwipunku</text>
 	</string>
 	<string id="ui_inv_outfit_burn_protection">
-		<text>Ochr.: term.</text>
+		<text>Ochrona termiczna</text>
 	</string>
 	<string id="ui_inv_outfit_chemical_burn_protection">
-		<text>Ochr.: chem.</text>
+		<text>Ochrona chemiczna</text>
 	</string>
 	<string id="ui_inv_outfit_fire_wound_protection">
 		<text>Pancerz</text>
 	</string>
 	<string id="ui_inv_outfit_radiation_protection">
-		<text>Ochr.: prom.</text>
+		<text>Ochrona radiacyjna</text>
 	</string>
 	<string id="ui_inv_outfit_shock_protection">
-		<text>Ochr.: elektr.</text>
+		<text>Ochrona elektryczna</text>
 	</string>
 	<string id="ui_inv_outfit_telepatic_protection">
-		<text>Ochr.: psion.</text>
+		<text>Ochrona psioniczna</text>
 	</string>
 	<string id="ui_inv_outfit_wound_protection">
 		<text>Odp. uderz.</text>

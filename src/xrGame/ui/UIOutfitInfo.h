@@ -26,6 +26,7 @@ protected:
 	CUIDoubleProgressBar	m_progress;
 	CUITextWnd*				m_value; // 100%
 	float					m_magnitude;
+    bool m_zone_protection = false;
 	shared_str				m_unit_str;
 
 }; // class CUIOutfitImmunity

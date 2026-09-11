@@ -1,5 +1,7 @@
 #include "StdAfx.h"
 #include "UIOutfitInfo.h"
+#include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/UIXmlInit.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/Widgets/UIDoubleProgressBar.h"
@@ -64,6 +66,7 @@ bool CUIOutfitImmunity::InitFromXml( CUIXml& xml_doc, LPCSTR base_str, u32 hit_t
 
 	CUIXmlInit::InitStatic( xml_doc, buf, 0, &m_name );
 	m_name.TextItemControl()->SetTextST( immunity_st_names[hit_type] );
+    m_zone_protection = Protection::IsZoneType((ALife::EHitType)hit_type);
 
 	xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":progress_immunity" );
 	m_progress.InitFromXml( xml_doc, buf );
@@ -75,11 +78,36 @@ bool CUIOutfitImmunity::InitFromXml( CUIXml& xml_doc, LPCSTR base_str, u32 hit_t
 
 	LPCSTR unit_str = xml_doc.ReadAttrib(buf, 0, "unit_str", "");
 	m_unit_str._set(g_pStringTable->translate(unit_str));
+    if (m_zone_protection)
+    {
+        const float right = m_value->GetWndPos().x + m_value->GetWidth();
+        m_value->SetWidth(75.0f);
+        m_value->SetWndPos(Fvector2().set(right - 75.0f, m_value->GetWndPos().y));
+        m_value->SetTextAlignment(CGameFont::alRight);
+        const float barY = _max(m_name.GetHeight(), m_value->GetHeight()) + 2.0f;
+        xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":progress_immunity");
+        const float childY = xml_doc.ReadAttribFlt(buf, 0, "y", 0.0f);
+        const float barHeight = xml_doc.ReadAttribFlt(buf, 0, "height", 9.0f);
+        m_progress.SetWndPos(Fvector2().set(0.0f, barY - childY));
+        SetHeight(barY + barHeight + 3.0f);
+    }
 	return true;
 }
 
 void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
 {
+    if (m_zone_protection)
+    {
+        float currentFill = cur, comparisonFill = comp;
+        clamp(currentFill, 0.0f, 1.0f);
+        clamp(comparisonFill, 0.0f, 1.0f);
+        m_progress.SetTwoPos(currentFill * 100.0f, comparisonFill * 100.0f);
+        string64 text;
+        ConditionUi::FormatProtectionPercent(text, cur);
+        m_value->SetText(text);
+        return;
+    }
+
 	cur *= m_magnitude;
 	comp *= m_magnitude;
 	m_progress.SetTwoPos(cur, comp);
@@ -177,13 +205,13 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		ALife::EHitType hit_type = (ALife::EHitType)i;
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
-		float cur = cur_outfit->GetDefHitTypeProtection( hit_type );
+		float cur = Protection::EquipmentContribution(cur_outfit->GetDefHitTypeProtection( hit_type ), hit_type);
 		cur /= max_power; // = 0..1
 		float slot = cur;
 		
 		if ( slot_outfit )
 		{
-			slot = slot_outfit->GetDefHitTypeProtection( hit_type );
+			slot = Protection::EquipmentContribution(slot_outfit->GetDefHitTypeProtection( hit_type ), hit_type);
 			slot /= max_power; //  = 0..1
 		}
 		m_items[i]->SetProgressValue( cur, slot );
@@ -238,13 +266,13 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		ALife::EHitType hit_type = (ALife::EHitType)i;
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
-		float cur = cur_helmet->GetDefHitTypeProtection( hit_type );
+		float cur = Protection::EquipmentContribution(cur_helmet->GetDefHitTypeProtection( hit_type ), hit_type);
 		cur /= max_power; // = 0..1
 		float slot = cur;
 		
 		if ( slot_helmet )
 		{
-			slot = slot_helmet->GetDefHitTypeProtection( hit_type );
+			slot = Protection::EquipmentContribution(slot_helmet->GetDefHitTypeProtection( hit_type ), hit_type);
 			slot /= max_power; //  = 0..1
 		}
 		m_items[i]->SetProgressValue( cur, slot );

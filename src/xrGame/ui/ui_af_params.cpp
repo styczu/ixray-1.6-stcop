@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "ui_af_params.h"
 #include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 
 #include "../Actor.h"
@@ -58,6 +59,13 @@ LPCSTR af_immunity_section_names[] = // ALife::EInfluenceType
 	"fire_wound_immunity",
 	"explosion_immunity",
 	"strike_immunity",
+};
+
+// These rows are indexed by influence, not by EHitType.
+static const ALife::EHitType af_zone_hit_types[] =
+{
+    ALife::eHitTypeRadiation, ALife::eHitTypeBurn, ALife::eHitTypeChemicalBurn,
+    ALife::eHitTypeTelepatic, ALife::eHitTypeShock
 };
 
 LPCSTR af_restore_section_names[] = // ALife::EConditionRestoreType
@@ -235,9 +243,18 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			{
 				continue;
 			}
-			max_val = actor->conditions().GetZoneMaxPower((ALife::EInfluenceType)i);
-			val /= max_val;
-			m_immunity_item[i]->SetValue(val * pInvItem.GetCondition());
+            if (i < ALife::infl_max_count)
+            {
+                const ALife::EHitType hit_type = af_zone_hit_types[i];
+                max_val = actor->conditions().GetZoneMaxPower(hit_type);
+                m_immunity_item[i]->SetProtectionRatio(Protection::Ratio(val * pInvItem.GetCondition(), max_val));
+            }
+            else
+            {
+                max_val = actor->conditions().GetZoneMaxPower((ALife::EInfluenceType)i);
+                val /= max_val;
+                m_immunity_item[i]->SetValue(val * pInvItem.GetCondition());
+            }
 
 			pos.set(m_immunity_item[i]->GetWndPos());
 			pos.y = h;
@@ -400,6 +417,16 @@ void UIArtefactParamItem::SetValue( float value )
 		}
 	}
 
+}
+
+void UIArtefactParamItem::SetProtectionRatio(float ratio)
+{
+    string64 text;
+    ConditionUi::FormatProtectionPercent(text, ratio);
+    m_value->SetText(text);
+    m_value->SetTextColor(ratio < 0.0f ? red_clr : green_clr);
+    if (m_texture_minus.size())
+        m_caption->InitTexture(ratio < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
 }
 
 void UIArtefactParamItem::SetRadiationRate(float value)
