@@ -53,6 +53,16 @@ namespace ConditionUi
         xr_strconcat(out, number, " ", translated ? unit.c_str() : "pt");
     }
 
+    // Sama liczba calkowita ochrony: bez znaku, bez jednostki, 0 miejsc po
+    // przecinku. Uzywa tego samego %.0f co auto_static panelu postaci
+    // (decimals="0"), zeby wartosc w tooltipie i na panelu nigdy sie nie
+    // rozjechala. Osobna od FormatProtectionPoints, ktora dalej sluzy
+    // artefaktom (znak + jednostka "pkt").
+    inline void FormatProtectionPointsPlain(string64& out, float ratio)
+    {
+        FormatNumber(out, ratio * 100.0f, DecimalSeparator(), false, 0);
+    }
+
     inline u32 RadiationColor(float rate)
     {
         return rate < 0.0f ? color_rgba(110, 190, 115, 255)

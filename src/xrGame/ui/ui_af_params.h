@@ -61,7 +61,9 @@ public:
         bool m_has_regeneration_rate = false;
 
 		void	SetValue			( float value );
-	
+		// Liczba bez wiodacego znaku "+" (np. liczba pojemnikow na artefakty).
+		void	SetNoSign			( bool v ) { m_no_sign = v; }
+
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 private:
@@ -69,6 +71,7 @@ private:
 	CUITextWnd*	m_value;
 	float		m_magnitude;
 	bool		m_sign_inverse;
+	bool		m_no_sign = false;
 	shared_str	m_unit_str;
 	shared_str	m_texture_minus;
 	shared_str	m_texture_plus;

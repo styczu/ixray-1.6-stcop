@@ -56,42 +56,63 @@ CUIOutfitImmunity::~CUIOutfitImmunity()
 
 bool CUIOutfitImmunity::InitFromXml( CUIXml& xml_doc, LPCSTR base_str, u32 hit_type )
 {
+    m_zone_protection = Protection::IsZoneType((ALife::EHitType)hit_type);
+    return InitRow( xml_doc, base_str, immunity_names[hit_type], immunity_st_names[hit_type] );
+}
+
+bool CUIOutfitImmunity::InitFromNode( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_name, LPCSTR st_name )
+{
+    m_zone_protection = false; // nowe wiersze prezentujemy procentowo
+    return InitRow( xml_doc, base_str, node_name, st_name );
+}
+
+bool CUIOutfitImmunity::InitRow( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_name, LPCSTR st_name )
+{
 	CUIXmlInit::InitWindow( xml_doc, base_str, 0, this );
 
 	string256 buf;
-	
-	xr_strconcat(buf, base_str, ":", immunity_names[hit_type] );
+
+	xr_strcpy( m_node_name, node_name );
+
+	xr_strconcat(buf, base_str, ":", node_name );
 	if (!CUIXmlInit::InitWindow( xml_doc, buf, 0, this, false ))
 		return false;
 
 	CUIXmlInit::InitStatic( xml_doc, buf, 0, &m_name );
-	m_name.TextItemControl()->SetTextST( immunity_st_names[hit_type] );
-    m_zone_protection = Protection::IsZoneType((ALife::EHitType)hit_type);
+	m_name.TextItemControl()->SetTextST( st_name );
 
-	xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":progress_immunity" );
+	xr_strconcat(buf, base_str, ":", node_name, ":progress_immunity" );
 	m_progress.InitFromXml( xml_doc, buf );
-	
-	xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":static_value" );
+
+	xr_strconcat(buf, base_str, ":", node_name, ":static_value" );
 	m_value = UIHelper::CreateTextWnd(xml_doc, buf, this);
 
 	m_magnitude = xml_doc.ReadAttribFlt( buf, 0, "magnitude", 1.0f );
 
 	LPCSTR unit_str = xml_doc.ReadAttrib(buf, 0, "unit_str", "");
 	m_unit_str._set(g_pStringTable->translate(unit_str));
-    if (m_zone_protection)
-    {
-        const float right = m_value->GetWndPos().x + m_value->GetWidth();
-        m_value->SetWidth(75.0f);
-        m_value->SetWndPos(Fvector2().set(right - 75.0f, m_value->GetWndPos().y));
-        m_value->SetTextAlignment(CGameFont::alRight);
-        const float barY = _max(m_name.GetHeight(), m_value->GetHeight()) + 2.0f;
-        xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":progress_immunity");
-        const float childY = xml_doc.ReadAttribFlt(buf, 0, "y", 0.0f);
-        const float barHeight = xml_doc.ReadAttribFlt(buf, 0, "height", 9.0f);
-        m_progress.SetWndPos(Fvector2().set(0.0f, barY - childY));
-        SetHeight(barY + barHeight + 3.0f);
-    }
+
+	// Uklad dwuliniowy stosujemy do KAZDEGO wiersza (nie tylko strefowych):
+	// szerokie paski (250 px) nie zmiescilyby sie w linii z etykieta i liczba.
+	ApplyTwoLineLayout( xml_doc, base_str );
 	return true;
+}
+
+void CUIOutfitImmunity::ApplyTwoLineLayout( CUIXml& xml_doc, LPCSTR base_str )
+{
+    if (!m_value) // wiersz bez wezla static_value - nic nie ukladamy
+        return;
+    const float right = m_value->GetWndPos().x + m_value->GetWidth();
+    m_value->SetWidth(75.0f);
+    m_value->SetWndPos(Fvector2().set(right - 75.0f, m_value->GetWndPos().y));
+    m_value->SetTextAlignment(CGameFont::alRight);
+    const float barY = _max(m_name.GetHeight(), m_value->GetHeight()) + 2.0f;
+    string256 buf;
+    xr_strconcat(buf, base_str, ":", m_node_name, ":progress_immunity");
+    const float childY = xml_doc.ReadAttribFlt(buf, 0, "y", 0.0f);
+    const float barHeight = xml_doc.ReadAttribFlt(buf, 0, "height", 9.0f);
+    m_progress.SetWndPos(Fvector2().set(0.0f, barY - childY));
+    SetHeight(barY + barHeight + 3.0f);
 }
 
 void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
@@ -103,7 +124,7 @@ void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
         clamp(comparisonFill, 0.0f, 1.0f);
         m_progress.SetTwoPos(currentFill * 100.0f, comparisonFill * 100.0f);
         string64 text;
-        ConditionUi::FormatProtectionPoints(text, cur);
+        ConditionUi::FormatProtectionPointsPlain(text, cur);
         m_value->SetText(text);
         return;
     }
@@ -141,6 +162,8 @@ CUIOutfitInfo::~CUIOutfitInfo()
 	{
 		xr_delete( m_items[i] );
 	}
+	xr_delete( m_impact_absorption );
+	xr_delete( m_stamina_impact );
 }
 
 void CUIOutfitInfo::InitFromXml( CUIXml& xml_doc )
@@ -183,6 +206,32 @@ void CUIOutfitInfo::InitFromXml( CUIXml& xml_doc )
 			xr_delete(m_items[i]);
 		}
 	}
+
+	// Dodatkowe wiersze spoza tablicy hit-typow (jesli sa w XML).
+	m_impact_absorption = new CUIOutfitImmunity();
+	if (m_impact_absorption->InitFromNode(xml_doc, base_str, "impact_absorption", "ui_uip_impact_absorption"))
+	{
+		AttachChild(m_impact_absorption);
+		m_impact_absorption->SetWndPos(pos);
+		pos.y += m_impact_absorption->GetWndSize().y;
+	}
+	else
+	{
+		xr_delete(m_impact_absorption);
+	}
+
+	m_stamina_impact = new CUIOutfitImmunity();
+	if (m_stamina_impact->InitFromNode(xml_doc, base_str, "stamina_impact", "ui_uip_stamina_impact"))
+	{
+		AttachChild(m_stamina_impact);
+		m_stamina_impact->SetWndPos(pos);
+		pos.y += m_stamina_impact->GetWndSize().y;
+	}
+	else
+	{
+		xr_delete(m_stamina_impact);
+	}
+
 	pos.x = GetWndSize().x;
 	SetWndSize( pos );
 }
@@ -245,6 +294,24 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		slot /= max_power;
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
 	}
+
+	if ( m_impact_absorption )
+	{
+		float cur  = 1.0f - cur_outfit->GetHitFractionActor();
+		float slot = slot_outfit ? 1.0f - slot_outfit->GetHitFractionActor() : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_impact_absorption->SetProgressValue( cur, slot );
+	}
+
+	if ( m_stamina_impact )
+	{
+		float cur  = 1.0f - cur_outfit->m_fPowerLoss;
+		float slot = slot_outfit ? 1.0f - slot_outfit->m_fPowerLoss : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_stamina_impact->SetProgressValue( cur, slot );
+	}
 }
 
 
@@ -286,8 +353,25 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 
 		float cur = cur_helmet->GetBoneArmor( spine_bone )*cur_helmet->GetCondition();
 		float slot = (slot_helmet)? slot_helmet->GetBoneArmor( spine_bone )*slot_helmet->GetCondition() : cur;
-		
+
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
 	}
 
+	if ( m_impact_absorption )
+	{
+		float cur  = 1.0f - cur_helmet->GetHitFractionActor();
+		float slot = slot_helmet ? 1.0f - slot_helmet->GetHitFractionActor() : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_impact_absorption->SetProgressValue( cur, slot );
+	}
+
+	if ( m_stamina_impact )
+	{
+		float cur  = 1.0f - cur_helmet->m_fPowerLoss;
+		float slot = slot_helmet ? 1.0f - slot_helmet->m_fPowerLoss : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_stamina_impact->SetProgressValue( cur, slot );
+	}
 }

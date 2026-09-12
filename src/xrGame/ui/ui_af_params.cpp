@@ -172,6 +172,7 @@ void CUIArtefactParams::InitFromXml( CUIXml& xml )
 		m_af_slots = new UIArtefactParamItem();
 		m_af_slots->Init(xml, "af_slots");
 		m_af_slots->SetAutoDelete(false);
+		m_af_slots->SetNoSign(true); // liczba pojemnikow bez wiodacego "+"
 
 		name = g_pStringTable->translate("st_prop_artefact").c_str();
 		m_af_slots->SetCaption(name);
@@ -387,7 +388,7 @@ void UIArtefactParamItem::SetValue( float value )
 {
 	value *= m_magnitude;
 	string32	buf;
-	xr_sprintf( buf, "%+.0f", value );
+	xr_sprintf( buf, m_no_sign ? "%.0f" : "%+.0f", value );
 	
 	string256 str;
 	if ( m_unit_str.size() )
