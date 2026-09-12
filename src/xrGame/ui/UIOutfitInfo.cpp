@@ -300,10 +300,13 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 
 	if ( m_stamina_impact )
 	{
-		float cur  = 1.0f - cur_outfit->m_fPowerLoss;
-		float slot = slot_outfit ? 1.0f - slot_outfit->m_fPowerLoss : cur;
+		// Komfort ruchu: goła postać ma mnoznik 0.5, kombinezon m_fPowerLoss
+		// (wyzej = wiekszy drenaz kondycji). 0.5 -> 100%, 1.0 -> 0%.
+		float cur  = ( 1.0f - cur_outfit->m_fPowerLoss ) * 2.0f;
+		float slot = slot_outfit ? ( 1.0f - slot_outfit->m_fPowerLoss ) * 2.0f : cur;
 		clamp( cur, 0.0f, 1.0f );
 		clamp( slot, 0.0f, 1.0f );
+		m_stamina_impact->Show( true );
 		m_stamina_impact->SetProgressValue( cur, slot );
 	}
 }
@@ -365,12 +368,7 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		m_impact_absorption->SetProgressValue( cur, slot );
 	}
 
+	// Komfort ruchu nie dotyczy helmu - jego power_loss nie wplywa na kondycje.
 	if ( m_stamina_impact )
-	{
-		float cur  = 1.0f - cur_helmet->m_fPowerLoss;
-		float slot = slot_helmet ? 1.0f - slot_helmet->m_fPowerLoss : cur;
-		clamp( cur, 0.0f, 1.0f );
-		clamp( slot, 0.0f, 1.0f );
-		m_stamina_impact->SetProgressValue( cur, slot );
-	}
+		m_stamina_impact->Show( false );
 }
