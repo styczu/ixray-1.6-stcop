@@ -40,6 +40,47 @@
 #include "../../Include/xrRender/Kinematics.h"
 #include "../../xrEngine/string_table.h"
 
+// Nazwa klasy pancerza dla progu przebicia. Tabela siedzi w danych:
+//   [ui_armor_classes]  thresholds = 0.00, 0.21, ...   names = 0, 0a, 1, ...
+// Progi rosnaco. Brak sekcji / wartosc ponizej pierwszego progu = nullptr.
+// Wyprowadzone z anonimowej przestrzeni, bo korzysta z tego rowniez tooltip
+// przedmiotu (klasa pancerza kombinezonu/helmu) - deklaracja w ProtectionValues.h.
+LPCSTR Protection::ArmorClassName(float value)
+{
+	static bool						s_loaded = false;
+	static xr_vector<float>			s_thresholds;
+	static xr_vector<shared_str>	s_names;
+
+	if (!s_loaded)
+	{
+		s_loaded = true;
+		if (pSettings->section_exist("ui_armor_classes") &&
+			pSettings->line_exist("ui_armor_classes", "thresholds") &&
+			pSettings->line_exist("ui_armor_classes", "names"))
+		{
+			LPCSTR t = pSettings->r_string("ui_armor_classes", "thresholds");
+			LPCSTR n = pSettings->r_string("ui_armor_classes", "names");
+			string64 buf;
+			const int t_count = _GetItemCount(t);
+			for (int i = 0; i < t_count; ++i)
+				s_thresholds.push_back((float)atof(_GetItem(t, i, buf)));
+
+			const int n_count = _GetItemCount(n);
+			for (int i = 0; i < n_count; ++i)
+				s_names.push_back(_GetItem(n, i, buf));
+		}
+	}
+
+	LPCSTR result = nullptr;
+	const u32 count = _min((u32)s_thresholds.size(), (u32)s_names.size());
+	for (u32 i = 0; i < count; ++i)
+	{
+		if (value + EPS_L >= s_thresholds[i])
+			result = s_names[i].c_str();
+	}
+	return result;
+}
+
 namespace
 {
 	// Grupy kosci pokazywane w tooltipie klasy pancerza. Dlonie i stopy sa
@@ -74,46 +115,7 @@ namespace
 
 	static const u32 kArmorGroupCount = sizeof(kArmorGroups) / sizeof(kArmorGroups[0]);
 
-	// Nazwa klasy pancerza dla progu przebicia. Tabela siedzi w danych:
-	//   [ui_armor_classes]
-	//   thresholds = 0.00, 0.21, 0.33, ...
-	//   names      = 0, 0a, 1, ...
-	// Progi musza byc rosnaco. Brak sekcji = tooltip pokazuje same liczby.
-	LPCSTR ArmorClassName(float value)
-	{
-		static bool						s_loaded = false;
-		static xr_vector<float>			s_thresholds;
-		static xr_vector<shared_str>	s_names;
-
-		if (!s_loaded)
-		{
-			s_loaded = true;
-			if (pSettings->section_exist("ui_armor_classes") &&
-				pSettings->line_exist("ui_armor_classes", "thresholds") &&
-				pSettings->line_exist("ui_armor_classes", "names"))
-			{
-				LPCSTR t = pSettings->r_string("ui_armor_classes", "thresholds");
-				LPCSTR n = pSettings->r_string("ui_armor_classes", "names");
-				string64 buf;
-				const int t_count = _GetItemCount(t);
-				for (int i = 0; i < t_count; ++i)
-					s_thresholds.push_back((float)atof(_GetItem(t, i, buf)));
-
-				const int n_count = _GetItemCount(n);
-				for (int i = 0; i < n_count; ++i)
-					s_names.push_back(_GetItem(n, i, buf));
-			}
-		}
-
-		LPCSTR result = nullptr;
-		const u32 count = _min((u32)s_thresholds.size(), (u32)s_names.size());
-		for (u32 i = 0; i < count; ++i)
-		{
-			if (value + EPS_L >= s_thresholds[i])
-				result = s_names[i].c_str();
-		}
-		return result;
-	}
+	// ArmorClassName wyprowadzono do Protection:: (definicja nad ta przestrzenia).
 
 	// Najwyzszy efektywny prog przebicia w grupie. -1 = zadna kosc grupy
 	// nie jest kryta przez zadna warstwe.
@@ -499,7 +501,7 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 		}
 		else
 		{
-			LPCSTR cls = ArmorClassName(a);
+			LPCSTR cls = Protection::ArmorClassName(a);
 			xr_sprintf(line, sizeof(line), "%s%-8s %s%3d  %s%s %s%s",
 				kColLabel, s_label.c_str(), kColValue, iFloor(a * 100.0f + 0.5f),
 				kColUnit, s_class.c_str(), kColClass, cls ? cls : dash);

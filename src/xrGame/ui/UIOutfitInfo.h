@@ -22,15 +22,15 @@ public:
 			// prezentacja procentowa (jak wiersze non-zone).
 			bool	InitFromNode		( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_name, LPCSTR st_name );
 			void	SetProgressValue	( float cur, float comp );
+			// Nadpisuje sam tekst wartosci (np. nazwa klasy pancerza zamiast liczby).
+			void	SetValueText		( LPCSTR text );
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 protected:
-	// Wspolna sciezka inicjalizacji wiersza + uklad dwuliniowy (pasek pod
-	// etykieta). node_name zapamietujemy, bo uklad odczytuje geometrie paska
-	// z wlasnego wezla wiersza - dla nowych wierszy nie ma tablicy hit-typow.
+	// Wspolna sciezka inicjalizacji wiersza. Uklad jednoliniowy bierzemy
+	// wprost z XML. node_name zapamietujemy dla ewentualnych odwolan.
 			bool	InitRow				( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_name, LPCSTR st_name );
-			void	ApplyTwoLineLayout	( CUIXml& xml_doc, LPCSTR base_str );
 
 	CUIStatic				m_name; // texture + name
 	CUIDoubleProgressBar	m_progress;

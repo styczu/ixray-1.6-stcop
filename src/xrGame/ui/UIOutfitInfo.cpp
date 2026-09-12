@@ -92,27 +92,15 @@ bool CUIOutfitImmunity::InitRow( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_n
 	LPCSTR unit_str = xml_doc.ReadAttrib(buf, 0, "unit_str", "");
 	m_unit_str._set(g_pStringTable->translate(unit_str));
 
-	// Uklad dwuliniowy stosujemy do KAZDEGO wiersza (nie tylko strefowych):
-	// szerokie paski (250 px) nie zmiescilyby sie w linii z etykieta i liczba.
-	ApplyTwoLineLayout( xml_doc, base_str );
+	// Uklad w jednej linii (ikona | etykieta | pasek | wartosc) bierzemy
+	// wprost z XML; pionowe wysrodkowanie zapewnia vert_align="c" na wezlach.
 	return true;
 }
 
-void CUIOutfitImmunity::ApplyTwoLineLayout( CUIXml& xml_doc, LPCSTR base_str )
+void CUIOutfitImmunity::SetValueText( LPCSTR text )
 {
-    if (!m_value) // wiersz bez wezla static_value - nic nie ukladamy
-        return;
-    const float right = m_value->GetWndPos().x + m_value->GetWidth();
-    m_value->SetWidth(75.0f);
-    m_value->SetWndPos(Fvector2().set(right - 75.0f, m_value->GetWndPos().y));
-    m_value->SetTextAlignment(CGameFont::alRight);
-    const float barY = _max(m_name.GetHeight(), m_value->GetHeight()) + 2.0f;
-    string256 buf;
-    xr_strconcat(buf, base_str, ":", m_node_name, ":progress_immunity");
-    const float childY = xml_doc.ReadAttribFlt(buf, 0, "y", 0.0f);
-    const float barHeight = xml_doc.ReadAttribFlt(buf, 0, "height", 9.0f);
-    m_progress.SetWndPos(Fvector2().set(0.0f, barY - childY));
-    SetHeight(barY + barHeight + 3.0f);
+	if ( m_value )
+		m_value->SetText( text );
 }
 
 void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
@@ -293,6 +281,12 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		cur /= max_power;
 		slot /= max_power;
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
+
+		// Zamiast liczby: nazwa klasy pancerza z najwyzszego progu przebicia
+		// tego elementu (kombinezonu), ta sama klasyfikacja co panel postaci.
+		LPCSTR cls = Protection::ArmorClassName( cur_outfit->GetMaxBoneArmor() );
+		m_items[ALife::eHitTypeFireWound]->SetValueText(
+			cls ? cls : g_pStringTable->translate("ui_armor_tt_none").c_str() );
 	}
 
 	if ( m_impact_absorption )
@@ -355,6 +349,11 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		float slot = (slot_helmet)? slot_helmet->GetBoneArmor( spine_bone )*slot_helmet->GetCondition() : cur;
 
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
+
+		// Nazwa klasy pancerza z najwyzszego progu przebicia helmu (maski).
+		LPCSTR cls = Protection::ArmorClassName( cur_helmet->GetMaxBoneArmor() );
+		m_items[ALife::eHitTypeFireWound]->SetValueText(
+			cls ? cls : g_pStringTable->translate("ui_armor_tt_none").c_str() );
 	}
 
 	if ( m_impact_absorption )

@@ -68,4 +68,10 @@ namespace Protection
         default: return nullptr;
         }
     }
+
+    // Nazwa klasy pancerza dla progu przebicia, wg [ui_armor_classes]
+    // (thresholds/names). Zwraca nullptr, gdy sekcji brak lub wartosc jest
+    // ponizej pierwszego progu (np. -1 = brak krytej kosci). Definicja w
+    // UIActorStateInfo.cpp; progi sa parsowane i cache'owane raz.
+    const char* ArmorClassName(float value);
 }
