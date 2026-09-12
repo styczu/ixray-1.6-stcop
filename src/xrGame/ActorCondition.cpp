@@ -580,6 +580,11 @@ Protection::DamageReading CActorCondition::GetEnvironmentalDamage(ALife::EHitTyp
     return m_environmental_damage.Get(type, Device.dwTimeGlobal);
 }
 
+Protection::DamageRate CActorCondition::GetEnvironmentalDamageRate(ALife::EHitType type) const
+{
+    return m_environmental_damage.GetRate(type, Device.dwTimeGlobal);
+}
+
 void CActorCondition::PowerHit(float power, bool apply_outfit)
 {
 	m_fPower			-=	apply_outfit ? HitPowerEffect(power) : power;
@@ -594,11 +599,46 @@ void CActorCondition::ConditionJump(float weight)
 }
 
 void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
-{	
+{
 	float power			=	m_fWalkPower;
 	power				+=	m_fWalkWeightPower*weight*(weight>1.f?m_fOverweightWalkK:1.f);
 	power				*=	m_fDeltaTime*(accel?(sprint?m_fSprintK:m_fAccelK):1.f);
 	m_fPower			-=	HitPowerEffect(power);
+}
+
+// --- Koszt kondycji dla tooltipa (te same wzory co ConditionWalk/Jump) ---
+namespace
+{
+	float ActorLoadRatio(const CActor& a)
+	{
+		const float base = a.MaxCarryWeight();
+		return base > 0.0f ? a.inventory().TotalWeight() / base : 0.0f;
+	}
+	float ActorPowerLoss(const CActor& a)
+	{
+		CCustomOutfit* o = a.GetOutfit();
+		return o ? o->m_fPowerLoss : 0.5f; // jak HitPowerEffect: goly = x0.5
+	}
+}
+
+bool CActorCondition::IsOverloaded() const
+{
+	return ActorLoadRatio( object() ) > 1.0f;
+}
+
+float CActorCondition::GetSprintPowerCostPerGameSec() const
+{
+	const float w = ActorLoadRatio( object() );
+	float power = m_fWalkPower + m_fWalkWeightPower * w * (w > 1.f ? m_fOverweightWalkK : 1.f);
+	power *= m_fSprintK; // bez m_fDeltaTime => na sekunde gry
+	return power * ActorPowerLoss( object() );
+}
+
+float CActorCondition::GetJumpPowerCost() const
+{
+	const float w = ActorLoadRatio( object() );
+	float power = m_fJumpPower + m_fJumpWeightPower * w * (w > 1.f ? m_fOverweightJumpK : 1.f);
+	return power * ActorPowerLoss( object() ); // jednorazowo, bez czasu
 }
 
 void CActorCondition::ConditionStand(float weight)

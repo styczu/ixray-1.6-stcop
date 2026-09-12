@@ -24,7 +24,8 @@ namespace Protection
 
     struct ExposureReading
     {
-        float power = 0.0f;
+        float power = 0.0f;   // szczyt z okna LifetimeMs (750 ms)
+        float current = 0.0f; // biezaca sila - max z ostatnich CurrentMs (150 ms)
         float opacity = 0.0f;
     };
 
@@ -39,6 +40,7 @@ namespace Protection
         static constexpr std::uint32_t BucketMs = 50;
         static constexpr std::uint32_t HoldMs = 500;
         static constexpr std::uint32_t LifetimeMs = 750;
+        static constexpr std::uint32_t CurrentMs = 150; // okno "biezacej" sily
         struct Sample
         {
             float power = 0.0f;
@@ -108,6 +110,8 @@ namespace Protection
                     result.power = sample.power;
                     youngest = age;
                 }
+                if (age < CurrentMs && sample.power > result.current)
+                    result.current = sample.power;
             }
             if (result.power > 0.0f)
                 result.opacity = youngest <= HoldMs ? 1.0f

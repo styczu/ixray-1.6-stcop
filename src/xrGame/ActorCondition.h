@@ -50,6 +50,7 @@ public:
 			void		UpdateBoosters				();
 
     Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType type) const;
+    Protection::DamageRate    GetEnvironmentalDamageRate(ALife::EHitType type) const;
 
     ConditionUi::RegenerationSources GetRegenerationSources(bool health) const;
     float PowerRestoreEffect(float nominal) const;
@@ -94,6 +95,13 @@ public:
 	
 	float	GetZoneMaxPower							(ALife::EInfluenceType type) const;
 	float	GetZoneMaxPower							(ALife::EHitType hit_type) const;
+
+	// Koszt kondycji dla tooltipa: sprint (ulamek na sekunde GRY - UI mnozy przez
+	// real_time_factor) i podskok (jednorazowy). Uwzglednia obciazenie/przeciazenie
+	// i power_loss kombinezonu (goly = x0.5), jak ConditionWalk/Jump.
+	float	GetSprintPowerCostPerGameSec			() const;
+	float	GetJumpPowerCost						() const;
+	bool	IsOverloaded							() const; // waga > udzwig (MaxCarryWeight)
 
 	bool	DisableSprint							(SHit* pHDS);
 	bool	PlayHitSound							(SHit* pHDS);

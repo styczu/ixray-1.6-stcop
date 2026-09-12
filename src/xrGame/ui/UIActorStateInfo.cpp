@@ -584,21 +584,13 @@ void ui_actor_state_wnd::UpdateBleedingInfo(CActor* actor)
 
 void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
 {
-    const shared_str description = g_pStringTable->translate("ui_uip_protection_description");
-    if (xr_strcmp(description.c_str(), "ui_uip_protection_description") == 0)
+    // Bramka wlaczenia feature - klucz musi byc przetlumaczony w dodatku.
+    const shared_str gate = g_pStringTable->translate("ui_uip_protection_total");
+    if (xr_strcmp(gate.c_str(), "ui_uip_protection_total") == 0)
         return;
     CCustomOutfit* outfit = actor->GetOutfit();
     CHelmet* helmet = actor->GetHelmet();
     const bool showHelmet = helmet && (!outfit || outfit->bIsHelmetAvaliable);
-    bool hasArtefacts = false;
-    for (const PIItem item : actor->inventory().m_belt)
-    {
-        if (item->cast_artefact())
-        {
-            hasArtefacts = true;
-            break;
-        }
-    }
     const auto update = [&](EStateType state, ALife::EHitType type)
     {
         if (!m_state[state])
@@ -614,49 +606,68 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
         hint += kBreak;
         hint += kColSep;
         hint += ". . . . . . . . . . . . . .";
-        const auto line = [&](LPCSTR key, float protection)
+
+        // Linia punktowa: "etykieta: X pkt"
+        const auto pointsLine = [&](LPCSTR key, float prot)
         {
             string64 value;
-            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(protection, maximum), false);
+            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(prot, maximum), false);
             hint += "\\n%c[255,170,170,170]";
             hint += g_pStringTable->translate(key).c_str();
             hint += ": %c[255,224,230,234]";
             hint += value;
         };
-        line("ui_uip_protection_total", protection);
-        line("ui_uip_protection_source", exposure.power);
-        const auto damage = actor->conditions().GetEnvironmentalDamage(type);
-        if (damage.valid)
+        // Linia liczbowa z jednostka: "etykieta: X <unit>"
+        const auto valueLine = [&](LPCSTR key, float amount, LPCSTR unitKey)
         {
-            const auto damageLine = [&](LPCSTR key, float amount, LPCSTR unit)
-            {
-                string64 value;
-                ConditionUi::FormatNumber(value, amount, ConditionUi::DecimalSeparator(), false);
-                hint += "\\n%c[255,170,170,170]";
-                hint += g_pStringTable->translate(key).c_str();
-                hint += ": %c[255,224,230,234]";
-                hint += value;
-                hint += unit;
-            };
+            string64 value;
+            ConditionUi::FormatNumber(value, amount, ConditionUi::DecimalSeparator(), false);
+            hint += "\\n%c[255,170,170,170]";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": %c[255,224,230,234]";
+            hint += value;
+            hint += " ";
+            hint += g_pStringTable->translate(unitKey).c_str();
+        };
+
+        // --- Ochrona ---
+        pointsLine("ui_uip_protection_total", protection);
+        if (outfit)
+        {
+            const float v = Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type);
+            if (v > 0.0f)
+                pointsLine("ui_uip_protection_outfit", v);
+        }
+        if (showHelmet)
+        {
+            const float v = Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type);
+            if (v > 0.0f)
+                pointsLine("ui_uip_protection_helmet", v);
+        }
+
+        // --- Aktywne oddzialywanie (tylko gdy cos oddzialuje) ---
+        if (exposure.current > 0.0f || exposure.power > 0.0f)
+        {
+            hint += kBreak;
+            hint += kColSep;
+            hint += ". . . . . . . . . . . . . .";
+            hint += kBreak;
+            hint += kColTitle;
+            hint += g_pStringTable->translate("ui_uip_protection_active").c_str();
+            pointsLine("ui_uip_protection_current", exposure.current);
+            pointsLine("ui_uip_protection_peak", exposure.power);
             if (type == ALife::eHitTypeRadiation)
-                damageLine("ui_uip_damage_radiation", damage.radiation * ConditionUi::RadiationScale, " kBq");
+            {
+                const float rad = actor->conditions().GetRadiation() * ConditionUi::RadiationScale;
+                valueLine("ui_uip_protection_contamination", rad, "ui_uip_unit_rad");
+            }
             else
             {
-                damageLine("ui_uip_damage_health", damage.health * 100.0f, "%");
-                if (type == ALife::eHitTypeTelepatic)
-                    damageLine("ui_uip_damage_psy", damage.psy * 100.0f, "%");
+                const auto rate = actor->conditions().GetEnvironmentalDamageRate(type);
+                const float dmg = (type == ALife::eHitTypeTelepatic ? rate.psy : rate.health) * 100.0f;
+                valueLine("ui_uip_protection_damage", dmg, "ui_uip_unit_percent_s");
             }
         }
-        if (outfit || showHelmet || hasArtefacts)
-            hint += kBreak;
-        if (outfit)
-            line("ui_uip_protection_outfit", Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type));
-        if (showHelmet)
-            line("ui_uip_protection_helmet", Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type));
-        if (hasArtefacts)
-            line("ui_uip_protection_artefacts", actor->GetProtection_ArtefactsOnBelt(type));
-        hint += "\\n\\n%c[255,176,182,186]";
-        hint += description.c_str();
         m_state[state]->set_hint_text(hint.c_str());
     };
     update(stt_fire, ALife::eHitTypeBurn);
@@ -694,6 +705,34 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 			hint += g_pStringTable->translate(unit_key).c_str();
 		}
 	};
+
+	// Kondycja: koszt sprintu (%/s realnej sekundy) i podskoku (% za skok),
+	// czerwone przy przeciazeniu. Wzory w CActorCondition (te same co ruch).
+	if (m_state[stt_stamina] != nullptr)
+	{
+		const bool overloaded = actor->conditions().IsOverloaded();
+		LPCSTR costColor = overloaded ? "%c[255,210,80,65]" : kColValue;
+
+		xr_string hint = kColTitle;
+		hint += g_pStringTable->translate("ui_uip_tt_stamina").c_str();
+
+		auto cost_line = [&hint, costColor](LPCSTR label, float value, LPCSTR unit)
+		{
+			string32 num;
+			FormatRate(num, value, 1);
+			hint += kBreak; hint += kColLabel;
+			hint += g_pStringTable->translate(label).c_str();
+			hint += " "; hint += costColor; hint += num;
+			hint += " "; hint += g_pStringTable->translate(unit).c_str();
+		};
+		cost_line("ui_uip_cost_sprint",
+			actor->conditions().GetSprintPowerCostPerGameSec() * real_time_factor * 100.0f,
+			"ui_uip_unit_percent_s");
+		cost_line("ui_uip_cost_jump",
+			actor->conditions().GetJumpPowerCost() * 100.0f,
+			"ui_uip_unit_percent");
+		m_state[stt_stamina]->set_hint_text(hint.c_str());
+	}
 
 	// Skazenie: ubytek zdrowia to radiation_health_v * poziom skazenia,
 	// w ulamku zdrowia na sekunde (EntityCondition.cpp, UpdateRadiation).

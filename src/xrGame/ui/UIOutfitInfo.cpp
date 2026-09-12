@@ -103,6 +103,21 @@ void CUIOutfitImmunity::SetValueText( LPCSTR text )
 		m_value->SetText( text );
 }
 
+// Wpisuje klase pancerza z prefiksem "kl." (np. "kl. 6a"); brak klasy -> "-".
+static void SetArmorClassText( CUIOutfitImmunity* row, LPCSTR cls )
+{
+	if ( !row )
+		return;
+	if ( cls )
+	{
+		string64 buf;
+		xr_sprintf( buf, "%s %s", g_pStringTable->translate( "ui_uip_armor_class_prefix" ).c_str(), cls );
+		row->SetValueText( buf );
+	}
+	else
+		row->SetValueText( g_pStringTable->translate( "ui_armor_tt_none" ).c_str() );
+}
+
 void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
 {
     if (m_zone_protection)
@@ -284,9 +299,8 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 
 		// Zamiast liczby: nazwa klasy pancerza z najwyzszego progu przebicia
 		// tego elementu (kombinezonu), ta sama klasyfikacja co panel postaci.
-		LPCSTR cls = Protection::ArmorClassName( cur_outfit->GetMaxBoneArmor() );
-		m_items[ALife::eHitTypeFireWound]->SetValueText(
-			cls ? cls : g_pStringTable->translate("ui_armor_tt_none").c_str() );
+		SetArmorClassText( m_items[ALife::eHitTypeFireWound],
+			Protection::ArmorClassName( cur_outfit->GetMaxBoneArmor() ) );
 	}
 
 	if ( m_impact_absorption )
@@ -354,9 +368,8 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
 
 		// Nazwa klasy pancerza z najwyzszego progu przebicia helmu (maski).
-		LPCSTR cls = Protection::ArmorClassName( cur_helmet->GetMaxBoneArmor() );
-		m_items[ALife::eHitTypeFireWound]->SetValueText(
-			cls ? cls : g_pStringTable->translate("ui_armor_tt_none").c_str() );
+		SetArmorClassText( m_items[ALife::eHitTypeFireWound],
+			Protection::ArmorClassName( cur_helmet->GetMaxBoneArmor() ) );
 	}
 
 	if ( m_impact_absorption )
