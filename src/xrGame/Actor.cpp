@@ -2653,13 +2653,6 @@ float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 		}
 	}
 
-	if (Protection::IsZoneType(hit_type))
-	{
-		hit_power -= sum;
-		clamp(hit_power, 0.0f, flt_max);
-		return hit_power;
-	}
-
 	if (sum == 0.0f)
 		return hit_power;
 

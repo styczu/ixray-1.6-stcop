@@ -413,6 +413,37 @@ CWound* CEntityCondition::AddWound(float hit_power, ALife::EHitType hit_type, u1
 	return pWound;
 }
 
+float CEntityCondition::GetEnvironmentalProtectionBoost(ALife::EHitType hit_type) const
+{
+    switch (hit_type)
+    {
+    case ALife::eHitTypeChemicalBurn: return m_fBoostChemicalBurnProtection;
+    case ALife::eHitTypeRadiation: return m_fBoostRadiationProtection;
+    case ALife::eHitTypeTelepatic: return m_fBoostTelepaticProtection;
+    default: return 0.0f;
+    }
+}
+
+float CEntityCondition::GetEnvironmentalHitMultiplier(ALife::EHitType hit_type) const
+{
+    // Match ConditionHit, including burn immunity for light_burn and no clamp.
+    switch (hit_type)
+    {
+    case ALife::eHitTypeBurn:
+    case ALife::eHitTypeLightBurn:
+        return GetHitImmunity(ALife::eHitTypeBurn) - m_fBoostBurnImmunity;
+    case ALife::eHitTypeShock:
+        return GetHitImmunity(hit_type) - m_fBoostShockImmunity;
+    case ALife::eHitTypeChemicalBurn:
+        return GetHitImmunity(hit_type) - m_fBoostChemicalBurnImmunity;
+    case ALife::eHitTypeRadiation:
+        return GetHitImmunity(hit_type) - m_fBoostRadiationImmunity;
+    case ALife::eHitTypeTelepatic:
+        return GetHitImmunity(hit_type) - m_fBoostTelepaticImmunity;
+    default: return GetHitImmunity(hit_type);
+    }
+}
+
 CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 {
 	//кто нанес последний хит

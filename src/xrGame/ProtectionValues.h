@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../xrEngine/AI/alife_space.h"
+#include <cmath>
 
 namespace Protection
 {
@@ -24,6 +25,34 @@ namespace Protection
     inline float EquipmentContribution(float conditionedProtection, ALife::EHitType type)
     {
         return conditionedProtection * (IsZoneType(type) ? 0.1f : 1.0f);
+    }
+
+    struct ThresholdReading
+    {
+        float power = 0.0f;
+        bool attainable = false;
+    };
+
+    // UI only: invert the sequential clamps in outfit -> helmet -> flat booster.
+    // For nonnegative layers this is (outfit + helmet + booster) / multiplier.
+    // A negative later layer can make zero unattainable even at zero input.
+    // Actor immunity deliberately does not enter the pre-immunity threshold.
+    inline ThresholdReading EffectiveThreshold(float outfit, float helmet, float booster, float multiplier)
+    {
+        if (!(multiplier > 0.0f) || !std::isfinite(multiplier) ||
+            !std::isfinite(outfit) || !std::isfinite(helmet) || !std::isfinite(booster))
+            return {};
+        float remaining = booster;
+        if (remaining < 0.0f)
+            return {};
+        remaining += helmet;
+        if (remaining < 0.0f)
+            return {};
+        remaining += outfit;
+        if (remaining < 0.0f)
+            return {};
+        const float power = remaining / multiplier;
+        return std::isfinite(power) ? ThresholdReading{power, true} : ThresholdReading{};
     }
 
     // Presentation scale, not a percentage reduction of an arbitrary hit.

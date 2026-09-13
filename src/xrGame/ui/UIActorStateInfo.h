@@ -61,6 +61,7 @@ private:
 	};
 	ui_actor_state_item*	m_state[stt_count];
 	UIHint*					m_hint_wnd;
+    UIHint* m_environment_hint_wnd = nullptr;
 
 public:
 							ui_actor_state_wnd	() = default;

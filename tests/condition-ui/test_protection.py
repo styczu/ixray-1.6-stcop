@@ -181,6 +181,13 @@ cpp += r'''
 int checks=0;
 void eq(double a,double b,const char*label){++checks;if(std::abs(a-b)>1e-6+std::abs(b)*1e-5){std::cerr<<label<<": "<<a<<" != "<<b<<"\n";std::abort();}}
 void textEq(const std::string&a,const std::string&b){++checks;if(a!=b){std::cerr<<a<<" != "<<b<<"\n";std::abort();}}
+double expectedArtefactHit(double hit,double sum){
+ // Independent double-precision reference for the original IX-Ray curve.
+ if(sum==0)return hit;
+ const double magnitude=std::min(std::abs(sum),double(.99f));
+ const double reduction=1.5*std::exp(4*std::log(.9)/magnitude);
+ return hit*(1+(sum<0?reduction:-reduction));
+}
 int main(){
  strings.texts["ui_uip_unit_protection"]="pkt";
  CActor a;level.actor=&a;CCustomOutfit outfit;CHelmet helmet;CArtefact af1,af2;CInventoryItem unrelated;
@@ -207,10 +214,10 @@ int main(){
    eq(ratios[t](),total/maximum*10,"XML delegate matches panel");
    for(float hit:{0.f,.001f,.02f,.2f,1.f,3.f}){
     bool wound=true;float afterAf=a.HitArtefactsOnBelt(hit,type);
-    eq(afterAf,std::max(0.f,hit-expectedAf),"absolute artefact subtraction");
+    eq(afterAf,expectedArtefactHit(hit,expectedAf),"original IX-Ray artefact curve");
     float after=outfit.HitThroughArmor(afterAf,0,0,wound,type);
     after=helmet.HitThroughArmor(after,0,0,wound,type);
-    eq(after,std::max(0.f,hit-total),"combined hit vs independent formula");
+    eq(after,std::max(0.0,expectedArtefactHit(hit,expectedAf)-expectedOutfit-expectedHelmet),"artefact multiplier before armour subtraction");
    }
    CCustomOutfit comparison;comparison.m_HitTypeProtection[t]=.8f;comparison.condition=.25f;
    outfitUI.UpdateInfo(&outfit,&comparison);
@@ -239,11 +246,34 @@ int main(){
  a.inv.m_belt.clear();a.outfit=nullptr;a.helmet=nullptr;eq(a.GetEquipmentProtection(ALife::eHitTypeBurn),0,"empty equipment");
  level.actor=nullptr;eq(GetEquipmentBurnProtectionRatio(),0,"no actor");level.actor=&a;
  af1.condition=.01f;af1.m_ArtefactHitImmunities.v[ALife::eHitTypeLightBurn]=.04f;a.inv.m_belt={&af1};
- eq(a.HitArtefactsOnBelt(.2f,ALife::eHitTypeLightBurn),.1996f,"ambient heat at 1% condition");
+ eq(a.HitArtefactsOnBelt(.2f,ALife::eHitTypeLightBurn),.2f,"ambient heat at 1% condition: curve rounds to no reduction");
  for(auto type:{ALife::eHitTypeWound,ALife::eHitTypeStrike,ALife::eHitTypeExplosion,ALife::eHitTypeFireWound,ALife::eHitTypeWound_2}){
   af1.condition=1;af1.m_ArtefactHitImmunities.v[type]=.1f;eq(a.HitArtefactsOnBelt(1,type),.977828695f,"other damage mechanics unchanged");
   af1.m_ArtefactHitImmunities.v[type]=-.1f;eq(a.HitArtefactsOnBelt(1,type),1.022171305f,"other damage penalties unchanged");
  }
+ // Regression anchors: every environmental type uses the same curve, including
+ // negative values, zero, the 0.99 cap and belt items summed before the curve.
+ for(auto type:{ALife::eHitTypeBurn,ALife::eHitTypeLightBurn,ALife::eHitTypeShock,ALife::eHitTypeChemicalBurn,ALife::eHitTypeRadiation,ALife::eHitTypeTelepatic}){
+  a.inv.m_belt={&af1};af1.condition=1;
+  for(float sum:{-.99f,-.1f,0.f,.04f,.1f,.99f}){
+   af1.m_ArtefactHitImmunities.v[type]=sum;
+   eq(a.HitArtefactsOnBelt(.2f,type),expectedArtefactHit(.2f,sum),"environmental curve regression");
+   eq(a.HitArtefactsOnBelt(0,type),0,"penalty does not create a hit from zero");
+  }
+  af1.m_ArtefactHitImmunities.v[type]=.1f;
+  eq(a.HitArtefactsOnBelt(1,type),.977828695f,"known positive curve value");
+  af1.m_ArtefactHitImmunities.v[type]=-.1f;
+  eq(a.HitArtefactsOnBelt(1,type),1.022171305f,"known negative curve value");
+  for(float sign:{-1.f,1.f}){
+   af1.m_ArtefactHitImmunities.v[type]=sign*.99f;const float capped=a.HitArtefactsOnBelt(1,type);
+   af1.m_ArtefactHitImmunities.v[type]=sign*2.f;
+   eq(a.HitArtefactsOnBelt(1,type),capped,"sum saturates at signed 0.99");
+  }
+  af1.m_ArtefactHitImmunities.v[type]=.1f;af2.m_ArtefactHitImmunities.v[type]=.1f;af2.condition=1;
+  a.inv.m_belt={&af1,&unrelated,&af2};
+  eq(a.HitArtefactsOnBelt(1,type),.817635018f,"sum belt coefficients before applying curve");
+ }
+ a.inv.m_belt={&af1};
  // Tooltip numbers are neither XML magnitudes nor clamped percentages.
  string64 text;ConditionUi::FormatProtectionPoints(text,1.23456f);textEq(text,"+123,46 pkt");
  ConditionUi::FormatProtectionPoints(text,-.0125f);textEq(text,"-1,25 pkt");

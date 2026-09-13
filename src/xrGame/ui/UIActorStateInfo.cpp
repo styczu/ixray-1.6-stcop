@@ -196,6 +196,7 @@ namespace
 ui_actor_state_wnd::~ui_actor_state_wnd()
 {
 	delete_data( m_hint_wnd );
+    delete_data(m_environment_hint_wnd);
 }
 
 void ui_actor_state_wnd::init_from_xml( CUIXml& xml, LPCSTR path )
@@ -207,6 +208,8 @@ void ui_actor_state_wnd::init_from_xml( CUIXml& xml, LPCSTR path )
 	xml.SetLocalRoot( new_root );
 
 	m_hint_wnd = UIHelper::CreateHint( xml, "hint_wnd" );
+    if (xml.NavigateToNode("environment_hint_wnd"))
+        m_environment_hint_wnd = UIHelper::CreateHint(xml, "environment_hint_wnd");
 
 	for ( int i = 0; i < stt_count; ++i )
 	{
@@ -215,6 +218,9 @@ void ui_actor_state_wnd::init_from_xml( CUIXml& xml, LPCSTR path )
 		AttachChild( m_state[i] );
 		m_state[i]->set_hint_wnd( m_hint_wnd );
 	}
+    if (m_environment_hint_wnd)
+        for (const auto state : {stt_fire, stt_shock, stt_acid, stt_radia, stt_psi})
+            m_state[state]->set_hint_wnd(m_environment_hint_wnd);
 	if (xml.NavigateToNode("stamina_state"))
 		m_state[stt_stamina]->init_from_xml( xml, "stamina_state" );
 	m_state[stt_health]->init_from_xml( xml, "health_state");
@@ -584,74 +590,131 @@ void ui_actor_state_wnd::UpdateBleedingInfo(CActor* actor)
 
 void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
 {
-    // Bramka wlaczenia feature - klucz musi byc przetlumaczony w dodatku.
-    const shared_str gate = g_pStringTable->translate("ui_uip_protection_total");
-    if (xr_strcmp(gate.c_str(), "ui_uip_protection_total") == 0)
+    const shared_str gate = g_pStringTable->translate("ui_uip_protection_effective");
+    if (xr_strcmp(gate.c_str(), "ui_uip_protection_effective") == 0)
         return;
     CCustomOutfit* outfit = actor->GetOutfit();
     CHelmet* helmet = actor->GetHelmet();
-    const bool showHelmet = helmet && (!outfit || outfit->bIsHelmetAvaliable);
     const auto update = [&](EStateType state, ALife::EHitType type)
     {
         if (!m_state[state])
             return;
         const float maximum = actor->conditions().GetZoneMaxPower(type);
-        const float protection = actor->GetEquipmentProtection(type);
+        const float outfitThreshold = outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type) : 0.0f;
+        // HitOutfitEffect applies every equipped helmet, regardless of outfit UI flags.
+        const float helmetThreshold = helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type) : 0.0f;
+        const float flatBoost = actor->conditions().GetEnvironmentalProtectionBoost(type);
+        const float artifactMultiplier = actor->HitArtefactsOnBelt(1.0f, type);
+        const auto effective = Protection::EffectiveThreshold(outfitThreshold, helmetThreshold, flatBoost, artifactMultiplier);
+        const float postMultiplier = actor->conditions().GetEnvironmentalHitMultiplier(type);
         const auto exposure = actor->GetEnvironmentalExposure(type);
+        // Preserve the existing panel layers; tooltip thresholds never use this legacy sum.
         m_state[state]->set_environmental_exposure(type, Protection::DisplayRatio(exposure.power, maximum),
-            Protection::DisplayRatio(protection, maximum), exposure.opacity);
+            Protection::DisplayRatio(actor->GetEquipmentProtection(type), maximum), exposure.opacity);
         xr_string hint = kColTitle;
         hint += g_pStringTable->translate(Protection::Caption(type)).c_str();
-        hint += kBreak;
-        hint += kBreak;
-        hint += kColSep;
-        hint += ". . . . . . . . . . . . . .";
-
-        // Linia punktowa: "etykieta: X pkt"
-        const auto pointsLine = [&](LPCSTR key, float prot)
-        {
-            string64 value;
-            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(prot, maximum), false);
-            hint += "\\n%c[255,170,170,170]";
-            hint += g_pStringTable->translate(key).c_str();
-            hint += ": %c[255,224,230,234]";
-            hint += value;
-        };
-        // Linia liczbowa z jednostka: "etykieta: X <unit>"
-        const auto valueLine = [&](LPCSTR key, float amount, LPCSTR unitKey)
-        {
-            string64 value;
-            ConditionUi::FormatNumber(value, amount, ConditionUi::DecimalSeparator(), false);
-            hint += "\\n%c[255,170,170,170]";
-            hint += g_pStringTable->translate(key).c_str();
-            hint += ": %c[255,224,230,234]";
-            hint += value;
-            hint += " ";
-            hint += g_pStringTable->translate(unitKey).c_str();
-        };
-
-        // --- Ochrona ---
-        pointsLine("ui_uip_protection_total", protection);
-        if (outfit)
-        {
-            const float v = Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type);
-            if (v > 0.0f)
-                pointsLine("ui_uip_protection_outfit", v);
-        }
-        if (showHelmet)
-        {
-            const float v = Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type);
-            if (v > 0.0f)
-                pointsLine("ui_uip_protection_helmet", v);
-        }
-
-        // --- Aktywne oddzialywanie (tylko gdy cos oddzialuje) ---
-        if (exposure.current > 0.0f || exposure.power > 0.0f)
+        const auto separator = [&]()
         {
             hint += kBreak;
             hint += kColSep;
             hint += ". . . . . . . . . . . . . .";
             hint += kBreak;
+        };
+        // The panel tooltip uses a monospaced font and single-byte game encodings.
+        // Pad visible text only, not color tags. Long labels/names wrap normally.
+        const auto line = [&](LPCSTR key, LPCSTR value, bool indent)
+        {
+            xr_string label = indent ? "  " : "";
+            label += g_pStringTable->translate(key).c_str();
+            label += ":";
+            const size_t occupied = label.size() + xr_strlen(value);
+            hint += kBreak;
+            hint += "%c[255,170,170,170]";
+            hint += label;
+            hint.append(occupied < 42 ? 42 - occupied : 1, ' ');
+            hint += "%c[255,224,230,234]";
+            hint += value;
+        };
+        const auto pointsLine = [&](LPCSTR key, float power, bool indent = false)
+        {
+            string64 value;
+            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(power, maximum), false);
+            line(key, value, indent);
+        };
+        const auto thresholdLine = [&](LPCSTR key, const Protection::ThresholdReading& threshold)
+        {
+            if (threshold.attainable)
+                pointsLine(key, threshold.power);
+            else
+                line(key, g_pStringTable->translate("ui_uip_protection_no_threshold").c_str(), false);
+        };
+        const auto percentLine = [&](LPCSTR key, float percent, bool indent)
+        {
+            string32 number;
+            string64 value;
+            ConditionUi::FormatNumber(number, percent, ConditionUi::DecimalSeparator(), false);
+            xr_strconcat(value, number, "%");
+            line(key, value, indent);
+        };
+        const auto valueLine = [&](LPCSTR key, float amount, LPCSTR unitKey)
+        {
+            string32 number;
+            string64 value;
+            ConditionUi::FormatNumber(number, amount, ConditionUi::DecimalSeparator(), false);
+            xr_strconcat(value, number, " ", g_pStringTable->translate(unitKey).c_str());
+            line(key, value, false);
+        };
+
+        separator();
+        thresholdLine("ui_uip_protection_effective", effective);
+        // The legacy burn/light_burn protection copies may diverge after upgrades.
+        // Keep the measured thermal channel intact and expose a second threshold only when needed.
+        if (type == ALife::eHitTypeBurn)
+        {
+            const auto lightType = ALife::eHitTypeLightBurn;
+            const float lightOutfit = outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(lightType), lightType) : 0.0f;
+            const float lightHelmet = helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(lightType), lightType) : 0.0f;
+            const auto light = Protection::EffectiveThreshold(lightOutfit, lightHelmet, 0.0f, actor->HitArtefactsOnBelt(1.0f, lightType));
+            if (light.attainable != effective.attainable || light.power != effective.power)
+                thresholdLine("ui_uip_protection_effective_light_burn", light);
+        }
+        hint += kBreak;
+        pointsLine("ui_uip_protection_total", outfitThreshold + helmetThreshold);
+        if (outfitThreshold > 0.0f)
+            pointsLine("ui_uip_protection_outfit", outfitThreshold, true);
+        if (helmetThreshold > 0.0f)
+            pointsLine("ui_uip_protection_helmet", helmetThreshold, true);
+        if (flatBoost > 0.0f)
+            pointsLine("ui_uip_protection_temporary", flatBoost, true);
+
+        if (artifactMultiplier != 1.0f)
+        {
+            hint += kBreak;
+            percentLine("ui_uip_protection_artifact_effect", (1.0f - artifactMultiplier) * 100.0f, false);
+            for (const PIItem item : actor->inventory().m_belt)
+            {
+                CArtefact* artefact = item->cast_artefact();
+                if (artefact && artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() != 0.0f)
+                {
+                    hint += kBreak;
+                    hint += "%c[255,170,170,170]  ";
+                    hint += artefact->NameItem();
+                }
+            }
+        }
+
+        hint += kBreak;
+        separator();
+        hint += kColTitle;
+        hint += g_pStringTable->translate("ui_uip_protection_after_threshold").c_str();
+        hint += ":";
+        percentLine("ui_uip_protection_received", postMultiplier * 100.0f, true);
+
+        // Same source windows, conditional visibility and observed resource effects as before.
+        if (exposure.current > 0.0f || exposure.power > 0.0f)
+        {
+            hint += kBreak;
+            separator();
             hint += kColTitle;
             hint += g_pStringTable->translate("ui_uip_protection_active").c_str();
             pointsLine("ui_uip_protection_current", exposure.current);
@@ -909,12 +972,16 @@ void ui_actor_state_wnd::Draw()
 {
 	inherited::Draw();
 	m_hint_wnd->Draw();
+    if (m_environment_hint_wnd)
+        m_environment_hint_wnd->Draw();
 }
 
 void ui_actor_state_wnd::Show( bool status )
 {
 	inherited::Show( status );
 	ShowChildren( status );
+    if (!status && m_environment_hint_wnd)
+        m_environment_hint_wnd->set_visible(false);
 }
 
 /// =============================================================================================

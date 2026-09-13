@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="windows-1250"?>
 <string_table>
     <string id="ui_uip_unit_protection"><text>pkt</text></string>
-    <string id="ui_uip_protection_total"><text>Łącznie</text></string>
+    <string id="ui_uip_protection_total"><text>Próg ochrony</text></string>
     <string id="ui_uip_protection_outfit"><text>Kombinezon</text></string>
     <string id="ui_uip_protection_helmet"><text>Hełm</text></string>
     <string id="ui_uip_protection_artefacts"><text>Artefakty na pasie</text></string>
@@ -16,4 +16,12 @@
     <string id="ui_uip_damage_radiation">
         <text>Ostatnie trafienie: dawka radiacji</text>
     </string>
+    <string id="ui_uip_protection_active"><text>ODDZIAŁYWANIE</text></string>
+    <string id="ui_uip_protection_effective"><text>Efektywny próg</text></string>
+    <string id="ui_uip_protection_temporary"><text>Efekt czasowy</text></string>
+    <string id="ui_uip_protection_artifact_effect"><text>Wpływ artefaktów</text></string>
+    <string id="ui_uip_protection_after_threshold"><text>Po przekroczeniu progu</text></string>
+    <string id="ui_uip_protection_received"><text>Otrzymywane oddziaływanie</text></string>
+    <string id="ui_uip_protection_no_threshold"><text>Brak</text></string>
+    <string id="ui_uip_protection_effective_light_burn"><text>Próg dla light_burn</text></string>
 </string_table>

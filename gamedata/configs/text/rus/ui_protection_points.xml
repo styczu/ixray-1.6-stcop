@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <string_table>
     <string id="ui_uip_unit_protection"><text>очк.</text></string>
-    <string id="ui_uip_protection_total"><text>Всего</text></string>
+    <string id="ui_uip_protection_total"><text>Порог защиты</text></string>
     <string id="ui_uip_protection_outfit"><text>Костюм</text></string>
     <string id="ui_uip_protection_helmet"><text>Шлем</text></string>
     <string id="ui_uip_protection_artefacts"><text>Артефакты на поясе</text></string>
@@ -16,4 +16,12 @@
     <string id="ui_uip_damage_radiation">
         <text>Последний удар: доза радиации</text>
     </string>
+    <string id="ui_uip_protection_active"><text>ВОЗДЕЙСТВИЕ</text></string>
+    <string id="ui_uip_protection_effective"><text>Эффективный порог</text></string>
+    <string id="ui_uip_protection_temporary"><text>Временный эффект</text></string>
+    <string id="ui_uip_protection_artifact_effect"><text>Влияние артефактов</text></string>
+    <string id="ui_uip_protection_after_threshold"><text>После превышения порога</text></string>
+    <string id="ui_uip_protection_received"><text>Получаемое воздействие</text></string>
+    <string id="ui_uip_protection_no_threshold"><text>Нет</text></string>
+    <string id="ui_uip_protection_effective_light_burn"><text>Порог для light_burn</text></string>
 </string_table>

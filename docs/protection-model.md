@@ -1,3 +1,9 @@
+> Aktualizacja 13.09.2026: nowe tooltipy rozdzielają próg pancerza, artefakty,
+> protection boostery i mnożnik odporności postaci. Bieżąca specyfikacja:
+> [Tooltipy ochron środowiskowych](environmental-protection-tooltips.md).
+> Dalszy opis obejmuje też wcześniejsze etapy panelu; nowe tooltipy nie sumują
+> surowych współczynników artefaktów z progiem pancerza.
+
 # Punkty ochrony środowiskowej
 
 Poprawka prezentacji z 11.09.2026, oparta na `2b5637188`.
@@ -21,19 +27,39 @@ Monolit ma o 53.85% większą ochronę termiczną, a w tym przykładzie pozostaw
 połowę obrażeń Świtu. Czas życia zależy dodatkowo od częstotliwości i typu
 trafień, stanu sprzętu, regeneracji oraz modyfikatorów postaci.
 
-## Mechanika pozostaje bez zmian względem 2b5637188
+## Mechanika po przywróceniu wzoru IX-Ray — 13.09.2026
 
-Dla burn/light_burn/shock/chemical_burn/radiation/telepatic:
+Wycofano środowiskową ścieżkę absolutnego odejmowania wprowadzoną przez
+`2b5637188`. `CActor::HitArtefactsOnBelt` ponownie używa wzoru z `c2e7fc6f3`
+(9.09.2025) dla wszystkich typów obrażeń, w tym burn, light_burn, shock,
+chemical_burn, radiation i telepatic. Wybór dotyczy typu trafienia, nie źródła.
 
-- artefakty odejmują sumę `immunity * condition`;
-- kombinezon i hełm odejmują `GetDefHitTypeProtection(type) * 0.1`;
-- `GetDefHitTypeProtection` zawiera już stan przedmiotu;
-- kolejne etapy obrażeń ograniczają wynik od dołu do zera.
+1. Sumowane są `immunity * condition` artefaktów na pasie.
+2. Zerowa suma pozostawia siłę trafienia bez zmian. Pozostałe sumy są
+   ograniczane do przedziału [-0.99, 0.99].
+3. Dla S > 0 siła jest mnożona przez `1 - 1.5 * 0.9^(4/S)`;
+   dla S < 0 przez `1 + 1.5 * 0.9^(4/abs(S))`.
+4. Następnie kombinezon i hełm odejmują dla typów środowiskowych
+   `GetDefHitTypeProtection(type) * 0.1`, ograniczając wynik od dołu do zera.
+   Getter uwzględnia już stan sprzętu.
+5. Dalej działają odpowiednie boostery, mnożniki odporności postaci i skutku
+   trafienia. Radiacja zwiększa skażenie, zamiast od razu odejmować zdrowie.
 
-Poprzednia zmiana 2b5637188 wprowadziła absolutne odejmowanie przez artefakty.
-Ta poprawka go zachowuje. Nie zmienia konfiguracji wyposażenia ani anomalii.
-Sprawny Monolit odejmuje termicznie 0.01, Świt 0.0065, Kula ognista 0.04.
-Kula wnosi więc czterokrotność ochrony tego kombinezonu.
+Przykład: Kula ognista z S=0.04 pozostawia około 0.199992 z trafienia 0.2;
+sprawny Monolit z burn_protection=0.1 odejmuje następnie 0.01. Artefakt nie
+odejmuje już stałego 0.04. Ochrona pancerza jest progiem pochłaniania,
+natomiast odporność postaci (`burn_immunity`) jest późniejszym mnożnikiem.
+Skrypt OnBeforeHit może dodatkowo zmienić trafienie między tymi etapami.
+
+Nie zmieniono parametrów artefaktów, konfiguracji anomalii, zużycia ani
+interfejsu. Dostosowanie parametrów artefaktów jest osobnym przyszłym krokiem.
+
+**Ograniczenie obecnego panelu:** nadal sumuje surowe współczynniki artefaktów
+z absolutną ochroną sprzętu. Po przywróceniu wzoru te wielkości mają różne
+znaczenie: suma punktów nie jest wspólnym progiem pochłaniania i nie pozwala
+porównać ochrony z siłą źródła. Poniższe liczby UI opisują zachowane wskazania,
+nie absorpcję mechaniczną. Odczyt naliczonych skutków trafienia nadal obserwuje
+rzeczywiste rozliczenie i uwzględnia przywrócony wzór.
 
 Aktywny mod ixray-t-anomaly ustawia dla rodziny zone_mine_thermal_* dodatkowe
 trafienia o mocy 0.008 i blowout_time 7000 ms (ponadto awaking_time 100 ms,
@@ -44,7 +70,10 @@ ustalić dokładnego wariantu strefy ani wyprowadzić czasów 5/10 sekund.
 
 ## Nowa skala
 
-`punkty = ochrona_absolutna / zone_max_power * 1000`.
+`punkty = suma_wskazywana_przez_UI / zone_max_power * 1000`.
+
+Dla samego pancerza suma jest ochroną absolutną; przy artefaktach zawiera
+również ich surowe współczynniki, zgodnie z ograniczeniem opisanym powyżej.
 
 `DisplayRatio` zwraca punkty / 100. Jest funkcją wyłącznie prezentacyjną;
 oryginalna `Ratio` zachowuje dotychczasowe znaczenie. Mnożnik 10 względem
@@ -107,7 +136,7 @@ warstw używało tego samego stanu wyposażenia.
 
 Odczyt jest obserwacją trafień, nie prognozą pobliskiej anomalii: zaczyna się
 przy pierwszym trafieniu danego typu, także całkowicie pochłoniętym.
-CActor::Hit rejestruje HDS.damage() i typ przed odjęciem ochrony artefaktów,
+CActor::Hit rejestruje HDS.damage() i typ przed zastosowaniem ochrony artefaktów,
 pancerza i innymi modyfikatorami. Nie korzysta z wygaszanego maksimum
 pobliskich stref na HUD-zie. Uwzględnia wszystkie źródła zadające dany typ
 trafienia, także skrypty; burn i light_burn mają wspólny kanał termiczny.
@@ -163,3 +192,22 @@ pozostają do wykonania. Silnik i dodatek należy wdrażać razem.
 `python3 tests/condition-ui/test_environmental_damage.py` sprawdza produkcyjne
 rozliczenie obrażeń i jego obserwator, niezależne kanały, zero po pochłonięciu,
 GodMode, leki, mnożniki, regenerację w akumulatorach, pauzę i wygaśnięcie.
+
+Weryfikacja przywrócenia z 13.09.2026 obejmuje wzór wykładniczy dla sześciu
+typów środowiskowych, wartości dodatnie i ujemne, limit 0.99, sumowanie pasa,
+stan artefaktów oraz kolejność: mnożnik artefaktów, potem odejmowanie pancerza.
+Testy UI zachowują dotychczasowe wskazania; nie potwierdzają ich równoważności
+z progiem pochłaniania po zmianie mechaniki.
+
+`ASAN_OPTIONS=detect_leaks=0 python3 tests/condition-ui/test_artefact_damage.py`
+przechodzi 43219 sprawdzeń produkcyjnych funkcji artefaktów, kombinezonu i hełmu
+oraz kontroli kolejności etapów. `test_environmental_damage.py` przechodzi
+25 sprawdzeń i asercje historii. Funkcja artefaktów jest identyczna z wersją
+`1bfd68afe` sprzed lokalnej poprawki, z pominięciem białych znaków.
+
+Szerszy `test_protection.py` obecnie nie kompiluje atrap UI po późniejszych
+zmianach tooltipów (m.in. FormatProtectionPointsPlain, GetMaxBoneArmor,
+GetEnvironmentalDamageRate). Ten sam problem odtworzono na kopii testu
+sprzed przywrócenia wzoru. Oczekiwania mechaniki w nim zaktualizowano, ale
+nie zgłaszamy całego zestawu UI jako zaliczonego. Weryfikacja funkcji nie
+zastępuje kompilacji i instalacji nowego silnika Windows ani próby w grze.

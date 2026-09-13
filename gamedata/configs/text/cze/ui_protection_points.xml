@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="windows-1250"?>
 <string_table>
     <string id="ui_uip_unit_protection"><text>b.</text></string>
-    <string id="ui_uip_protection_total"><text>Celkem</text></string>
+    <string id="ui_uip_protection_total"><text>Práh ochrany</text></string>
     <string id="ui_uip_protection_outfit"><text>Oblek</text></string>
     <string id="ui_uip_protection_helmet"><text>Helma</text></string>
     <string id="ui_uip_protection_artefacts"><text>Artefakty na opasku</text></string>
@@ -16,4 +16,12 @@
     <string id="ui_uip_damage_radiation">
         <text>Poslední zásah: dávka radiace</text>
     </string>
+    <string id="ui_uip_protection_active"><text>PŮSOBENÍ</text></string>
+    <string id="ui_uip_protection_effective"><text>Efektivní práh</text></string>
+    <string id="ui_uip_protection_temporary"><text>Dočasný účinek</text></string>
+    <string id="ui_uip_protection_artifact_effect"><text>Vliv artefaktů</text></string>
+    <string id="ui_uip_protection_after_threshold"><text>Po překročení prahu</text></string>
+    <string id="ui_uip_protection_received"><text>Přijaté působení</text></string>
+    <string id="ui_uip_protection_no_threshold"><text>Žádný</text></string>
+    <string id="ui_uip_protection_effective_light_burn"><text>Práh pro light_burn</text></string>
 </string_table>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <string_table>
     <string id="ui_uip_unit_protection"><text>pt</text></string>
-    <string id="ui_uip_protection_total"><text>Total</text></string>
+    <string id="ui_uip_protection_total"><text>Protection threshold</text></string>
     <string id="ui_uip_protection_outfit"><text>Outfit</text></string>
     <string id="ui_uip_protection_helmet"><text>Helmet</text></string>
     <string id="ui_uip_protection_artefacts"><text>Belt artefacts</text></string>
@@ -16,4 +16,12 @@
     <string id="ui_uip_damage_radiation">
         <text>Last hit: radiation dose</text>
     </string>
+    <string id="ui_uip_protection_active"><text>EXPOSURE</text></string>
+    <string id="ui_uip_protection_effective"><text>Effective threshold</text></string>
+    <string id="ui_uip_protection_temporary"><text>Temporary effect</text></string>
+    <string id="ui_uip_protection_artifact_effect"><text>Artefact effect</text></string>
+    <string id="ui_uip_protection_after_threshold"><text>Above the threshold</text></string>
+    <string id="ui_uip_protection_received"><text>Received effect</text></string>
+    <string id="ui_uip_protection_no_threshold"><text>None</text></string>
+    <string id="ui_uip_protection_effective_light_burn"><text>light_burn threshold</text></string>
 </string_table>

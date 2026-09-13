@@ -160,6 +160,10 @@ public:
 
 	IC float				GetBoostRadiationImmunity() const {return m_fBoostRadiationImmunity;};
 
+    // Read-only UI access to the exact fields used by ConditionHit.
+    float GetEnvironmentalProtectionBoost(ALife::EHitType hit_type) const;
+    float GetEnvironmentalHitMultiplier(ALife::EHitType hit_type) const;
+
 	typedef					xr_map<EBoostParams, SBooster> BOOSTER_MAP;
 public:
 	PLAYER_ADDICTION_BASE(Satiety);
