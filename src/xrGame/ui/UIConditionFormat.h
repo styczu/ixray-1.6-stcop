@@ -44,10 +44,10 @@ namespace ConditionUi
         xr_strconcat(out, number, g_pStringTable->translate("ui_uip_unit_regeneration").c_str());
     }
 
-    inline void FormatProtectionPoints(string64& out, float ratio, bool showSign = true)
+    inline void FormatProtectionPoints(string64& out, float ratio, bool showSign = true, bool fixedDecimals = false)
     {
         string32 number;
-        FormatNumber(number, ratio * 100.0f, DecimalSeparator(), showSign);
+        FormatNumber(number, ratio * 100.0f, DecimalSeparator(), showSign, 2, fixedDecimals);
         const shared_str unit = g_pStringTable->translate("ui_uip_unit_protection");
         const bool translated = unit.size() && xr_strcmp(unit.c_str(), "ui_uip_unit_protection") != 0;
         xr_strconcat(out, number, " ", translated ? unit.c_str() : "pt");

@@ -565,7 +565,6 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
         const float flatBoost = actor->conditions().GetEnvironmentalProtectionBoost(type);
         const float artifactMultiplier = actor->HitArtefactsOnBelt(1.0f, type);
         const auto effective = Protection::EffectiveThreshold(outfitThreshold, helmetThreshold, flatBoost, artifactMultiplier);
-        const float postMultiplier = actor->conditions().GetEnvironmentalHitMultiplier(type);
         const auto exposure = actor->GetEnvironmentalExposure(type);
         // The source layer and panel share the same raw-hit scale as the effective threshold.
         m_state[state]->set_environmental_exposure(type, Protection::DisplayRatio(exposure.power, maximum),
@@ -579,25 +578,22 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
             hint += ". . . . . . . . . . . . . .";
             hint += kBreak;
         };
-        // The panel tooltip uses a monospaced font and single-byte game encodings.
-        // Pad visible text only, not color tags. Long labels/names wrap normally.
-        const auto line = [&](LPCSTR key, LPCSTR value, bool indent)
+        const auto line = [&](LPCSTR key, LPCSTR value, bool component)
         {
-            xr_string label = indent ? "  " : "";
-            label += g_pStringTable->translate(key).c_str();
-            label += ":";
-            const size_t occupied = label.size() + xr_strlen(value);
             hint += kBreak;
-            hint += "%c[255,170,170,170]";
-            hint += label;
-            hint.append(occupied < 42 ? 42 - occupied : 1, ' ');
-            hint += "%c[255,224,230,234]";
+            hint += component ? kColSep : kColLabel;
+            if (component)
+                hint += "  ";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": ";
+            if (!component)
+                hint += kColTitle;
             hint += value;
         };
         const auto pointsLine = [&](LPCSTR key, float power, bool indent = false)
         {
             string64 value;
-            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(power, maximum), false);
+            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(power, maximum), false, true);
             line(key, value, indent);
         };
         const auto thresholdLine = [&](LPCSTR key, const Protection::ThresholdReading& threshold)
@@ -611,7 +607,7 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
         {
             string32 number;
             string64 value;
-            ConditionUi::FormatNumber(number, percent, ConditionUi::DecimalSeparator(), false);
+            ConditionUi::FormatDetailNumber(number, percent, ConditionUi::DecimalSeparator(), false);
             xr_strconcat(value, number, "%");
             line(key, value, indent);
         };
@@ -619,7 +615,7 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
         {
             string32 number;
             string64 value;
-            ConditionUi::FormatNumber(number, amount, ConditionUi::DecimalSeparator(), false);
+            ConditionUi::FormatDetailNumber(number, amount, ConditionUi::DecimalSeparator(), false);
             xr_strconcat(value, number, " ", g_pStringTable->translate(unitKey).c_str());
             line(key, value, false);
         };
@@ -656,39 +652,24 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
                 if (artefact && artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() != 0.0f)
                 {
                     hint += kBreak;
-                    hint += "%c[255,170,170,170]  ";
+                    hint += kColSep;
+                    hint += "  ";
                     hint += artefact->NameItem();
                 }
             }
         }
 
-        hint += kBreak;
-        separator();
-        hint += kColTitle;
-        hint += g_pStringTable->translate("ui_uip_protection_after_threshold").c_str();
-        hint += ":";
-        percentLine("ui_uip_protection_received", postMultiplier * 100.0f, true);
-
-        // Same source windows, conditional visibility and observed resource effects as before.
-        if (exposure.current > 0.0f || exposure.power > 0.0f)
+        // Same 750 ms peak as the source bar: do not flash zero between pulses.
+        if (exposure.power > 0.0f)
         {
             hint += kBreak;
             separator();
-            hint += kColTitle;
-            hint += g_pStringTable->translate("ui_uip_protection_active").c_str();
-            pointsLine("ui_uip_protection_current", exposure.current);
-            pointsLine("ui_uip_protection_peak", exposure.power);
+            pointsLine("ui_uip_protection_source", exposure.power);
+            const auto damage = actor->conditions().GetEnvironmentalDamage(type);
             if (type == ALife::eHitTypeRadiation)
-            {
-                const float rad = actor->conditions().GetRadiation() * ConditionUi::RadiationScale;
-                valueLine("ui_uip_protection_contamination", rad, "ui_uip_unit_rad");
-            }
+                valueLine("ui_uip_protection_received_dose", damage.radiation * ConditionUi::RadiationScale, "ui_uip_unit_rad");
             else
-            {
-                const auto rate = actor->conditions().GetEnvironmentalDamageRate(type);
-                const float dmg = (type == ALife::eHitTypeTelepatic ? rate.psy : rate.health) * 100.0f;
-                valueLine("ui_uip_protection_damage", dmg, "ui_uip_unit_percent_s");
-            }
+                percentLine("ui_uip_protection_damage", (type == ALife::eHitTypeTelepatic ? damage.psy : damage.health) * 100.0f, false);
         }
         m_state[state]->set_hint_text(hint.c_str());
     };
@@ -768,7 +749,7 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
         auto ptsLine = [&](LPCSTR key, float ratio, LPCSTR labelCol, LPCSTR valueCol, bool indent)
         {
             string64 v;
-            ConditionUi::FormatProtectionPoints(v, ratio, false);     // "X pkt"
+            ConditionUi::FormatProtectionPoints(v, ratio, false, true);     // "X pkt"
             hint += kBreak;
             hint += labelCol;
             if (indent)
@@ -782,15 +763,15 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
         ptsLine("ui_uip_prot_effective_threshold", effective, kColLabel, kColTitle, false);
         ptsLine("ui_uip_prot_threshold", threshold, kColLabel, kColTitle, false);
         if (outfit && outfitProt > 0.0f)
-            ptsLine("ui_uip_protection_outfit", outfitProt, kColSep, kColLabel, true);
+            ptsLine("ui_uip_protection_outfit", outfitProt, kColSep, kColSep, true);
         if (showHelmet && helmetProt > 0.0f)
-            ptsLine("ui_uip_protection_helmet", helmetProt, kColSep, kColLabel, true);
+            ptsLine("ui_uip_protection_helmet", helmetProt, kColSep, kColSep, true);
 
         // Wplyw artefaktow - tylko gdy jakis artefakt na pasie dotyczy tego typu.
         if (f != 0.0f)
         {
             string64 pct;
-            ConditionUi::FormatNumber(pct, f * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+            ConditionUi::FormatDetailNumber(pct, f * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
             hint += kBreak;
             hint += kColLabel;
             hint += g_pStringTable->translate("ui_uip_prot_artefact_influence").c_str();
@@ -808,7 +789,7 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
                 if (imm == 0.0f)
                     continue;
                 string64 iv;
-                ConditionUi::FormatNumber(iv, imm * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+                ConditionUi::FormatDetailNumber(iv, imm * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
                 hint += kBreak;
                 hint += kColSep;
                 hint += "  ";
@@ -886,7 +867,7 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
                 auto pctLine = [&](LPCSTR key, float frac, LPCSTR labelCol, LPCSTR valueCol, bool indent)
                 {
                     string64 v;
-                    ConditionUi::FormatNumber(v, frac * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+                    ConditionUi::FormatDetailNumber(v, frac * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
                     hint += kBreak;
                     hint += labelCol;
                     if (indent)
@@ -900,8 +881,8 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
 
                 // Po zatrzymaniu pocisku
                 pctLine("ui_uip_prot_effective", effStopped, kColLabel, kColTitle, false);
-                pctLine("ui_uip_prot_armor_absorption", absorb, kColSep, kColLabel, true);
-                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColSep, kColLabel, true);
+                pctLine("ui_uip_prot_armor_absorption", absorb, kColSep, kColSep, true);
+                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColSep, kColSep, true);
                 hint += kBreak;
                 hint += kColLabel;
                 hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
@@ -917,7 +898,7 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
                 hint += kColTitle;
                 hint += g_pStringTable->translate("ui_uip_prot_penetration_header").c_str();
                 pctLine("ui_uip_prot_effective", redPen, kColLabel, kColTitle, false);
-                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColSep, kColLabel, true);
+                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColSep, kColSep, true);
                 hint += kBreak;
                 hint += kColLabel;
                 hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();

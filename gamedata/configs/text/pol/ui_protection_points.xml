@@ -6,7 +6,7 @@
     <string id="ui_uip_protection_helmet"><text>He³m</text></string>
     <string id="ui_uip_protection_artefacts"><text>Artefakty na pasie</text></string>
     <string id="ui_uip_protection_description"><text>Punkty oznaczaj¹ si³ê poch³anianego trafienia, nie procent redukcji obra¿eñ. Pe³ny pasek to 100 pkt; wynik mo¿e byæ wy¿szy. Cienki pasek pokazuje szczyt si³y Ÿród³a przed ochron¹ z ostatnich 0,75 s. Skutek ostatniego trafienia po ochronie i modyfikatorach jest widoczny przez 3 s; nie obejmuje regeneracji.</text></string>
-    <string id="ui_uip_protection_source"><text>Si³a Ÿród³a</text></string>
+    <string id="ui_uip_protection_source"><text>Si³a oddzia³ywania</text></string>
     <string id="ui_uip_damage_health">
         <text>Ostatnie trafienie: obra¿enia zdrowia</text>
     </string>
@@ -24,4 +24,6 @@
     <string id="ui_uip_protection_received"><text>Otrzymywane oddzia³ywanie</text></string>
     <string id="ui_uip_protection_no_threshold"><text>Brak</text></string>
     <string id="ui_uip_protection_effective_light_burn"><text>Próg dla light_burn</text></string>
+    <string id="ui_uip_protection_damage"><text>Otrzymywane obra¿enia</text></string>
+    <string id="ui_uip_protection_received_dose"><text>Otrzymana dawka</text></string>
 </string_table>

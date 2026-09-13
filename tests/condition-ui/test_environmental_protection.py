@@ -97,7 +97,7 @@ struct CEntityCondition{
 };
 struct CActorCondition:CEntityCondition{
  Protection::DamageHistory m_environmental_damage;
- Protection::DamageRate GetEnvironmentalDamageRate(ALife::EHitType)const;
+ Protection::DamageRate GetEnvironmentalDamageRate(ALife::EHitType)const;Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType)const;
  float radiation=.123f;float GetRadiation(){return radiation;}
  float GetZoneMaxPower(ALife::EHitType t){return t==ALife::eHitTypeShock?.8f:t==ALife::eHitTypeRadiation?.03f:t==ALife::eHitTypeTelepatic?.1f:.2f;}
 };
@@ -112,7 +112,7 @@ enum EStateType{stt_fire,stt_shock,stt_acid,stt_radia,stt_psi,stt_count};
 struct State{std::string hint;float peak=0,protection=0,opacity=0;
  void set_hint_text(const char*s){hint=s;}void set_environmental_exposure(ALife::EHitType,float p,float t,float a){peak=p;protection=t;opacity=a;}};
 struct ui_actor_state_wnd{State*m_state[stt_count]={};void UpdateProtectionHints(CActor*);};
-const char*kColTitle="%c[255,224,230,234]",*kColSep="%c[255,95,104,110]",*kBreak="\\n";
+const char*kColTitle="%c[255,224,230,234]",*kColSep="%c[255,95,104,110]",*kColLabel="%c[255,176,182,186]",*kBreak="\\n";
 '''
 for file, signature in [
  ('Actor.cpp','float CActor::HitArtefactsOnBelt'),('Actor.cpp','float CActor::GetProtection_ArtefactsOnBelt'),
@@ -122,6 +122,7 @@ for file, signature in [
  ('EntityCondition.cpp','float CEntityCondition::HitOutfitEffect'),('EntityCondition.cpp','CWound* CEntityCondition::ConditionHit'),
  ('EntityCondition.cpp','float CEntityCondition::GetEnvironmentalProtectionBoost'),('EntityCondition.cpp','float CEntityCondition::GetEnvironmentalHitMultiplier'),
  ('ActorCondition.cpp','Protection::DamageRate CActorCondition::GetEnvironmentalDamageRate'),
+ ('ActorCondition.cpp','Protection::DamageReading CActorCondition::GetEnvironmentalDamage'),
  ('ui/UIActorStateInfo.cpp','void ui_actor_state_wnd::UpdateProtectionHints'),
 ]:cpp+=function(file,signature)
 cpp+='CActor* expressionActor=nullptr;CActor* GetActor(){return expressionActor;}\n'
@@ -190,29 +191,30 @@ cpp+=r'''
  art.name="Artefakt testowy";second.name="SECOND";irrelevant.name="IRRELEVANT";spent.name="SPENT";spent.condition=0;
  spent.m_ArtefactHitImmunities.v[burn]=1;irrelevant.m_ArtefactHitImmunities.v[chem]=1;
  actor.inv.m_belt.clear();panel.UpdateProtectionHints(&actor);
- textEq(row(states[stt_fire],"ui_uip_protection_effective"),"1000 pkt");
- textEq(row(states[stt_fire],"ui_uip_protection_total"),"1000 pkt");
- textEq(row(states[stt_fire],"ui_uip_protection_received"),"70%");
+ textEq(row(states[stt_fire],"ui_uip_protection_effective"),"1000,00 pkt");
+ textEq(row(states[stt_fire],"ui_uip_protection_total"),"1000,00 pkt");
+ has(states[stt_fire],"ui_uip_protection_received",false);has(states[stt_fire],"ui_uip_protection_after_threshold",false);
  has(states[stt_fire],"ui_uip_protection_artifact_effect",false);has(states[stt_fire],"ui_uip_protection_temporary",false);has(states[stt_fire],"ui_uip_protection_active",false);
  sample("burn-no-artifacts",states[stt_fire]);
  art.m_ArtefactHitImmunities.v[burn]=art.m_ArtefactHitImmunities.v[light]=coefficient;actor.inv.m_belt={&art,&irrelevant,&spent,&unrelated};
  panel.UpdateProtectionHints(&actor);
  textEq(row(states[stt_fire],"ui_uip_protection_effective"),"1333,33 pkt");
- textEq(row(states[stt_fire],"ui_uip_protection_artifact_effect"),"25%");
- textEq(row(states[stt_fire],"ui_uip_protection_total"),"1000 pkt");
+ textEq(row(states[stt_fire],"ui_uip_protection_artifact_effect"),"25,00%");
+ textEq(row(states[stt_fire],"ui_uip_protection_total"),"1000,00 pkt");
  assert(states[stt_fire].hint.find("Artefakt testowy")!=std::string::npos&&states[stt_fire].hint.find("IRRELEVANT")==std::string::npos&&states[stt_fire].hint.find("SPENT")==std::string::npos);
  actor.m_environmental_exposure.Record(burn,.65f,500);Device.dwTimeGlobal=700;actor.m_environmental_exposure.Record(burn,.4f,700);
  actor.cond.m_environmental_damage.Record(burn,0,0,0,200);actor.cond.m_environmental_damage.Record(burn,.035f,0,0,700);panel.UpdateProtectionHints(&actor);
- textEq(row(states[stt_fire],"ui_uip_protection_current"),"2000 pkt");textEq(row(states[stt_fire],"ui_uip_protection_peak"),"3250 pkt");
+ textEq(row(states[stt_fire],"ui_uip_protection_source"),"3250,00 pkt");textEq(row(states[stt_fire],"ui_uip_protection_damage"),"3,50%");
+ has(states[stt_fire],"ui_uip_protection_current",false);has(states[stt_fire],"ui_uip_protection_peak",false);has(states[stt_fire],"ui_uip_protection_active",false);
  sample("burn-artifact",states[stt_fire]);
  art.m_ArtefactHitImmunities.v[chem]=coefficient;actor.inv.m_belt={&art};actor.cond.m_fBoostChemicalBurnProtection=.05f;
  actor.m_environmental_exposure.Record(chem,.4f,700);actor.cond.m_environmental_damage.Record(chem,0,0,0,200);actor.cond.m_environmental_damage.Record(chem,.0175f,0,0,700);panel.UpdateProtectionHints(&actor);
- textEq(row(states[stt_acid],"ui_uip_protection_effective"),"1666,67 pkt");textEq(row(states[stt_acid],"ui_uip_protection_temporary"),"250 pkt");
+ textEq(row(states[stt_acid],"ui_uip_protection_effective"),"1666,67 pkt");textEq(row(states[stt_acid],"ui_uip_protection_temporary"),"250,00 pkt");
  sample("chemical-booster",states[stt_acid]);
  // Difficulty/immune boosters alter D only. No clamping, even when D <= 0.
- actor.cond.m_fBoostBurnImmunity=.2f;panel.UpdateProtectionHints(&actor);textEq(row(states[stt_fire],"ui_uip_protection_received"),"50%");textEq(row(states[stt_fire],"ui_uip_protection_effective"),"1333,33 pkt");
- actor.cond.m_fBoostBurnImmunity=1;panel.UpdateProtectionHints(&actor);textEq(row(states[stt_fire],"ui_uip_protection_received"),"-30%");
- actor.cond.m_fBoostBurnImmunity=.7f;panel.UpdateProtectionHints(&actor);textEq(row(states[stt_fire],"ui_uip_protection_received"),"0%");
+ actor.cond.m_fBoostBurnImmunity=.2f;panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_received",false);textEq(row(states[stt_fire],"ui_uip_protection_effective"),"1333,33 pkt");
+ actor.cond.m_fBoostBurnImmunity=1;panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_received",false);
+ actor.cond.m_fBoostBurnImmunity=.7f;panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_received",false);
  art.m_ArtefactHitImmunities.v[burn]=-.1f;panel.UpdateProtectionHints(&actor);textEq(row(states[stt_fire],"ui_uip_protection_artifact_effect"),"-2,22%");
  // Cancellation and tiny positive coefficients that round to A==1 hide the entire section.
  second.m_ArtefactHitImmunities.v[burn]=.1f;actor.inv.m_belt={&art,&second};panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_artifact_effect",false);
@@ -226,11 +228,11 @@ cpp+=r'''
  outfit.m_HitTypeProtection[light]=.9f;panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_effective_light_burn",true);
  // Preserve actual radiation/psy observation units and hide inactive history at expiry.
  actor.m_environmental_exposure.Record(rad,.003f,700);actor.m_environmental_exposure.Record(psi,.1f,700);
- actor.cond.m_environmental_damage.Record(psi,.01f,.02f,0,200);panel.UpdateProtectionHints(&actor);
- has(states[stt_radia],"ui_uip_protection_contamination",true);has(states[stt_radia],"ui_uip_protection_damage",false);
- textEq(row(states[stt_radia],"ui_uip_protection_contamination"),"12,3 rad");
+ actor.cond.m_environmental_damage.Record(psi,.01f,.02f,0,700);actor.cond.m_environmental_damage.Record(rad,0,0,.003f,700);panel.UpdateProtectionHints(&actor);
+ has(states[stt_radia],"ui_uip_protection_contamination",false);has(states[stt_radia],"ui_uip_protection_damage",false);
+ textEq(row(states[stt_radia],"ui_uip_protection_received_dose"),"0,30 rad");textEq(row(states[stt_psi],"ui_uip_protection_damage"),"2,00%");
  for(int i=0;i<5;++i)assert(states[i].hint.find("ui_uip_")==std::string::npos);
- Device.dwTimeGlobal=1450;panel.UpdateProtectionHints(&actor);for(auto&s:states)has(s,"ui_uip_protection_active",false);
+ Device.dwTimeGlobal=1450;panel.UpdateProtectionHints(&actor);for(auto&s:states){has(s,"ui_uip_protection_source",false);has(s,"ui_uip_protection_damage",false);}
  // Invert each clamp, including nonstandard negative layers; do not invent a zero threshold.
  assert(!Protection::EffectiveThreshold(.2f,0,-.01f,1).attainable);
  assert(!Protection::EffectiveThreshold(.2f,-.01f,0,1).attainable);
@@ -247,7 +249,7 @@ cpp+=r'''
  eq(actor.GetEquipmentProtection(burn),.01f);
  eq(GetEquipmentBurnProtectionRatio()*100,50);
  panel.UpdateProtectionHints(&actor);
- textEq(row(states[stt_fire],"ui_uip_protection_effective"),"50 pkt");
+ textEq(row(states[stt_fire],"ui_uip_protection_effective"),"50,00 pkt");
  eq(states[stt_fire].protection,GetEquipmentBurnProtectionRatio());
  actor.outfit=nullptr;eq(GetEquipmentBurnProtectionRatio(),0);
  art.m_ArtefactHitImmunities.v[burn]=coefficient;eq(GetEquipmentBurnProtectionRatio(),0);
@@ -260,6 +262,30 @@ cpp+=r'''
  actor.cond.m_fBoostChemicalBurnProtection=.05f;
  eq(GetEquipmentChemicalBurnProtectionRatio(),Protection::DisplayRatio(actor.GetEquipmentProtection(chem),.2f));
  actor.cond.m_fBoostChemicalBurnProtection=-.01f;eq(actor.GetEquipmentProtection(chem),0);
+ // Source and tooltip stay aligned throughout periodic hits, including gaps >150 ms.
+ actor.m_environmental_exposure.Reset();actor.cond.m_environmental_damage.Reset();
+ for(u32 time=2000;time<3250;time+=25){
+  Device.dwTimeGlobal=time;
+  if((time-2000)%250==0){actor.m_environmental_exposure.Record(burn,.00527f,time);actor.cond.m_environmental_damage.Record(burn,0,0,0,time);}
+  panel.UpdateProtectionHints(&actor);
+  textEq(row(states[stt_fire],"ui_uip_protection_source"),"26,35 pkt");
+  textEq(row(states[stt_fire],"ui_uip_protection_damage"),"0,00%");
+  eq(states[stt_fire].peak*100,26.35f);
+ }
+ Device.dwTimeGlobal=3749;panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_source",true);
+ Device.dwTimeGlobal=3750;panel.UpdateProtectionHints(&actor);has(states[stt_fire],"ui_uip_protection_source",false);
+ // Whole numbers, zeros and decimals in detailed tooltips keep two decimal places.
+ string64 fixed;
+ ConditionUi::FormatDetailNumber(fixed,25,',',false);textEq(fixed,"25,00");
+ ConditionUi::FormatDetailNumber(fixed,0,',',false);textEq(fixed,"0,00");
+ ConditionUi::FormatDetailNumber(fixed,-.00000001,',',false);textEq(fixed,"0,00");
+ ConditionUi::FormatDetailNumber(fixed,25.5,'.',true);textEq(fixed,"+25.50");
+ ConditionUi::FormatDetailNumber(fixed,.001,',',false);textEq(fixed,"<0,01");
+ ConditionUi::FormatNumber(fixed,25,',',false);textEq(fixed,"25");
+ // Components are fully dim, and labels no longer have column padding.
+ actor.helmet=&helmet;panel.UpdateProtectionHints(&actor);
+ assert(states[stt_fire].hint.find(std::string(kColSep)+"  "+table.translate("ui_uip_protection_helmet").s+": ")!=std::string::npos);
+ assert(states[stt_fire].hint.find("   ")==std::string::npos);
  // Removing a translated feature key is safe, as are absent widgets.
  panel.m_state[stt_fire]=nullptr;panel.UpdateProtectionHints(&actor);
  table.values.erase("ui_uip_protection_effective");panel.UpdateProtectionHints(&actor);
@@ -278,7 +304,7 @@ with tempfile.TemporaryDirectory(prefix='environmental-protection-') as tmp:
             (args.examples/(name+'.txt')).write_text(text.replace('\\n','\n')+'\n')
     print(output[output.rfind('END EXAMPLE')+len('END EXAMPLE'):].strip())
 
-required=['total','active','effective','temporary','artifact_effect','after_threshold','received','no_threshold','effective_light_burn']
+required=['total','effective','temporary','artifact_effect','no_threshold','effective_light_burn','source','damage','received_dose']
 for lang in ['pol','eng','cze','rus']:
     encoding='cp1251' if lang=='rus' else 'cp1250' if lang in ('pol','cze') else 'cp1252'
     mod=strings(args.mod_root/f'configs/text/{lang}/zz_uiparams_panel.xml',encoding)

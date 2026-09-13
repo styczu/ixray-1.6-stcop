@@ -1,3 +1,30 @@
+# Aktualny układ tooltipów ochrony — 13.09.2026
+
+Tooltipy środowiskowe pokazują tytuł, progi i składowe ochrony oraz wpływ
+artefaktów. Po separatorze, gdy historia źródła jest aktywna, są tylko:
+`Siła oddziaływania: X,XX pkt` i `Otrzymywane obrażenia: X,XX%`.
+Siła to ten sam szczyt z 750 ms co pasek. Nie ma wierszy Bieżące/Szczytowe,
+nagłówka ODDZIAŁYWANIE ani sekcji Po przekroczeniu progu.
+
+Obrażenia oznaczają naliczony skutek ostatniego trafienia, po ochronie,
+przed regeneracją i końcowym ograniczeniem zasobu. To nie jest DPS ani
+procent przepuszczanego trafienia. Dla psioniki pokazują ubytek psychiki;
+dla radiacji druga linia brzmi `Otrzymana dawka: X,XX rad` i pokazuje dawkę
+ostatniego trafienia zamiast całkowitego skażenia organizmu.
+Historia źródła i ostatnie trafienie mają niezależne okna: szczyt siły może
+pochodzić z wcześniejszego impulsu niż pokazane obrażenia. Sekcja znika
+po wygaśnięciu historii źródła (750 ms bez trafień).
+
+Nie ma wyrównywania do kolumn. Składowe mają krótkie wcięcie jak w tooltipie
+balistycznym i ciemniejszy kolor całego wiersza. Liczby w szczegółach ochrony
+środowiskowej, mechanicznej i balistycznej zachowują dwa miejsca dziesiętne,
+np. 25,00; bardzo małe niezerowe wartości nadal mają zapis <0,01.
+Główne liczby panelu oraz mechanika obrażeń nie zmieniają się.
+
+Poniżej dokumentacja modelu i historyczne przykłady wcześniejszego układu.
+
+---
+
 # Tooltipy ochron środowiskowych — 13.09.2026
 
 Zmiana informacyjna, przygotowana na lokalnym silniku z przywróconym wzorem IX-Ray

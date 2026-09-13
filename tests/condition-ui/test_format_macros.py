@@ -20,6 +20,10 @@ int main()
     assert(std::strcmp(number, "0") == 0);
     ConditionUi::FormatNumber(number, 10.2, '.', true);
     assert(std::strcmp(number, "+10.2") == 0);
+    ConditionUi::FormatDetailNumber(number, 25.0, ',', false);
+    assert(std::strcmp(number, "25,00") == 0);
+    ConditionUi::FormatDetailNumber(number, 0.0, ',', false);
+    assert(std::strcmp(number, "0,00") == 0);
     char small[8];
     ConditionUi::FormatNumber(small, 123456789.0, '.', true);
     assert(small[7] == '\0');

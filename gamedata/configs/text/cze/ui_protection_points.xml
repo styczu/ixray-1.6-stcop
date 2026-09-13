@@ -6,7 +6,7 @@
     <string id="ui_uip_protection_helmet"><text>Helma</text></string>
     <string id="ui_uip_protection_artefacts"><text>Artefakty na opasku</text></string>
     <string id="ui_uip_protection_description"><text>Body vyjadøují sílu pohlceného zásahu, ne procento snížení poškození. Plný ukazatel je 100 b.; hodnoty mohou být vyšší. Tenký ukazatel zobrazuje nejvyšší sílu zdroje pøed ochranou za posledních 0,75 s. Výsledek posledního zásahu po ochranì a modifikátorech je vidìt 3 s; nezahrnuje regeneraci.</text></string>
-    <string id="ui_uip_protection_source"><text>Síla zdroje</text></string>
+    <string id="ui_uip_protection_source"><text>Síla pùsobení</text></string>
     <string id="ui_uip_damage_health">
         <text>Poslední zásah: poškození zdraví</text>
     </string>
@@ -24,4 +24,6 @@
     <string id="ui_uip_protection_received"><text>Pøijaté pùsobení</text></string>
     <string id="ui_uip_protection_no_threshold"><text>Žádný</text></string>
     <string id="ui_uip_protection_effective_light_burn"><text>Práh pro light_burn</text></string>
+    <string id="ui_uip_protection_damage"><text>Obdržené poškození</text></string>
+    <string id="ui_uip_protection_received_dose"><text>Pøijatá dávka</text></string>
 </string_table>

@@ -24,4 +24,6 @@
     <string id="ui_uip_protection_received"><text>Received effect</text></string>
     <string id="ui_uip_protection_no_threshold"><text>None</text></string>
     <string id="ui_uip_protection_effective_light_burn"><text>light_burn threshold</text></string>
+    <string id="ui_uip_protection_damage"><text>Damage received</text></string>
+    <string id="ui_uip_protection_received_dose"><text>Received dose</text></string>
 </string_table>

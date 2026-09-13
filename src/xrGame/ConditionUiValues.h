@@ -46,18 +46,18 @@ namespace ConditionUi
     }
 
     template <size_t N>
-    void FormatNumber(char (&out)[N], double value, char decimalSeparator, bool showSign, int decimals = 2)
+    void FormatNumber(char (&out)[N], double value, char decimalSeparator, bool showSign, int decimals = 2, bool fixedDecimals = false)
     {
         const double magnitude = std::fabs(value);
         // Suppress floating-point cancellation noise, including negative zero.
         if (magnitude < 0.000001)
-            std::snprintf(out, N, "0");
+            std::snprintf(out, N, "%.*f", fixedDecimals ? decimals : 0, 0.0);
         else if (decimals == 2 && magnitude < 0.01)
             std::snprintf(out, N, "%s<0.01", value < 0 ? "-" : (showSign ? "+" : ""));
         else
         {
             std::snprintf(out, N, showSign ? "%+.*f" : "%.*f", decimals, value);
-            if (char* dot = std::strchr(out, '.'))
+            if (char* dot = fixedDecimals ? nullptr : std::strchr(out, '.'))
             {
                 char* end = out + std::strlen(out) - 1;
                 while (end > dot && *end == '0')
@@ -68,6 +68,13 @@ namespace ConditionUi
         }
         if (char* dot = std::strchr(out, '.'))
             *dot = decimalSeparator;
+    }
+
+    // Detailed tooltips keep their declared precision, including whole numbers.
+    template <size_t N>
+    void FormatDetailNumber(char (&out)[N], double value, char separator, bool showSign, int decimals = 2)
+    {
+        FormatNumber(out, value, separator, showSign, decimals, true);
     }
 
     // Actual, clamped resource changes; no duplicated list of radiation sources.
