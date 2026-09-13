@@ -166,6 +166,7 @@ namespace
 	static LPCSTR kColTitle = "%c[255,224,230,234]";
 	static LPCSTR kColSep   = "%c[255,96,104,108]";
 	static LPCSTR kColLabel = "%c[255,176,182,186]";
+	static LPCSTR kColComponent = "%c[255,154,160,164]";
 	static LPCSTR kColValue = "%c[255,232,178,84]";
 	static LPCSTR kColUnit  = "%c[255,132,140,144]";
 	static LPCSTR kColClass = "%c[255,200,208,212]";
@@ -581,7 +582,7 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
         const auto line = [&](LPCSTR key, LPCSTR value, bool component)
         {
             hint += kBreak;
-            hint += component ? kColSep : kColLabel;
+            hint += component ? kColComponent : kColLabel;
             if (component)
                 hint += "  ";
             hint += g_pStringTable->translate(key).c_str();
@@ -652,7 +653,7 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
                 if (artefact && artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() != 0.0f)
                 {
                     hint += kBreak;
-                    hint += kColSep;
+                    hint += kColComponent;
                     hint += "  ";
                     hint += artefact->NameItem();
                 }
@@ -763,9 +764,9 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
         ptsLine("ui_uip_prot_effective_threshold", effective, kColLabel, kColTitle, false);
         ptsLine("ui_uip_prot_threshold", threshold, kColLabel, kColTitle, false);
         if (outfit && outfitProt > 0.0f)
-            ptsLine("ui_uip_protection_outfit", outfitProt, kColSep, kColSep, true);
+            ptsLine("ui_uip_protection_outfit", outfitProt, kColComponent, kColComponent, true);
         if (showHelmet && helmetProt > 0.0f)
-            ptsLine("ui_uip_protection_helmet", helmetProt, kColSep, kColSep, true);
+            ptsLine("ui_uip_protection_helmet", helmetProt, kColComponent, kColComponent, true);
 
         // Wplyw artefaktow - tylko gdy jakis artefakt na pasie dotyczy tego typu.
         if (f != 0.0f)
@@ -791,11 +792,11 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
                 string64 iv;
                 ConditionUi::FormatDetailNumber(iv, imm * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
                 hint += kBreak;
-                hint += kColSep;
+                hint += kColComponent;
                 hint += "  ";
                 hint += beltItem->NameShort();
                 hint += ": ";
-                hint += kColLabel;
+                hint += kColComponent;
                 hint += iv;
                 hint += unitPct;
             }
@@ -881,8 +882,8 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
 
                 // Po zatrzymaniu pocisku
                 pctLine("ui_uip_prot_effective", effStopped, kColLabel, kColTitle, false);
-                pctLine("ui_uip_prot_armor_absorption", absorb, kColSep, kColSep, true);
-                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColSep, kColSep, true);
+                pctLine("ui_uip_prot_armor_absorption", absorb, kColComponent, kColComponent, true);
+                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColComponent, kColComponent, true);
                 hint += kBreak;
                 hint += kColLabel;
                 hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
@@ -898,7 +899,7 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
                 hint += kColTitle;
                 hint += g_pStringTable->translate("ui_uip_prot_penetration_header").c_str();
                 pctLine("ui_uip_prot_effective", redPen, kColLabel, kColTitle, false);
-                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColSep, kColSep, true);
+                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColComponent, kColComponent, true);
                 hint += kBreak;
                 hint += kColLabel;
                 hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();

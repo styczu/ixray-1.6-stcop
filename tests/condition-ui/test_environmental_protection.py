@@ -112,7 +112,7 @@ enum EStateType{stt_fire,stt_shock,stt_acid,stt_radia,stt_psi,stt_count};
 struct State{std::string hint;float peak=0,protection=0,opacity=0;
  void set_hint_text(const char*s){hint=s;}void set_environmental_exposure(ALife::EHitType,float p,float t,float a){peak=p;protection=t;opacity=a;}};
 struct ui_actor_state_wnd{State*m_state[stt_count]={};void UpdateProtectionHints(CActor*);};
-const char*kColTitle="%c[255,224,230,234]",*kColSep="%c[255,95,104,110]",*kColLabel="%c[255,176,182,186]",*kBreak="\\n";
+const char*kColTitle="%c[255,224,230,234]",*kColSep="%c[255,95,104,110]",*kColLabel="%c[255,176,182,186]",*kColComponent="%c[255,154,160,164]",*kBreak="\\n";
 '''
 for file, signature in [
  ('Actor.cpp','float CActor::HitArtefactsOnBelt'),('Actor.cpp','float CActor::GetProtection_ArtefactsOnBelt'),
@@ -282,9 +282,9 @@ cpp+=r'''
  ConditionUi::FormatDetailNumber(fixed,25.5,'.',true);textEq(fixed,"+25.50");
  ConditionUi::FormatDetailNumber(fixed,.001,',',false);textEq(fixed,"<0,01");
  ConditionUi::FormatNumber(fixed,25,',',false);textEq(fixed,"25");
- // Components are fully dim, and labels no longer have column padding.
+ // Components use their own readable secondary color, and labels no longer have column padding.
  actor.helmet=&helmet;panel.UpdateProtectionHints(&actor);
- assert(states[stt_fire].hint.find(std::string(kColSep)+"  "+table.translate("ui_uip_protection_helmet").s+": ")!=std::string::npos);
+ assert(states[stt_fire].hint.find(std::string(kColComponent)+"  "+table.translate("ui_uip_protection_helmet").s+": ")!=std::string::npos);
  assert(states[stt_fire].hint.find("   ")==std::string::npos);
  // Removing a translated feature key is safe, as are absent widgets.
  panel.m_state[stt_fire]=nullptr;panel.UpdateProtectionHints(&actor);
