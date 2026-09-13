@@ -2694,12 +2694,19 @@ Protection::ExposureReading CActor::GetEnvironmentalExposure(ALife::EHitType hit
 
 float CActor::GetEquipmentProtection(ALife::EHitType hit_type)
 {
-    float protection = GetProtection_ArtefactsOnBelt(hit_type);
-    if (CCustomOutfit* outfit = GetOutfit())
-        protection += Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(hit_type), hit_type);
-    if (CHelmet* helmet = GetHelmet())
-        protection += Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(hit_type), hit_type);
-    return protection;
+    const auto outfit = GetOutfit();
+    const auto helmet = GetHelmet();
+    const float outfitProtection = outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(hit_type), hit_type) : 0.0f;
+    const float helmetProtection = helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(hit_type), hit_type) : 0.0f;
+    if (Protection::IsZoneType(hit_type))
+    {
+        // The number, bar and overflow marker use the tooltip's raw-hit threshold.
+        // Artefacts multiply incoming hits; their raw coefficients are not armour.
+        const auto threshold = Protection::EffectiveThreshold(outfitProtection, helmetProtection,
+            conditions().GetEnvironmentalProtectionBoost(hit_type), HitArtefactsOnBelt(1.0f, hit_type));
+        return threshold.attainable ? threshold.power : 0.0f;
+    }
+    return GetProtection_ArtefactsOnBelt(hit_type) + outfitProtection + helmetProtection;
 }
 
 void	CActor::SetZoomRndSeed		(s32 Seed)

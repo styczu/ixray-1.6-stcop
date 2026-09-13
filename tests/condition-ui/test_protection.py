@@ -102,7 +102,7 @@ struct CCustomOutfit:CInventoryItem {float m_HitTypeProtection[ALife::eHitTypeMa
  float GetDefHitTypeProtection(ALife::EHitType);float HitThroughArmor(float,s16,float,bool&,ALife::EHitType);
  float GetBoneArmor(s16){return .2f;}void Hit(float,ALife::EHitType){} };
 struct CHelmet:CCustomOutfit {float GetDefHitTypeProtection(ALife::EHitType);float HitThroughArmor(float,s16,float,bool&,ALife::EHitType);};
-struct CActorCondition {Protection::DamageHistory m_environmental_damage;Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType)const;float m_zone_max_power[5]={.03f,.2f,.2f,.1f,.8f};float m_max_wound_protection=1;
+struct CActorCondition {float GetEnvironmentalProtectionBoost(ALife::EHitType)const{return 0;}Protection::DamageHistory m_environmental_damage;Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType)const;float m_zone_max_power[5]={.03f,.2f,.2f,.1f,.8f};float m_max_wound_protection=1;
  float GetZoneMaxPower(ALife::EInfluenceType)const;float GetZoneMaxPower(ALife::EHitType)const;float GetMaxFireWoundProtection(){return 1;}};
 struct Inventory {std::vector<PIItem>m_belt;};
 struct CActor {Protection::ExposureHistory m_environmental_exposure;
@@ -208,9 +208,9 @@ int main(){
    outfit.m_HitTypeProtection[t]=.3f;outfit.condition=.5f;helmet.m_HitTypeProtection[t]=.2f;helmet.condition=.25f;
    const float expectedAf=resistance*condition+.012f*.4f;
    const float expectedOutfit=.3f*.5f*.1f,expectedHelmet=.2f*.25f*.1f;
-   const float total=expectedAf+expectedOutfit+expectedHelmet;
+   const float total=(expectedOutfit+expectedHelmet)/expectedArtefactHit(1,expectedAf);
    eq(a.GetProtection_ArtefactsOnBelt(type),expectedAf,"condition-weighted belt sum");
-   eq(a.GetEquipmentProtection(type),total,"equipment sum; condition once");
+   eq(a.GetEquipmentProtection(type),total,"effective threshold; condition once");
    eq(ratios[t](),total/maximum*10,"XML delegate matches panel");
    for(float hit:{0.f,.001f,.02f,.2f,1.f,3.f}){
     bool wound=true;float afterAf=a.HitArtefactsOnBelt(hit,type);
@@ -318,9 +318,9 @@ int main(){
  outfit.condition=.926f;eq(GetEquipmentBurnProtectionRatio()*100,30.095,"screenshot Sunrise condition");
  outfit.condition=1;outfit.m_HitTypeProtection[ALife::eHitTypeBurn]=.1f;
  af1.condition=1;af1.m_ArtefactHitImmunities.v[ALife::eHitTypeBurn]=.04f;a.inv.m_belt={&af1};
- eq(GetEquipmentBurnProtectionRatio()*100,250,"Monolith plus Fireball: no numeric cap");
+ eq(GetEquipmentBurnProtectionRatio()*100,50/expectedArtefactHit(1,.04f),"Monolith plus Fireball: nonlinear threshold");
  panel.update_round_states(stt_fire,a.GetEquipmentProtection(ALife::eHitTypeBurn),.2f);
- assert(states[stt_fire].triangle.shown);textEq(states[stt_fire].text,"250 pkt");
+ assert(!states[stt_fire].triangle.shown);textEq(states[stt_fire].text,"50 pkt");
  a.inv.m_belt.clear();panel.update_round_states(stt_fire,a.GetEquipmentProtection(ALife::eHitTypeBurn),.2f);
  assert(!states[stt_fire].triangle.shown);textEq(states[stt_fire].text,"50 pkt");
  a.inv.m_belt={&af1};

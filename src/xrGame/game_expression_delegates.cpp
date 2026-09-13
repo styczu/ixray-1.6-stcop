@@ -20,7 +20,7 @@ inline CActor* GetActor()
     return smart_cast<CActor*>(Level().CurrentViewEntity());
 }
 
-// The same equipment total is used by the character panel's C++ path.
+// Same environmental effective threshold as the tooltip and C++ panel path.
 #define DECLARE_EQUIPMENT_PROTECTION_RATIO(name, hitType) \
 float GetEquipment##name##ProtectionRatio() \
 { \

@@ -122,10 +122,14 @@ Radiacja nadal pokazuje bieżące skażenie organizmu, z dotychczasowym kluczem
 Starsza dokumentacja mówiąca tu o kBq nie odpowiada temu kodowi. Metod pomiaru,
 okien czasowych, jednostek faktycznych skutków ani algorytmu DPS nie zmieniono.
 
-**Zakres:** liczba i pasek ochrony poza tooltipem zachowują istniejącą prezentację.
-Ich starszy getter sumuje surowe współczynniki artefaktów z ochroną sprzętu; ta suma
-nie służy do wyliczania nowych progów tooltipa. Zmiana paska i kart artefaktów nie
-wchodziła do tego zadania. Tooltip ma już odrębne, prawidłowe wartości P i T.
+**Panel po korekcie zgłoszenia +100 pkt:** liczba, pasek i trójkąt pięciu ochron
+środowiskowych korzystają z tego samego efektywnego progu `(P+B)/A` co tooltip.
+`GetEquipmentProtection` przestał dodawać surowe współczynniki artefaktów do pancerza.
+Dla burn, referencji 0.2 i S=0.02 artefakt nie wnosi już błędnych 100 pkt: przy
+pancerzu O=0.01 panel pozostaje na 50 pkt, a bez pancerza/boostera pozostaje na 0.
+Brak osiągalnego progu jest pokazany jako 0 na panelu i „Brak” w tooltipie.
+Pełny pasek nadal odpowiada 100 pkt; liczba nie jest ograniczana do 100.
+Ochrony bojowe, mechanika obrażeń i karty przedmiotów pozostają bez zmian.
 
 ## Przykłady z produkcyjnego generatora tekstu
 
@@ -233,3 +237,10 @@ ASAN_OPTIONS=detect_leaks=0 python3 tests/condition-ui/test_environmental_protec
 
 Stan: zmiany źródłowe. Nie wykonano pełnej kompilacji Windows, instalacji nowego
 silnika/dodatku ani próby w działającej grze. Nie zmieniano balansu artefaktów.
+
+Korekta panelu: dodatkowe testy odtwarzają zgłoszone +100 pkt, sprawdzają brak
+pancerza, rzeczywisty wpływ A=0.75, protection boostery oraz pięć produkcyjnych
+delegatów XML. Mnożnik obrażeń aktora nadal nie wchodzi do progu.
+
+Po korekcie panelu nowy zestaw testów przechodzi 3588 sprawdzeń, w tym pięć
+delegatów liczb/pasków XML i zgodność panelu z efektywnym progiem tooltipa.

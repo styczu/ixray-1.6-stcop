@@ -124,6 +124,9 @@ for file, signature in [
  ('ActorCondition.cpp','Protection::DamageRate CActorCondition::GetEnvironmentalDamageRate'),
  ('ui/UIActorStateInfo.cpp','void ui_actor_state_wnd::UpdateProtectionHints'),
 ]:cpp+=function(file,signature)
+cpp+='CActor* expressionActor=nullptr;CActor* GetActor(){return expressionActor;}\n'
+delegates=read('src/xrGame/game_expression_delegates.cpp')
+cpp+=delegates[delegates.index('#define DECLARE_EQUIPMENT_PROTECTION_RATIO'):delegates.index('#undef DECLARE_EQUIPMENT_PROTECTION_RATIO')]+'\n'
 cpp+=r'''
 int checks=0;
 void eq(double got,double want){++checks;if(std::abs(got-want)>1e-6+std::abs(want)*1e-5){std::cerr<<got<<" != "<<want<<"\n";std::abort();}}
@@ -142,7 +145,7 @@ for key,value in pl.items():
     if key.startswith('ui_uip_protection_') or key in ['ui_uip_unit_protection','ui_uip_unit_rad','ui_uip_unit_percent_s'] or key.startswith('ui_inv_outfit_'):
         cpp+='table.values['+literal(key)+']='+literal(value)+';\n'
 cpp+=r'''
- CActor actor;CCustomOutfit outfit;CHelmet helmet;CArtefact art,second,irrelevant,spent;Item unrelated;
+ CActor actor;expressionActor=&actor;CCustomOutfit outfit;CHelmet helmet;CArtefact art,second,irrelevant,spent;Item unrelated;
  actor.outfit=&outfit;actor.helmet=&helmet;ui_actor_state_wnd panel;State states[stt_count];
  for(int i=0;i<stt_count;++i)panel.m_state[i]=&states[i];
  const auto burn=ALife::eHitTypeBurn,light=ALife::eHitTypeLightBurn,chem=ALife::eHitTypeChemicalBurn,rad=ALife::eHitTypeRadiation,psi=ALife::eHitTypeTelepatic,shock=ALife::eHitTypeShock;
@@ -171,7 +174,7 @@ cpp+=r'''
    const float A=actor.HitArtefactsOnBelt(1,t),B=actor.cond.GetEnvironmentalProtectionBoost(t),D=actor.cond.GetEnvironmentalHitMultiplier(t);
    eq(D,difficulty-boost);
    eq(B,t==chem?.05f:t==rad?.03f:t==psi?.02f:0);
-   auto e=Protection::EffectiveThreshold(.15f,.05f,B,A);assert(e.attainable);eq(e.power,(.2f+B)/A);
+   auto e=Protection::EffectiveThreshold(.15f,.05f,B,A);assert(e.attainable);eq(e.power,(.2f+B)/A);eq(actor.GetEquipmentProtection(t),e.power);
    eq(resolved(actor,t,e.power*.5f),0);eq(resolved(actor,t,e.power),0);
    eq(resolved(actor,t,e.power+.1f),.1f*A*D);
   }
@@ -236,6 +239,27 @@ cpp+=r'''
  assert(!Protection::EffectiveThreshold(0,0,0,NAN).attainable);
  actor.cond.m_fBoostChemicalBurnProtection=-.01f;panel.UpdateProtectionHints(&actor);
  textEq(row(states[stt_acid],"ui_uip_protection_effective"),table.translate("ui_uip_protection_no_threshold").s);
+ // Regression for the reported +100 points: S=.02 must not become flat armour.
+ actor.inv.m_belt={&art};actor.cond.m_fBoostChemicalBurnProtection=0;
+ actor.cond.m_fBoostBurnImmunity=0;actor.outfit=&outfit;actor.helmet=nullptr;
+ outfit.condition=1;outfit.m_HitTypeProtection[burn]=.1f;
+ art.condition=1;art.m_ArtefactHitImmunities.v[burn]=.02f;
+ eq(actor.GetEquipmentProtection(burn),.01f);
+ eq(GetEquipmentBurnProtectionRatio()*100,50);
+ panel.UpdateProtectionHints(&actor);
+ textEq(row(states[stt_fire],"ui_uip_protection_effective"),"50 pkt");
+ eq(states[stt_fire].protection,GetEquipmentBurnProtectionRatio());
+ actor.outfit=nullptr;eq(GetEquipmentBurnProtectionRatio(),0);
+ art.m_ArtefactHitImmunities.v[burn]=coefficient;eq(GetEquipmentBurnProtectionRatio(),0);
+ actor.outfit=&outfit;eq(GetEquipmentBurnProtectionRatio()*100,66.666667);
+ panel.UpdateProtectionHints(&actor);eq(states[stt_fire].protection,GetEquipmentBurnProtectionRatio());
+ // All five actual expression delegates stay on the same value as the panel getter.
+ float(*ratios[])()={GetEquipmentBurnProtectionRatio,GetEquipmentShockProtectionRatio,GetEquipmentChemicalBurnProtectionRatio,GetEquipmentRadiationProtectionRatio,GetEquipmentTelepaticProtectionRatio};
+ const ALife::EHitType panelTypes[]={burn,shock,chem,rad,psi};
+ for(int i=0;i<5;++i)eq(ratios[i](),Protection::DisplayRatio(actor.GetEquipmentProtection(panelTypes[i]),actor.cond.GetZoneMaxPower(panelTypes[i])));
+ actor.cond.m_fBoostChemicalBurnProtection=.05f;
+ eq(GetEquipmentChemicalBurnProtectionRatio(),Protection::DisplayRatio(actor.GetEquipmentProtection(chem),.2f));
+ actor.cond.m_fBoostChemicalBurnProtection=-.01f;eq(actor.GetEquipmentProtection(chem),0);
  // Removing a translated feature key is safe, as are absent widgets.
  panel.m_state[stt_fire]=nullptr;panel.UpdateProtectionHints(&actor);
  table.values.erase("ui_uip_protection_effective");panel.UpdateProtectionHints(&actor);

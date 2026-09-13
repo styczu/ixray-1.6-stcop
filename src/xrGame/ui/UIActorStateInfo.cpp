@@ -567,7 +567,7 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
         const auto effective = Protection::EffectiveThreshold(outfitThreshold, helmetThreshold, flatBoost, artifactMultiplier);
         const float postMultiplier = actor->conditions().GetEnvironmentalHitMultiplier(type);
         const auto exposure = actor->GetEnvironmentalExposure(type);
-        // Preserve the existing panel layers; tooltip thresholds never use this legacy sum.
+        // The source layer and panel share the same raw-hit scale as the effective threshold.
         m_state[state]->set_environmental_exposure(type, Protection::DisplayRatio(exposure.power, maximum),
             Protection::DisplayRatio(actor->GetEquipmentProtection(type), maximum), exposure.opacity);
         xr_string hint = kColTitle;
