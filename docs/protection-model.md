@@ -211,3 +211,52 @@ GetEnvironmentalDamageRate). Ten sam problem odtworzono na kopii testu
 sprzed przywrócenia wzoru. Oczekiwania mechaniki w nim zaktualizowano, ale
 nie zgłaszamy całego zestawu UI jako zaliczonego. Weryfikacja funkcji nie
 zastępuje kompilacji i instalacji nowego silnika Windows ani próby w grze.
+
+## Ochrona bojowa: rozszarpanie / uderzenie / wybuch / balistyka (13.09.2026)
+
+Cztery wiersze bojowe panelu (`wound_sensor`, `main_sensor`, `sleeping_state`,
+`fire_wound_sensor`) liczy `ui_actor_state_wnd::UpdateCombatProtection`
+(UIActorStateInfo.cpp). Liczba, pasek, trójkąt i podpowiedź powstają w C++ —
+wiersze nie mają już wyrażeń XML (usunięto `fltActorOutfit*`/`fltZoneMaxPower*`
+z panelu). Pokazujemy **wyłącznie parametry ochronne**; brak siły źródła,
+mnożnika obrażeń ponad próg i odczytu ostatniego trafienia (świadomie — panel
+ochrony nie jest oglądany w trakcie walki wręcz).
+
+**Rozszarpanie/uderzenie/wybuch (model progowy, jednostka „pkt", skala ×100).**
+Silnik odejmuje `immunity×condition` kombinezonu i hełmu od siły trafienia
+(`HitThroughArmor`, mnożnik `one=1.0` dla typów niestrefowych), a artefakty na
+pasie mnożą trafienie przez `(1−f)`, gdzie `f=1.5·0.9^(4/Σ immunity×cond)`
+(`HitArtefactsOnBelt`). Panel pokazuje:
+
+- `Próg ochrony` = suma `GetDefHitTypeProtection` kombinezonu i hełmu;
+- `Efektywny próg` = `Próg / (1−f)` — maksymalne trafienie pochłonięte w całości;
+- rozbicie na kombinezon/hełm (gdy >0) i `Wpływ artefaktów` = `f` z liniami
+  surowego `*_immunity` per artefakt (brak takich artefaktów w bazowej grze);
+- statyczny `Skutek trafienia` (rozszarpanie: rany i krwawienie; uderzenie: bez
+  krwawienia; wybuch: możliwe rany).
+
+Pasek = Efektywny próg (pełny przy 1.00 = 100 pkt), trójkąt gdy >100 pkt.
+`GetZoneMaxPower` nie jest używane (skala `Ratio` ÷1.0, nie środowiskowa ×10).
+
+**Balistyka (model absorpcji, jednostka „%").** W SP `HitThroughArmor` przy
+zatrzymaniu pocisku (`ap ≤ pancerz_kości`) mnoży trafienie przez
+`hit_fraction_actor` (część przechodząca; hełm = 1), a przy przebiciu nie
+redukuje. Następnie działa mnożnik trudności `GetHitImmunity(eHitTypeFireWound)`
+(actor_immunities_<diff>; efekty czasowe `m_fBoost*Immunity` = 0 w bazowej grze,
+pominięte). Tooltip rozbija to na dwa scenariusze:
+
+- po zatrzymaniu: `Absorpcja pancerza` = `1−hit_fraction`, `Dodatkowa redukcja
+  (trudność)` = `hit_fraction·(1−mnożnik)`, `Efektywna ochrona` = ich suma
+  = `1 − hit_fraction·mnożnik`; krwawienie: nie;
+- przy przebiciu: `Efektywna ochrona` = `1 − mnożnik`; krwawienie: możliwe.
+
+Przykład cs_heavy (`hit_fraction_actor=0.45`): Absorpcja 55%; Dodatkowa redukcja
+Novice 38,25 / Stalker 22,5 / Weteran 11,25 / Master 0%; Efektywna 93/77/66/55%.
+Pasek = Efektywna ochrona (po zatrzymaniu); bez trójkąta (≤100%).
+
+Usunięto dawną, niewidoczną ścieżkę `fwou_value`/`woun_value` z pancerza kości w
+`UpdateActorInfo`. Teksty w dodatku: `configs/text/*/zz_uiparams_panel.xml`
+(klucze `ui_uip_prot_*`). Formuły zweryfikowano ręcznie na przykładzie cs_heavy;
+`f` artefaktów pokrywa `test_artefact_damage.py`. Kompilacja silnika, oględziny
+tooltipów i próba w grze (mutant / seria / granat / postrzał w pancerz i przez
+pancerz, zmiana poziomu trudności) pozostają do wykonania po stronie użytkownika.

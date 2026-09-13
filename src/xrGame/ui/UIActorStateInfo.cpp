@@ -340,41 +340,9 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 	m_state[stt_shock]->set_progress(0.0f);
 	m_state[stt_power]->set_progress(0.0f);
 
-	float fwou_value = 0.0f;
-	float woun_value = 0.0f;
-
-	if(outfit)
-	{
-		woun_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeWound);
-
-		IKinematics* ikv = PKinematics(actor->Visual());
-		VERIFY(ikv);
-		u16 spine_bone = ikv->LL_BoneID("bip01_spine");
-
-		value = outfit->GetBoneArmor(spine_bone);
-
-		fwou_value += value * outfit->GetCondition();
-		if(!outfit->bIsHelmetAvaliable)
-		{
-			u16 spine_bone_ = ikv->LL_BoneID("bip01_head");
-			fwou_value += outfit->GetBoneArmor(spine_bone_)*outfit->GetCondition();
-		}
-	}
-
-	if(helmet)
-	{
-		woun_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeWound);
-
-		IKinematics* ikv = PKinematics(actor->Visual());
-		VERIFY(ikv);
-		u16 spine_bone = ikv->LL_BoneID("bip01_head");
-		fwou_value += helmet->GetBoneArmor(spine_bone)*helmet->GetCondition();
-	}
-	const auto getProtection = [&](float& valueRef, ALife::EHitType hitType) -> float
-		{
-			valueRef += actor->GetProtection_ArtefactsOnBelt(hitType);
-			return actor->conditions().GetZoneMaxPower(hitType);
-		};
+	// Rozszarpanie/uderzenie/wybuch i balistyka licza sie w UpdateCombatProtection
+	// (ponizej). Dawna sciezka fwou_value/woun_value z pancerza kosci usunieta -
+	// byla niewidoczna (pasek wiersza szedl z wyrazenia XML).
 
 	// fire burn protection progress bar
 	{
@@ -396,20 +364,10 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeTelepatic);
 		update_round_states(stt_psi, actor->GetEquipmentProtection(ALife::eHitTypeTelepatic), max_power);
 	}
-	// wound protection progress bar
-	{
-		const float max_power = getProtection(woun_value, ALife::eHitTypeWound);
-		update_round_states(stt_wound, woun_value, max_power);
-	}
 	// shock protection progress bar
 	{
 		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeShock);
 		update_round_states(stt_shock, actor->GetEquipmentProtection(ALife::eHitTypeShock), max_power);
-	}
-	//fire wound protection progress bar
-	{
-		const float max_power = getProtection(fwou_value, ALife::eHitTypeFireWound);
-		update_round_states(stt_fire_wound, fwou_value, max_power);
 	}
 	//power restore speed progress bar
 	{
@@ -424,6 +382,7 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 // -----------------------------------------------------------------------------------
 
 	UpdateArmorInfo( actor, outfit, helmet );
+	UpdateCombatProtection( actor, outfit, helmet );
 	UpdateRateHints( actor );
 	UpdateProtectionHints( actor );
 
@@ -738,6 +697,238 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
     update(stt_acid, ALife::eHitTypeChemicalBurn);
     update(stt_radia, ALife::eHitTypeRadiation);
     update(stt_psi, ALife::eHitTypeTelepatic);
+}
+
+// Ochrona bojowa - tylko parametry OCHRONNE (bez odczytu obrazen/sily zrodla).
+// Mechaniczne (rozszarpanie/uderzenie/wybuch): prog absolutny odejmowany od
+// trafienia (kombinezon+helm, kazdy *condition) plus nieliniowa redukcja
+// artefaktow na pasie; "Efektywny prog" = prog / (1 - f). Skala pkt = wartosc
+// x100, pelny pasek przy 1.00, trojkat powyzej. Balistyka: absorpcja pancerza
+// (1 - hit_fraction_actor) plus dodatkowa redukcja z mnoznika trudnosci; osobno
+// scenariusz zatrzymania i przebicia pancerza; skala w %.
+void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet)
+{
+    // Panel (liczba/pasek/trojkat) liczy sie zawsze; bogaty tooltip wymaga
+    // przetlumaczonych kluczy z dodatku (jak UpdateProtectionHints).
+    const shared_str gate = g_pStringTable->translate("ui_uip_prot_threshold");
+    const bool richTooltips = xr_strcmp(gate.c_str(), "ui_uip_prot_threshold") != 0;
+
+    const bool showHelmet = helmet && (!outfit || outfit->bIsHelmetAvaliable);
+    LPCSTR dotted = ". . . . . . . . . . . . . .";
+    // Trzymamy shared_str, nie .c_str() z tymczasowego obiektu (patrz UpdateArmorInfo).
+    const shared_str s_unit_pct = g_pStringTable->translate("ui_uip_unit_percent");
+    LPCSTR unitPct = s_unit_pct.c_str();
+
+    // Nieliniowy mnoznik redukcji artefaktow na pasie dla typu niestrefowego
+    // (jak CActor::HitArtefactsOnBelt): dodatni = redukcja, ujemny = malus.
+    auto artefactFactor = [&](ALife::EHitType type) -> float
+    {
+        float sum = actor->GetProtection_ArtefactsOnBelt(type);
+        if (sum == 0.0f)
+            return 0.0f;
+        clamp(sum, -0.99f, 0.99f);
+        return (sum > 0.0f)
+            ? 1.5f * (float)pow(0.9f, (4.0f / sum))
+            : -1.5f * (float)pow(0.9f, (4.0f / (-1.0f * sum)));
+    };
+
+    // ---- rozszarpanie / uderzenie / wybuch (prog absolutny, skala pkt) ----
+    auto mechanical = [&](EStateType state, ALife::EHitType type, LPCSTR titleKey, LPCSTR effectKey)
+    {
+        ui_actor_state_item* item = m_state[state];
+        if (!item)
+            return;
+
+        const float outfitProt = outfit ? outfit->GetDefHitTypeProtection(type) : 0.0f;
+        const float helmetProt = showHelmet ? helmet->GetDefHitTypeProtection(type) : 0.0f;
+        const float threshold  = outfitProt + helmetProt;             // Prog ochrony
+        const float f          = artefactFactor(type);
+        const float effective  = (f < 0.999f) ? threshold / (1.0f - f) : threshold; // Efektywny prog
+
+        string64 num;
+        ConditionUi::FormatProtectionPointsPlain(num, effective);     // x100, calkowite, bez jednostki
+        item->set_value_text(num);
+        if (item->m_progress)
+        {
+            float fill = effective;
+            clamp(fill, 0.0f, 1.0f);
+            item->m_progress->SetProgressPosImmediate(fill);
+        }
+        item->set_protection_overflow(effective);                     // trojkat gdy >100 pkt
+
+        if (!richTooltips)
+            return;
+
+        xr_string hint = kColTitle;
+        hint += g_pStringTable->translate(titleKey).c_str();
+        hint += kBreak;
+        hint += kColSep;
+        hint += dotted;
+
+        auto ptsLine = [&](LPCSTR key, float ratio, LPCSTR labelCol, LPCSTR valueCol, bool indent)
+        {
+            string64 v;
+            ConditionUi::FormatProtectionPoints(v, ratio, false);     // "X pkt"
+            hint += kBreak;
+            hint += labelCol;
+            if (indent)
+                hint += "  ";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": ";
+            hint += valueCol;
+            hint += v;
+        };
+
+        ptsLine("ui_uip_prot_effective_threshold", effective, kColLabel, kColTitle, false);
+        ptsLine("ui_uip_prot_threshold", threshold, kColLabel, kColTitle, false);
+        if (outfit && outfitProt > 0.0f)
+            ptsLine("ui_uip_protection_outfit", outfitProt, kColSep, kColLabel, true);
+        if (showHelmet && helmetProt > 0.0f)
+            ptsLine("ui_uip_protection_helmet", helmetProt, kColSep, kColLabel, true);
+
+        // Wplyw artefaktow - tylko gdy jakis artefakt na pasie dotyczy tego typu.
+        if (f != 0.0f)
+        {
+            string64 pct;
+            ConditionUi::FormatNumber(pct, f * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+            hint += kBreak;
+            hint += kColLabel;
+            hint += g_pStringTable->translate("ui_uip_prot_artefact_influence").c_str();
+            hint += ": ";
+            hint += kColTitle;
+            hint += pct;
+            hint += unitPct;
+
+            for (const PIItem beltItem : actor->inventory().m_belt)
+            {
+                CArtefact* af = beltItem ? beltItem->cast_artefact() : nullptr;
+                if (!af)
+                    continue;
+                const float imm = af->m_ArtefactHitImmunities.AffectHit(1.0f, type); // surowe *_immunity
+                if (imm == 0.0f)
+                    continue;
+                string64 iv;
+                ConditionUi::FormatNumber(iv, imm * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+                hint += kBreak;
+                hint += kColSep;
+                hint += "  ";
+                hint += beltItem->NameShort();
+                hint += ": ";
+                hint += kColLabel;
+                hint += iv;
+                hint += unitPct;
+            }
+        }
+
+        // Skutek trafienia - statyczny opis typu (nie liczba obrazen).
+        hint += kBreak;
+        hint += kColSep;
+        hint += dotted;
+        hint += kBreak;
+        hint += kColLabel;
+        hint += g_pStringTable->translate("ui_uip_prot_hit_effect").c_str();
+        hint += " ";
+        hint += kColTitle;
+        hint += g_pStringTable->translate(effectKey).c_str();
+
+        item->set_hint_text(hint.c_str());
+    };
+
+    mechanical(stt_wound, ALife::eHitTypeWound,     "ui_uip_prot_wound_title",  "ui_uip_prot_effect_wound");
+    mechanical(stt_main,  ALife::eHitTypeStrike,    "ui_uip_prot_strike_title", "ui_uip_prot_effect_strike");
+    mechanical(stt_sleep, ALife::eHitTypeExplosion, "ui_uip_prot_explo_title",  "ui_uip_prot_effect_explo");
+
+    // ---- balistyka (absorpcja pancerza + mnoznik trudnosci, skala %) ----
+    {
+        ui_actor_state_item* item = m_state[stt_fire_wound];
+        if (item)
+        {
+            // Mnoznik OBRAZEN z poziomu trudnosci (actor_immunities_<diff>).
+            // Efekty czasowe (m_fBoost*Immunity) sa zerowe w bazowej grze i tu pominiete.
+            const float mult = actor->conditions().GetHitImmunity(ALife::eHitTypeFireWound);
+            if (!outfit)
+            {
+                item->set_value_text("-");
+                if (item->m_progress)
+                    item->m_progress->SetProgressPosImmediate(0.0f);
+            }
+            else
+            {
+                const float hitFraction = outfit->GetHitFractionActor(); // czesc przechodzaca
+                const float effStopped  = 1.0f - hitFraction * mult;     // Efektywna ochrona (zatrzymany)
+                string64 num;
+                ConditionUi::FormatProtectionPointsPlain(num, effStopped);
+                xr_strcat(num, unitPct);
+                item->set_value_text(num);
+                if (item->m_progress)
+                {
+                    float fill = effStopped;
+                    clamp(fill, 0.0f, 1.0f);
+                    item->m_progress->SetProgressPosImmediate(fill);
+                }
+            }
+            item->set_protection_overflow(0.0f); // balistyka nie przekracza 100%
+
+            if (richTooltips && outfit)
+            {
+                const float hitFraction = outfit->GetHitFractionActor();
+                const float absorb      = 1.0f - hitFraction;          // Absorpcja pancerza
+                const float redStopped  = hitFraction * (1.0f - mult); // Dodatkowa redukcja (trudnosc)
+                const float effStopped  = absorb + redStopped;         // Efektywna ochrona
+                const float redPen      = 1.0f - mult;                 // przy przebiciu (absorpcja=0)
+
+                xr_string hint = kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_ballistic_title").c_str();
+                hint += kBreak;
+                hint += kColSep;
+                hint += dotted;
+
+                auto pctLine = [&](LPCSTR key, float frac, LPCSTR labelCol, LPCSTR valueCol, bool indent)
+                {
+                    string64 v;
+                    ConditionUi::FormatNumber(v, frac * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+                    hint += kBreak;
+                    hint += labelCol;
+                    if (indent)
+                        hint += "  ";
+                    hint += g_pStringTable->translate(key).c_str();
+                    hint += ": ";
+                    hint += valueCol;
+                    hint += v;
+                    hint += unitPct;
+                };
+
+                // Po zatrzymaniu pocisku
+                pctLine("ui_uip_prot_effective", effStopped, kColLabel, kColTitle, false);
+                pctLine("ui_uip_prot_armor_absorption", absorb, kColSep, kColLabel, true);
+                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColSep, kColLabel, true);
+                hint += kBreak;
+                hint += kColLabel;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
+                hint += " ";
+                hint += kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding_no").c_str();
+
+                // Przy przebiciu pancerza (hit_fraction pominiete)
+                hint += kBreak;
+                hint += kColSep;
+                hint += dotted;
+                hint += kBreak;
+                hint += kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_penetration_header").c_str();
+                pctLine("ui_uip_prot_effective", redPen, kColLabel, kColTitle, false);
+                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColSep, kColLabel, true);
+                hint += kBreak;
+                hint += kColLabel;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
+                hint += " ";
+                hint += kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding_possible").c_str();
+
+                item->set_hint_text(hint.c_str());
+            }
+        }
+    }
 }
 
 void ui_actor_state_wnd::UpdateRateHints(CActor* actor)

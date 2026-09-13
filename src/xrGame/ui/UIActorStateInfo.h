@@ -87,6 +87,10 @@ private:
             void            UpdateBleedingInfo(CActor* actor);
 			void			UpdateRateHints			(CActor* actor);
             void UpdateProtectionHints(CActor* actor);
+            // Ochrona bojowa: rozszarpanie/uderzenie/wybuch (prog absolutny) i
+            // balistyka (absorpcja pancerza + mnoznik trudnosci). Liczba, pasek,
+            // trojkat i podpowiedz - wszystko w C++, bez wyrazen XML.
+            void UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet);
 
 };
 
