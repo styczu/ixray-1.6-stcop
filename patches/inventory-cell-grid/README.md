@@ -241,13 +241,19 @@ w `CellOffsetUI` — każda z nich wywala test.
 
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-Pierwsza wersja pakietu (sam całkowity rozmiar komórki, bez `screen_cell_size` i bez
-snapowania obu krawędzi) skompilowała się na Windowsie: na commicie `ce9a92e87` zielone
-były oba workflow, `Build engine` w Release i RelWithDebInfo oraz `Non-Unity build`
-w Debug, RelWithDebInfo i Release. Ta ostatnia konfiguracja ma tu znaczenie: `FindSimilar`
-w zmienianym `UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją
-wyłącznie `Non-Unity build` w Debug. **Wynik kompilacji obecnej wersji uzupełnij po
-przejściu CI** — ta wersja rusza dodatkowo `xrUI`, więc zakres kompilacji jest szerszy.
+Kompilacja na Windowsie przeszła. Na commicie `652e728cc` zielone są oba workflow:
+`Build engine` w Release i RelWithDebInfo oraz `Non-Unity build` w Debug, RelWithDebInfo
+i Release. Ta ostatnia konfiguracja ma tu znaczenie: `FindSimilar` w zmienianym
+`UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją wyłącznie
+`Non-Unity build` w Debug. Pierwsza wersja pakietu, bez `screen_cell_size` i bez
+snapowania obu krawędzi, przeszła wcześniej tak samo na `ce9a92e87`.
+
+`Build engine` wymagał ponowienia: pierwsze podejście padło w konfiguracji CMake, zanim
+doszło do kompilacji, na braku nagłówków Discord GameSDK. `cmake/github.cmake` pobiera je
+zipem tylko `if(NOT EXISTS`, więc obcięty zip przywrócony z cache'a NuGet blokuje i
+pobranie, i rozpakowanie. Nie ma to związku z tym pakietem — w logu nie ma ani jednego
+z jego plików — a ponowienie przeszło. Jeśli trafisz na to samo, skasuj cache
+`Engine-NuGet-*` i powtórz run.
 
 Pierwszą wersję sprawdzono w grze i to ona wykazała oba problemy, które ten pakiet teraz
 rozwiązuje: komórki 83x77 zamiast kwadratowych i szczeliny jednego piksela między pełnymi
