@@ -30,11 +30,13 @@ def body(text, signature):
 drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
 
 constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
-assert 'kCellPixelBias' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
+assert 'kInventoryCellUSpanGridDisabled' in constants, constants
 
 bodies = {
     'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
+    'SNAP_GRID_BODY': body(drag_drop, 'IC float snap_grid_px('),
     'METRICS_BODY': body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics('),
+    'SET_SCREEN_BODY': body(drag_drop, 'void CUICellContainer::SetScreenCellSize('),
     'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
     'GEOMETRY_BODY': body(drag_drop, 'void CUICellContainer::SetItemGeometry('),
     'REFRESH_BODY': body(drag_drop, 'void CUICellContainer::RefreshItemsPos('),
@@ -160,6 +162,9 @@ CONSTANTS
 IC int screen_cell_len(int ui_len, float scale)
 SCREEN_LEN_BODY
 
+IC float snap_grid_px(float v)
+SNAP_GRID_BODY
+
 struct CUICellContainer;
 struct CUICellItem;
 struct CUIDragItem;
@@ -233,6 +238,7 @@ struct CUICellContainer
     typedef CUICellContainer inherited;   // Update() is not exercised here
 
     CUIDragDropListEx* m_pParentDragDropList = nullptr;
+    int m_screenCellSize = 0;
     Ivector2 m_cellsCapacity{0, 0};
     Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
     Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
@@ -250,6 +256,7 @@ struct CUICellContainer
     const Ivector2& CellsCapacity() { return m_cellsCapacity; }
 
     bool UpdateCellMetrics() METRICS_BODY
+    void SetScreenCellSize(int px) SET_SCREEN_BODY
     Fvector2 CellOffsetUI(const Ivector2& cell_pos) const OFFSET_BODY
     void SetItemGeometry(CUICellItem* itm, const Ivector2& cell_pos) GEOMETRY_BODY
     void RefreshItemsPos() REFRESH_BODY
@@ -291,11 +298,23 @@ struct CUICellContainer
 const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
 
 // --- the rasterizer, modelled -----------------------------------------------------
-// CUIStaticItem::RenderInternal floors the scaled top left corner and then adds the
-// scaled size to it without flooring. That asymmetry is the whole reason a fractional
-// cell size makes neighbouring icons gape and overlap.
+// With flSnapToScreenPixels CUIStaticItem::RenderInternal takes both corners from the
+// absolute position and rounds both to the nearest whole screen pixel, so the edge two
+// neighbouring cells share is the same value rounded the same way from either side.
 struct Rasterized { float x1, y1, x2, y2; };
 static Rasterized rasterize(const Fvector2& abs_pos, const Fvector2& size)
+{
+    Rasterized r;
+    r.x1 = float(iFloor(abs_pos.x * g_scale_x + 0.5f));
+    r.y1 = float(iFloor(abs_pos.y * g_scale_y + 0.5f));
+    r.x2 = float(iFloor((abs_pos.x + size.x) * g_scale_x + 0.5f));
+    r.y2 = float(iFloor((abs_pos.y + size.y) * g_scale_y + 0.5f));
+    return r;
+}
+
+// What it did before any of this work: floor the top left corner, then add the scaled
+// size to it without rounding. Kept so the checks below can show they are not vacuous.
+static Rasterized rasterize_legacy(const Fvector2& abs_pos, const Fvector2& size)
 {
     Rasterized r;
     r.x1 = float(iFloor(abs_pos.x * g_scale_x));
@@ -310,12 +329,13 @@ struct Scene
     CUIDragDropListEx list;
     CUICellContainer box;
 
-    Scene(int cols, int rows, int cell_w, int cell_h, int sp_x, int sp_y)
+    Scene(int cols, int rows, int cell_w, int cell_h, int sp_x, int sp_y, int screen_cell = 0)
     {
         list.m_container = &box;
         box.m_pParentDragDropList = &list;
         box.m_cellSizeRaw.set(cell_w, cell_h);
         box.m_cellSpacingRaw.set(sp_x, sp_y);
+        box.m_screenCellSize = screen_cell;
         box.UpdateCellMetrics();
         box.origin.set(702.0f, 119.0f);
         box.reset(cols, rows);
@@ -417,6 +437,83 @@ int main()
         assert(std::isfinite(off.x) && std::isfinite(off.y));
     }
 
+    // ---- screen_cell_size: a square cell of exactly that many screen pixels ---------
+    {
+        const Mode forced[] = {
+            {1.0f, 1.0f, "1024x768"},
+            {1.875f, 1.40625f, "1920x1080"},
+            {2.5f, 1.875f, "2560x1440"},
+            {3.359375f, 1.875f, "3440x1440"},
+            {1.7f, 1.7f, "the reported 81.6 px cell"},
+        };
+
+        for (const Mode& m : forced)
+        {
+            g_scale_x = m.sx;
+            g_scale_y = m.sy;
+            Scene s(7, 14, 33, 41, 0, 0, 75);
+
+            // Square in physical pixels, whatever the aspect ratio does to the axes.
+            assert(s.box.m_cellSizeScreen.x == 75 && s.box.m_cellSizeScreen.y == 75);
+            // and the UI base size is that divided by the per-axis scale.
+            assert(s.box.m_cellSize.x == 75.0f / m.sx);
+            assert(s.box.m_cellSize.y == 75.0f / m.sy);
+
+            // 1x1 = 75x75, 2x1 = 150x75, 5x2 = 375x150.
+            CUICellItem one(1, 1), gun(2, 1), suit(5, 2);
+            s.box.put(&one, 0, 0);
+            s.box.put(&gun, 0, 2);
+            s.box.put(&suit, 0, 5);
+
+            const Rasterized r1 = rasterize(s.item_abs(one), one.wnd_size);
+            assert(r1.x2 - r1.x1 == 75.0f && r1.y2 - r1.y1 == 75.0f);
+            const Rasterized rg = rasterize(s.item_abs(gun), gun.wnd_size);
+            assert(rg.x2 - rg.x1 == 150.0f && rg.y2 - rg.y1 == 75.0f);
+            const Rasterized rs = rasterize(s.item_abs(suit), suit.wnd_size);
+            assert(rs.x2 - rs.x1 == 375.0f && rs.y2 - rs.y1 == 150.0f);
+
+            // Three full 1x1 icons side by side take exactly 3 * 75 px, with no pixel of
+            // gap and no pixel of overlap. Same down a column.
+            s.box.reset(7, 14);
+            CUICellItem row[3] = {CUICellItem(1, 1), CUICellItem(1, 1), CUICellItem(1, 1)};
+            CUICellItem col[3] = {CUICellItem(1, 1), CUICellItem(1, 1), CUICellItem(1, 1)};
+            for (int i = 0; i < 3; ++i)
+            {
+                s.box.put(&row[i], i, 0);
+                s.box.put(&col[i], 4, i);
+            }
+
+            const Rasterized a = rasterize(s.item_abs(row[0]), row[0].wnd_size);
+            const Rasterized b = rasterize(s.item_abs(row[1]), row[1].wnd_size);
+            const Rasterized c = rasterize(s.item_abs(row[2]), row[2].wnd_size);
+            assert(a.x2 == b.x1 && b.x2 == c.x1);
+            assert(c.x2 - a.x1 == 225.0f);
+
+            const Rasterized d = rasterize(s.item_abs(col[0]), col[0].wnd_size);
+            const Rasterized e = rasterize(s.item_abs(col[1]), col[1].wnd_size);
+            const Rasterized f = rasterize(s.item_abs(col[2]), col[2].wnd_size);
+            assert(d.y2 == e.y1 && e.y2 == f.y1);
+            assert(f.y2 - d.y1 == 225.0f);
+        }
+    }
+
+    // Without the attribute the old derivation stands, so existing layouts are untouched.
+    {
+        g_scale_x = 2.5f;
+        g_scale_y = 1.875f;
+        Scene derived(7, 14, 33, 41, 0, 0);
+        assert(derived.box.m_cellSizeScreen.x == 83 && derived.box.m_cellSizeScreen.y == 77);
+
+        // and setting it, then clearing it, goes back to exactly that.
+        Scene s(7, 14, 33, 41, 0, 0);
+        s.box.SetScreenCellSize(75);
+        assert(s.box.m_cellSizeScreen.x == 75 && s.box.m_cellSizeScreen.y == 75);
+        s.box.SetScreenCellSize(0);
+        assert(s.box.m_cellSizeScreen.x == 83 && s.box.m_cellSizeScreen.y == 77);
+        s.box.SetScreenCellSize(-5);    // clamped, not a negative cell
+        assert(s.box.m_cellSizeScreen.x == 83);
+    }
+
     // ---- one constant step, whatever the mode --------------------------------------
     const Mode modes[] = {
         {1.0f, 1.0f, "1024x768"},
@@ -429,16 +526,18 @@ int main()
 
     // Every shipped list shape: bag, the 4:3 bag, the belt and the quick slots of both
     // aspect ratios, and the one-cell trash panel.
-    struct Shape { int cols, rows, cw, ch, spx, spy; };
+    struct Shape { int cols, rows, cw, ch, spx, spy, screen; };
     const Shape shapes[] = {
-        {7, 14, 33, 41, 0, 0},
-        {7, 14, 41, 41, 0, 0},
-        {5, 1, 33, 41, 19, 0},
-        {5, 1, 41, 41, 24, 0},
-        {4, 1, 33, 41, 32, 0},
-        {4, 1, 41, 41, 40, 0},
-        {1, 1, 375, 768, 0, 0},
-        {5, 1, 32, 32, 0, 33},   // gamedata_cs vertical belt, spacing on y
+        {7, 14, 33, 41, 0, 0, 0},
+        {7, 14, 41, 41, 0, 0, 0},
+        {5, 1, 33, 41, 19, 0, 0},
+        {5, 1, 41, 41, 24, 0, 0},
+        {4, 1, 33, 41, 32, 0, 0},
+        {4, 1, 41, 41, 40, 0, 0},
+        {1, 1, 375, 768, 0, 0, 0},
+        {5, 1, 32, 32, 0, 33, 0},   // gamedata_cs vertical belt, spacing on y
+        {7, 14, 33, 41, 0, 0, 75},  // dragdrop_bag with screen_cell_size="75"
+        {7, 9, 33, 41, 0, 0, 64},   // a second forced size, to pin nothing to 75
     };
 
     for (const Mode& m : modes)
@@ -446,7 +545,14 @@ int main()
         {
             g_scale_x = m.sx;
             g_scale_y = m.sy;
-            Scene s(sh.cols, sh.rows, sh.cw, sh.ch, sh.spx, sh.spy);
+            Scene s(sh.cols, sh.rows, sh.cw, sh.ch, sh.spx, sh.spy, sh.screen);
+
+            if (sh.screen > 0)
+            {
+                // screen_cell_size is the whole geometry: square, exact, scale independent.
+                assert(s.box.m_cellSizeScreen.x == sh.screen);
+                assert(s.box.m_cellSizeScreen.y == sh.screen);
+            }
 
             const int step_x = s.box.m_cellSizeScreen.x + s.box.m_cellSpacingScreen.x;
             const int step_y = s.box.m_cellSizeScreen.y + s.box.m_cellSpacingScreen.y;
@@ -478,13 +584,26 @@ int main()
                         assert(r.y1 - u.y1 == float(step_y));
                     }
 
-                    // 2. And the item covers exactly one cell, so with no spacing its
-                    // right edge is the left edge of its neighbour - the reported bug.
-                    assert(std::fabs((r.x2 - r.x1) - float(s.box.m_cellSizeScreen.x)) < 0.05f);
-                    assert(std::fabs((r.y2 - r.y1) - float(s.box.m_cellSizeScreen.y)) < 0.05f);
+                    // 2. And the item covers exactly one cell - not approximately.
+                    assert(r.x2 - r.x1 == float(s.box.m_cellSizeScreen.x));
+                    assert(r.y2 - r.y1 == float(s.box.m_cellSizeScreen.y));
+
+                    // 3. The edge shared with the neighbour is one and the same pixel.
+                    if (cx > 0)
+                    {
+                        const Rasterized l = rasterize(s.item_abs(items[size_t(cy * sh.cols + cx - 1)]),
+                                                       items[size_t(cy * sh.cols + cx - 1)].wnd_size);
+                        assert(l.x2 + float(s.box.m_cellSpacingScreen.x) == r.x1);
+                    }
+                    if (cy > 0)
+                    {
+                        const Rasterized u = rasterize(s.item_abs(items[size_t((cy - 1) * sh.cols + cx)]),
+                                                       items[size_t((cy - 1) * sh.cols + cx)].wnd_size);
+                        assert(u.y2 + float(s.box.m_cellSpacingScreen.y) == r.y1);
+                    }
                 }
 
-            // 3. The grid background lands on the very same pixels as the items.
+            // 4. The grid background lands on the very same pixels as the items.
             capture.reset();
             s.box.Draw();
             const std::vector<Point> grid = capture.of(0);
@@ -503,7 +622,7 @@ int main()
                     assert(q.y2 - q.y1 == float(s.box.m_cellSizeScreen.y));
                 }
 
-            // 4. PickCell resolves every drawn cell to itself, sampled across it.
+            // 5. PickCell resolves every drawn cell to itself, sampled across it.
             for (int cy = 0; cy < sh.rows; ++cy)
                 for (int cx = 0; cx < sh.cols; ++cx)
                 {
@@ -536,12 +655,12 @@ int main()
         s.box.put(&suit, 0, 4);
 
         const Rasterized rg = rasterize(s.item_abs(gun), gun.wnd_size);
-        assert(std::fabs((rg.x2 - rg.x1) - 164.0f) < 0.05f);
-        assert(std::fabs((rg.y2 - rg.y1) - 82.0f) < 0.05f);
+        assert(rg.x2 - rg.x1 == 164.0f);
+        assert(rg.y2 - rg.y1 == 82.0f);
 
         const Rasterized rs = rasterize(s.item_abs(suit), suit.wnd_size);
-        assert(std::fabs((rs.x2 - rs.x1) - 410.0f) < 0.05f);
-        assert(std::fabs((rs.y2 - rs.y1) - 164.0f) < 0.05f);
+        assert(rs.x2 - rs.x1 == 410.0f);
+        assert(rs.y2 - rs.y1 == 164.0f);
     }
 
     // ---- a scrolled list keeps the same step ----------------------------------------
@@ -608,7 +727,7 @@ int main()
 
         // And the item is back on the grid.
         const Rasterized r = rasterize(s.item_abs(pill), pill.wnd_size);
-        assert(std::fabs((r.x2 - r.x1) - float(s.box.m_cellSizeScreen.x)) < 0.05f);
+        assert(r.x2 - r.x1 == float(s.box.m_cellSizeScreen.x));
     }
 
     // ---- vertical placement keeps its square-cell shape -----------------------------
@@ -627,10 +746,11 @@ int main()
     }
 
     // ---- the behaviour this replaces --------------------------------------------------
-    // Before the fix an item sat at (cellFromXml + spacing) * k UI units and was
-    // cellFromXml wide, so the scaled step was fractional. Reproduce it and show that the
-    // steps between neighbouring icons were not all the same and that edges did not meet -
-    // otherwise the checks above would pass on a grid that never had the problem.
+    // Before the fix an item sat at (cellFromXml + spacing) * k UI units, was cellFromXml
+    // wide, and was rasterized with a floored top left and a raw bottom right. Reproduce
+    // it and show that the steps between neighbouring icons were not all the same and
+    // that edges did not meet - otherwise the checks above would pass on a grid that
+    // never had the problem.
     {
         g_scale_x = 1.875f;
         g_scale_y = 1.40625f;
@@ -644,7 +764,7 @@ int main()
             pos.set(s.box.origin.x + float((s.box.m_cellSpacingRaw.x + s.box.m_cellSizeRaw.x) * cx),
                     s.box.origin.y);
             size.set(float(s.box.m_cellSizeRaw.x), float(s.box.m_cellSizeRaw.y));
-            const Rasterized r = rasterize(pos, size);
+            const Rasterized r = rasterize_legacy(pos, size);
             if (cx == 1)
                 first_step = r.x1 - prev_x1;
             if (cx > 1 && r.x1 - prev_x1 != first_step)
@@ -705,10 +825,12 @@ with tempfile.TemporaryDirectory(prefix='ixray-cell-grid-') as directory:
     subprocess.run([str(binary)], check=True,
                    env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
 
-print('PASS: production UpdateCellMetrics, CellOffsetUI, SetItemGeometry, RefreshItemsPos, '
-      'ReinitSize, PickCell, TopVisibleCell and Draw; whole pixel cell size including the '
-      'reported 81.6 case, one constant step for eight list shapes over six scales, item edges '
-      'meeting exactly, grid background on the same pixels, PickCell over 64 points per cell, '
-      '2x1 and 5x2 extents, a scrolled list, a scale change, a refused zero scale, vertical '
-      'placement, the pre-fix '
-      'varying step reproduced, the belt last pixel; ASan/UBSan')
+print('PASS: production UpdateCellMetrics, SetScreenCellSize, CellOffsetUI, SetItemGeometry, '
+      'RefreshItemsPos, ReinitSize, PickCell, TopVisibleCell, Draw and snap_grid_px; whole '
+      'pixel cell size including the reported 81.6 case; screen_cell_size square and exact '
+      'over five scales, with 1x1=75, 2x1=150x75, 5x2=375x150 and three icons spanning exactly '
+      '225 px across and down; the attribute absent leaves the old derivation (83x77) intact; '
+      'one constant step for ten list shapes over six scales, neighbouring icon edges on the '
+      'same pixel, grid background on the same pixels, PickCell over 64 points per cell, a '
+      'scrolled list, a scale change, a refused zero scale, vertical placement, the pre-fix '
+      'varying step and missed edges reproduced, the belt last pixel; ASan/UBSan')

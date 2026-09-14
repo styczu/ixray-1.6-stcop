@@ -96,6 +96,7 @@ public:
 			void			ResetCellsCapacity	(){VERIFY(ItemsCount()==0);SetCellsCapacity(m_orig_cell_capacity);};
 	 const	Fvector2&		CellSize			();
 			void			SetCellSize			(const Ivector2 new_sz);
+			void			SetScreenCellSize	(int px);
 	const	Fvector2&		CellsSpacing		();
 			void			SetCellsSpacing		(const Ivector2& new_sz);
 			void			SetCellsVertAlignment(xr_string alignment);
@@ -174,6 +175,11 @@ protected:
 	// One cell has to cover a whole number of screen pixels or neighbouring items
 	// gape and overlap by one after rasterization. The screen sizes are the truth;
 	// the UI-base ones are only what CUIWindow positions have to be expressed in.
+	//
+	// When positive m_screenCellSize is the whole geometry: one square cell of exactly this many
+	// screen pixels, from screen_cell_size in XML. Zero means derive it from the raw
+	// UI base size below, the way every layout without the attribute does.
+	int							m_screenCellSize;
 	Ivector2					m_cellSizeRaw;				//UI base	(width, height) as read from XML
 	Ivector2					m_cellSpacingRaw;			//UI base	(width, height) as read from XML
 	Ivector2					m_cellSizeScreen;			//screen px	(width, height) whole pixels
@@ -206,6 +212,7 @@ protected:
 				void			SetCellsCapacity	(const Ivector2& c);
 	IC const	Fvector2&		CellSize			()								{return m_cellSize;};	
 				void			SetCellSize			(const Ivector2& new_sz);
+				void			SetScreenCellSize	(int px);
 	IC const	Fvector2&		CellsSpacing		()								{return m_cellSpacing;};	
 				void			SetCellsSpacing		(const Ivector2& new_sz);
 	IC const	Ivector2&		CellSizeScreen		()								{return m_cellSizeScreen;};

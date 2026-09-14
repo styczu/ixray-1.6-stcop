@@ -27,7 +27,6 @@ drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
 # The cell tints and the UV span live in the anonymous namespace at the top of the file.
 constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
 assert 'kDropPreviewFree' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
-assert 'kCellPixelBias' in constants, constants
 
 bodies = {
     'PREDICT_BODY': body(drag_drop, 'EDropPreview CUIDragDropListEx::PredictDrop('),
@@ -45,6 +44,7 @@ bodies = {
     'METRICS_BODY': body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics('),
     'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
     'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
+    'SNAP_GRID_BODY': body(drag_drop, 'IC float snap_grid_px('),
 }
 
 code = r'''
@@ -164,6 +164,9 @@ CONSTANTS
 IC int screen_cell_len(int ui_len, float scale)
 SCREEN_LEN_BODY
 
+IC float snap_grid_px(float v)
+SNAP_GRID_BODY
+
 struct CUICellContainer;
 struct CUICellItem;
 
@@ -231,6 +234,7 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
 struct CUICellContainer
 {
     CUIDragDropListEx* m_pParentDragDropList = nullptr;
+    int m_screenCellSize = 0;
     Ivector2 m_cellsCapacity{0, 0};
     Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
     Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
