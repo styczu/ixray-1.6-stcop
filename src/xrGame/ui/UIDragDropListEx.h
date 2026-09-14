@@ -72,7 +72,10 @@ public:
 	static CUIDragItem*		m_drag_item;
 							CUIDragDropListEx	();
 	virtual					~CUIDragDropListEx	();
-				void		InitDragDropList		(Fvector2 pos, Fvector2 size);
+				// scroll_profile picks the section of scroll_bar.xml the vertical bar takes
+				// its look and, for a vertical bar, its width from. Left alone every list
+				// keeps the shared "default" one.
+				void		InitDragDropList		(Fvector2 pos, Fvector2 size, LPCSTR scroll_profile = "default");
 
 	typedef					xr_delegate<bool(CUICellItem*)>			DRAG_CELL_EVENT;
 	typedef					xr_delegate<void(CUIDragItem*, bool)>	DRAG_ITEM_EVENT;
