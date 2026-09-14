@@ -45,11 +45,23 @@ już do niej dostępu. W kodzie stoi to w komentarzu.
 
 ## Sprawa obok, nie objęta patchem
 
-`CUICellContainer::PickCell` dzieli przez `cellSize + spacing*(cap-1)/cap`
-(dzielenie całkowite), podczas gdy `PlaceItemAtPos` rozstawia komórki co
-`cellSize + spacing`. Dla pasa wychodzi 60 zamiast 65, dla szybkich slotów 71
-zamiast 81. Plecak i listy handlu mają `spacing = 0`, więc zgłoszonego błędu to
-nie dotyczy. Osobna sprawa, celowo poza tym patchem.
+`CUICellContainer::PickCell` dzieli przez `cellSize + spacing*(cap-1)/cap`,
+podczas gdy `PlaceItemAtPos` rozstawia komórki co `cellSize + spacing`. To nie
+jest pomyłka: dzielnik jest celowo uśredniony, tak żeby cała szerokość paska
+rozłożyła się równo na komórki i przerwy między nimi przypadły sąsiadom.
+Narysowana komórka `k` zawsze mieści się w swoim wycinku - przy dokładnej
+arytmetyce różnica wynosi `spacing*k/cap` od dołu i `spacing*(cap-k-1)/cap` od
+góry, obie nieujemne.
+
+Zostaje jedno: `spacing*(cap-1)/cap` liczy się na `int`, więc obcina. Pas ma
+dzielnik 60 zamiast 60.2 i przez to ostatni piksel ostatniej komórki (x = 300
+przy szerokości 301) wskazuje komórkę 5, której nie ma - przedmiot idzie wtedy
+w automatyczne rozmieszczenie. Szybkie sloty i plecak dzielą się bez reszty
+(71 i 41 dokładnie), więc tam nie ma nawet tego. Sprawdzone punkt po punkcie
+co 0.1 px na całej szerokości wszystkich trzech list.
+
+Czyli: jeden piksel na pasie. Celowo poza tym patchem - poprawka jest tego
+warta mniej niż ryzyko konfliktu przy każdym kolejnym wydaniu.
 
 Offset chwytu jest zaokrąglany rozmiarem komórki listy **źródłowej**, a komórka
 wybierana na liście docelowej. Dla przedmiotów 1x1 nie ma to znaczenia, bo offset
@@ -68,12 +80,15 @@ kompiluje produkcyjne ciała `quantize_grab_offset`, `PickCell` i `ValidCell`
 i sprawdza 7938 pozycji kursora dla przedmiotu 1x1 przy trzech różnych chwytach,
 osobno chwyty 2x1 i 1x2, odtwarza zachowanie sprzed poprawki, a także przypadki
 brzegowe - kursor tuż poza ikoną, offset większy od przedmiotu, zerowy rozmiar
-komórki. Test wymaga Pythona 3 i g++
-z ASan/UBSan. LeakSanitizer jest domyślnie wyłączony, żeby test działał
-w środowisku z ograniczonym ptrace.
+komórki. Test wymaga Pythona 3 i g++ z ASan/UBSan. LeakSanitizer jest domyślnie
+wyłączony, żeby test działał w środowisku z ograniczonym ptrace.
 
-**Nie wykonano buildu Windows Release ani próby w grze.** Po kompilacji sprawdź
-w ekwipunku: przedmiot 1x1 chwycony za środek ma trafić w komórkę pod kursorem,
+Kompilacja na Windowsie przeszła. Na commicie `eae6a01c3` zielone są oba
+workflow: `Build engine` w RelWithDebInfo oraz `Non-Unity build` w Debug,
+RelWithDebInfo i Release.
+
+**Nie wykonano próby w grze.** Po kompilacji sprawdź w ekwipunku:
+przedmiot 1x1 chwycony za środek ma trafić w komórkę pod kursorem,
 a broń 2x1 chwycona za prawą połowę ma trafić tak, żeby chwycona połowa była pod
 kursorem. Warto przejść plecak, pas, szybkie sloty i handel.
 

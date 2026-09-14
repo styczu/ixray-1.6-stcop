@@ -46,10 +46,11 @@ Trzy pary plików źródłowych (`UIDragDropListEx.{h,cpp}`,
 
 Pozycję w siatce, a nie to, czy zasady gry pozwolą na ruch.
 `CUIActorMenu::OnItemDrop` może odrzucić przedmiot niezależnie - `CanPutInRuck`,
-warunki slotów, kosz. Na pasie i szybkich slotach podświetlenie trafia tam, gdzie
-przedmiot faktycznie wyląduje, co przy niezerowym `cell_sp_x` nie musi być komórką
-pod kursorem: to znany błąd skoku w `PickCell`, opisany w README pakietu
-`inventory-drop-cell` i celowo nietknięty.
+warunki slotów, kosz. Podświetlenie zawsze pokazuje to, co zrobi `SetItem`, więc
+gdyby `PickCell` kiedykolwiek wskazało nie tę komórkę, podgląd pokaże ten sam
+błąd - i to jest właściwe zachowanie, bo mówi prawdę o wyniku. Jedyny znany taki
+przypadek to ostatni piksel ostatniej komórki pasa, opisany w README pakietu
+`inventory-drop-cell`.
 
 ## Sprawdzone
 
@@ -72,8 +73,14 @@ i dla przedmiotu 2x1 - oraz że podświetlenia nie ma tam, gdzie nie powinno.
 To pilnuje samego przeliczania współrzędnych; wyglądu na ekranie nie sprawdza.
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-**Nie wykonano buildu Windows Release ani próby w grze, więc wygląd podświetlenia
-nie był oglądany na ekranie.** Po kompilacji sprawdź, czy podświetlane komórki
+Kompilacja na Windowsie przeszła. Na commicie `eae6a01c3` zielone są oba
+workflow: `Build engine` w RelWithDebInfo oraz `Non-Unity build` w Debug,
+RelWithDebInfo i Release. Ta druga konfiguracja ma tu znaczenie: `FindSimilar`,
+które ten patch zmienia, ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją
+wyłącznie `Non-Unity build` w Debug.
+
+**Nie wykonano próby w grze, więc wygląd podświetlenia nie był oglądany na
+ekranie.** Po kompilacji sprawdź, czy podświetlane komórki
 zgadzają się z tym, gdzie przedmiot ląduje, i czy kolory są czytelne na twoim
 `ui_grid` - jeśli nie, zmień `kDropPreviewFree` i `kDropPreviewBlocked` na górze
 `src/xrGame/ui/UIDragDropListEx.cpp`. Przejdź plecak, pas, szybkie sloty, handel,
