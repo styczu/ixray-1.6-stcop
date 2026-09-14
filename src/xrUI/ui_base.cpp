@@ -148,6 +148,15 @@ void ui_core::AlignPixel(float& src_and_dest)	const
 		src_and_dest		= (float)iFloor(src_and_dest);
 }
 
+// Like AlignPixel, but to the nearest whole pixel instead of down. An edge that two
+// widgets compute from either side lands on a whole pixel by construction, and there
+// rounding down turns a float error of 1e-4 into a whole pixel of disagreement.
+void ui_core::SnapPixel(float& src_and_dest)	const
+{
+	if(m_currentPointType!=IUIRender::pttLIT)
+		src_and_dest		= (float)iFloor(src_and_dest + 0.5f);
+}
+
 void ui_core::PushScissor(const Frect& r_tgt, bool overlapped)
 {
 	if(UI().m_currentPointType==IUIRender::pttLIT)
