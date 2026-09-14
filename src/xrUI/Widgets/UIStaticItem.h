@@ -11,6 +11,8 @@ public:
 		flValidTextureRect		=(1<<1),
 		flValidHeadingPivot		=(1<<2),
 		flFixedLTWhileHeading	=(1<<3),
+		// Off by default: only the inventory cells ask for it, see SetPixelSnap.
+		flSnapToScreenPixels	=(1<<4),
 	};
 
 	Frect			TextureRect;
@@ -53,6 +55,12 @@ public:
 	   void			ResetHeadingPivot		();
 	   IC bool		GetFixedLTWhileHeading	() const								{return !!uFlags.test(flFixedLTWhileHeading);}
 	   Fvector2		GetHeadingPivot			()										{return vHeadingPivot;}
+
+	   // Round both corners of the drawn rectangle to whole screen pixels instead of
+	   // flooring the top left one and letting the bottom right fall where it may. Two
+	   // widgets sharing an edge then draw it on the same physical pixel. Ignored by
+	   // the rotated path, which has no axis aligned edges to share.
+	   IC void		SetPixelSnap			(bool snap)							{uFlags.set(flSnapToScreenPixels, snap?TRUE:FALSE);}
 
 private:
 	   void			RenderInternal			(const Fvector2& pos);
