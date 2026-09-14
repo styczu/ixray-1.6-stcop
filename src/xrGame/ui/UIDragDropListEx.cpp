@@ -141,11 +141,11 @@ void CUIDragDropListEx::SendMessage(CUIWindow* pWnd, s16 msg, void* pData)
 	CUIWndCallback::OnEvent(pWnd, msg, pData);
 }
 
-void CUIDragDropListEx::InitDragDropList(Fvector2 pos, Fvector2 size)
+void CUIDragDropListEx::InitDragDropList(Fvector2 pos, Fvector2 size, LPCSTR scroll_profile)
 {
 	inherited::SetWndPos				(pos);
 	inherited::SetWndSize				(size);
-	m_vScrollBar->InitScrollBar			(Fvector2().set(size.x, 0.0f), size.y, false);
+	m_vScrollBar->InitScrollBar			(Fvector2().set(size.x, 0.0f), size.y, false, scroll_profile);
 	m_vScrollBar->SetWndPos				(Fvector2().set(m_vScrollBar->GetWndPos().x - m_vScrollBar->GetWidth(), m_vScrollBar->GetWndPos().y));
 }
 
@@ -389,18 +389,19 @@ void CUIDragDropListEx::ReinitScroll()
 		VERIFY						(_valid(h1));
 		VERIFY						(_valid(h2));
 		float dh = h1-h2;
-		m_vScrollBar->Show			( (dh > 0) || m_flags.test(flAlwaysShowScroll) );
-		m_vScrollBar->Enable		( (dh > 0) || m_flags.test(flAlwaysShowScroll) );
-
-		if ( dh < 0 )
-		{
-//			dh = 0;
-			m_vScrollBar->SetRange	(0, 0);
-		}
-		else
-		{
-			m_vScrollBar->SetRange	(0, iFloor(dh));
-		}
+		// What decides whether a bar is worth showing is its range, not the raw
+		// difference. The range is floored to whole UI base units and the scroll
+		// position is an integer too, so anything below one unit ends up as the range
+		// (0,0): a bar that cannot move the container by even a single step. Since a
+		// cell is rounded to whole screen pixels, a one row list comes out a fraction
+		// of a unit taller than the window it used to fill exactly - 41 units become
+		// 77 px and come back as 41.07 at 1440p - and that fraction used to raise a
+		// dead bar next to the quick slots and the belt. A list that really overflows
+		// does so by a whole row, two orders of magnitude away.
+		int range = (dh > 0) ? iFloor(dh) : 0;
+		m_vScrollBar->Show			( (range > 0) || m_flags.test(flAlwaysShowScroll) );
+		m_vScrollBar->Enable		( (range > 0) || m_flags.test(flAlwaysShowScroll) );
+		m_vScrollBar->SetRange		(0, range);
 		m_vScrollBar->SetScrollPos	(0);
 		m_vScrollBar->SetStepSize	(iFloor(CellSize().y/3.0f));
 		m_vScrollBar->SetPageSize	( 1/*CellSize().y*/ );
