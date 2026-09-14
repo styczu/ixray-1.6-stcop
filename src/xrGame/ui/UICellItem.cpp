@@ -12,6 +12,38 @@
 
 #include "CustomOutfit.h"
 
+namespace
+{
+// The cell an item lands in is picked from the top-left corner of the dragged icon,
+// so grabbing the icon anywhere but inside its first cell shifted the target left/up:
+// the item had to be released in the lower right part of the wanted cell. Keep only
+// the whole-cell part of the grab offset - the cell under the cursor then receives
+// the cell of the item that was actually grabbed.
+Fvector2 quantize_grab_offset(const Fvector2& grab_offset, const Ivector2& cell_size, const Ivector2& grid_size)
+{
+	// grab_offset is icon_lt - cursor, so it is <= 0 on both axes.
+	Fvector2 res = grab_offset;
+
+	if (cell_size.x > 0)
+	{
+		int sub_cell	= iFloor(-grab_offset.x / float(cell_size.x));
+		int last_cell	= (grid_size.x > 1) ? grid_size.x - 1 : 0;
+		clamp			(sub_cell, 0, last_cell);
+		res.x			= -float(sub_cell * cell_size.x);
+	}
+
+	if (cell_size.y > 0)
+	{
+		int sub_cell	= iFloor(-grab_offset.y / float(cell_size.y));
+		int last_cell	= (grid_size.y > 1) ? grid_size.y - 1 : 0;
+		clamp			(sub_cell, 0, last_cell);
+		res.y			= -float(sub_cell * cell_size.y);
+	}
+
+	return res;
+}
+}
+
 CUICellItem* CUICellItem::m_mouse_selected_item = nullptr;
 
 CUICellItem::CUICellItem()
@@ -467,6 +499,23 @@ void CUIDragItem::Init(const ui_shader& sh, const Frect& rect, const Frect& text
 	m_static.SetTextureColor		(color_rgba(255,255,255,170));
 	m_static.SetStretchTexture		(true);
 	m_pos_offset.sub				(rect.lt, GetUICursor().GetCursorPosition());
+
+	// The owner list has to be read here and the result cached: OnItemDrop calls
+	// RemoveItem - which resets the owner list to null - before it asks for the drop
+	// position, so GetPosition() can no longer reach the list the item came from.
+	m_drop_offset					= m_pos_offset;
+
+	CUIDragDropListEx* owner_list	= m_pParent ? m_pParent->OwnerList() : nullptr;
+
+	// CreateDragItem already recenters the rect on the cursor for headed items.
+	if (owner_list && !m_pParent->GetUIStaticItem().GetFixedLTWhileHeading())
+	{
+		Ivector2 grid_size			= m_pParent->GetGridSize();
+		if (owner_list->GetVerticalPlacement())
+			std::swap				(grid_size.x, grid_size.y);
+
+		m_drop_offset				= quantize_grab_offset(m_pos_offset, owner_list->CellSize(), grid_size);
+	}
 }
 
 bool CUIDragItem::OnMouseAction(float x, float y, EUIMessages mouse_action)
@@ -514,6 +563,8 @@ void CUIDragItem::SetBackList(CUIDragDropListEx* l)
 
 Fvector2 CUIDragItem::GetPosition()
 {
-	return Fvector2().add(m_pos_offset, GetUICursor().GetCursorPosition());
+	// Only the drop paths use this; Draw() keeps following the cursor with the raw
+	// m_pos_offset, so snapping the target cell does not move the dragged icon.
+	return Fvector2().add(m_drop_offset, GetUICursor().GetCursorPosition());
 }
 
