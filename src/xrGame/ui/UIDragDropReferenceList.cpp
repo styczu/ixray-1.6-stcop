@@ -14,6 +14,7 @@
 
 CUIDragDropReferenceList::CUIDragDropReferenceList()
 {
+	m_references_scale.set(0.0f, 0.0f);
 	AddCallbackStr("cell_item_reference", WINDOW_LBUTTON_DB_CLICK, CUIWndCallback::void_function(this, &CUIDragDropReferenceList::OnItemDBClick));
 }
 CUIDragDropReferenceList::~CUIDragDropReferenceList()
@@ -24,14 +25,35 @@ void CUIDragDropReferenceList::Initialize()
 	for(int i=0; i<m_container->CellsCapacity().x; i++)
 	{
 		m_references.push_back(new CUIStatic());
-		Fvector2 pos = Fvector2().set((m_container->CellSize().x+m_container->CellsSpacing().x)*i,0);
 		m_references.back()->SetAutoDelete(true);
-		m_references.back()->SetWndPos(pos);
-		m_references.back()->SetWndSize(Fvector2().set(m_container->CellSize().x, m_container->CellSize().y));
 		AttachChild(m_references.back());
 		m_references.back()->SetWindowName("cell_item_reference");
 		Register(m_references.back());
 	}
+
+	PlaceReferences();
+}
+
+// Through the container, so a reference icon lies exactly on its cell.
+void CUIDragDropReferenceList::PlaceReferences()
+{
+	m_references_scale = m_container->m_metricsScale;
+
+	for(u32 i=0; i<m_references.size(); ++i)
+	{
+		m_references[i]->SetWndPos(m_container->CellOffsetUI(Ivector2().set(int(i),0)));
+		m_references[i]->SetWndSize(m_container->CellSize());
+		m_references[i]->GetUIStaticItem().SetPixelSnap(true);
+	}
+}
+
+void CUIDragDropReferenceList::Update()
+{
+	inherited::Update();
+
+	// CUICellContainer::RefreshItemsPos only covers what sits inside the container.
+	if(!m_references.empty() && !m_references_scale.similar(m_container->m_metricsScale))
+		PlaceReferences();
 }
 void CUIDragDropReferenceList::SetItem(CUICellItem* itm)
 {

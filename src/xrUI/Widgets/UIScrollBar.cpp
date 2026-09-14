@@ -28,6 +28,16 @@ bool CUIScrollBar::InitScrollBar(Fvector2 pos, float length, bool bIsHorizontal,
 	CUIXml xml_doc;
 	xml_doc.Load	(CONFIG_PATH, UI_PATH, "scroll_bar.xml");
 
+	// A caller can name a profile this scroll_bar.xml does not carry - a window shipped by
+	// an addon whose file defining the profile is not installed, say. Falling back to the
+	// shared profile costs the custom look; carrying on would read a height of zero and
+	// then assert inside the arrow buttons, which is a crash in every config but Shipping.
+	if (!xml_doc.NavigateToNode(profile, 0))
+	{
+		Msg("! [%s]: scroll bar profile [%s] not found, falling back to [default]", __FUNCTION__, profile);
+		profile						= "default";
+	}
+
 	float height					= xml_doc.ReadAttribFlt(profile, 0, (bIsHorizontal)? "height" : "height_v");
 	if (height == 0.0f)
 	{

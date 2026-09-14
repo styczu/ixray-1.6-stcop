@@ -41,6 +41,10 @@ bodies = {
     'IN_RANGE_BODY': body(drag_drop, 'u32 CUICellContainer::GetCellsInRange('),
     'DRAW_BODY': body(drag_drop, 'void CUICellContainer::Draw('),
     'PREVIEW_BODY': body(drag_drop, 'void CUICellContainer::DrawDropPreview('),
+    'METRICS_BODY': body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics('),
+    'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
+    'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
+    'SNAP_GRID_BODY': body(drag_drop, 'IC float snap_grid_px('),
 }
 
 code = r'''
@@ -62,6 +66,8 @@ struct Fvector2
     float x, y;
     Fvector2& set(float a, float b) { x = a; y = b; return *this; }
     Fvector2& sub(const Fvector2& o) { x -= o.x; y -= o.y; return *this; }
+    Fvector2& add(const Fvector2& o) { x += o.x; y += o.y; return *this; }
+    Fvector2& add(const Fvector2& a, const Fvector2& b) { x = a.x + b.x; y = a.y + b.y; return *this; }
     Fvector2& mul(float s) { x *= s; y *= s; return *this; }
 };
 
@@ -101,6 +107,7 @@ template <class T> static T _min(T a, T b) { return a < b ? a : b; }
 template <class T> static T _max(T a, T b) { return a > b ? a : b; }
 template <class T> static void clamp(T& v, const T& lo, const T& hi) { if (v < lo) v = lo; else if (v > hi) v = hi; }
 struct xrCriticalSectionGuard { explicit xrCriticalSectionGuard(int&) {} };
+#define IC inline
 
 enum EDropPreview { dpMerge, dpPlace, dpAuto };
 
@@ -132,13 +139,17 @@ static RenderCapture capture;
 static RenderCapture* UIRender = &capture;
 
 // ClientToScreenScaled is a plain per-axis scale; deliberately non-uniform here so an
-// axis mix-up in the preview cannot pass.
+// axis mix-up in the preview cannot pass, and deliberately fractional so the effective
+// cell size is not the one from the XML.
+static const float g_scale_x = 1.25f, g_scale_y = 1.4f;
 struct UiCore
 {
     int m_currentPointType = 0;
     Frect scissor;
     int scissor_depth = 0;
-    void ClientToScreenScaled(Fvector2& dest, float left, float top) const { dest.set(left * 1.25f, top * 1.4f); }
+    float ClientToScreenScaledX(float v) const { return v * g_scale_x; }
+    float ClientToScreenScaledY(float v) const { return v * g_scale_y; }
+    void ClientToScreenScaled(Fvector2& dest, float left, float top) const { dest.set(left * g_scale_x, top * g_scale_y); }
     void PushScissor(const Frect& r) { scissor = r; ++scissor_depth; }
     void PopScissor() { --scissor_depth; }
 };
@@ -149,6 +160,12 @@ static struct { u32 dwFrame; } Device = { 7 };
 struct ui_shader { int v = 0; int& operator*() { return v; } };
 
 CONSTANTS
+
+IC int screen_cell_len(int ui_len, float scale)
+SCREEN_LEN_BODY
+
+IC float snap_grid_px(float v)
+SNAP_GRID_BODY
 
 struct CUICellContainer;
 struct CUICellItem;
@@ -217,7 +234,11 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
 struct CUICellContainer
 {
     CUIDragDropListEx* m_pParentDragDropList = nullptr;
-    Ivector2 m_cellsCapacity, m_cellSize, m_cellSpacing;
+    int m_screenCellSize = 0;
+    Ivector2 m_cellsCapacity{0, 0};
+    Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
+    Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
+    Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
     Fvector2 origin;
     bool m_isInventoryGridDisabled = false;
     ui_shader hShader;
@@ -226,8 +247,11 @@ struct CUICellContainer
     int csUi = 0;
 
     void GetAbsolutePos(Fvector2& p) { p = origin; }
-    const Ivector2& CellSize() { return m_cellSize; }
-    const Ivector2& CellsSpacing() { return m_cellSpacing; }
+    const Fvector2& CellSize() { return m_cellSize; }
+    const Fvector2& CellsSpacing() { return m_cellSpacing; }
+
+    bool UpdateCellMetrics() METRICS_BODY
+    Fvector2 CellOffsetUI(const Ivector2& cell_pos) const OFFSET_BODY
 
     bool ValidCell(const Ivector2& pos) const VALID_BODY
     CUICell& GetCellAt(const Ivector2& pos) CELL_AT_BODY
@@ -265,9 +289,12 @@ struct CUICellContainer
     }
     Fvector2 aim(int cx, int cy) const
     {
+        Ivector2 c;
+        c.set(cx, cy);
         Fvector2 p;
-        p.set(origin.x + float((m_cellSize.x + m_cellSpacing.x) * cx) + float(m_cellSize.x) * 0.5f,
-              origin.y + float((m_cellSize.y + m_cellSpacing.y) * cy) + float(m_cellSize.y) * 0.5f);
+        p.add(origin, CellOffsetUI(c));
+        p.x += m_cellSize.x * 0.5f;
+        p.y += m_cellSize.y * 0.5f;
         return p;
     }
 };
@@ -312,11 +339,14 @@ struct Scene
         list.m_container = &box;
         box.m_pParentDragDropList = &list;
         box.m_isInventoryGridDisabled = true;   // unique UV per cell
-        box.m_cellSize.set(cell, cell);
-        box.m_cellSpacing.set(space, 0);
+        box.m_cellSizeRaw.set(cell, cell);
+        box.m_cellSpacingRaw.set(space, 0);
+        box.UpdateCellMetrics();
         box.origin.set(702.0f, 119.0f);
         box.reset(cols, rows);
-        list.client_area.set(702.0f, 119.0f, 702.0f + float((cell + space) * cols), 119.0f + float(cell * rows));
+        list.client_area.set(702.0f, 119.0f,
+                             702.0f + (box.m_cellSize.x + box.m_cellSpacing.x) * float(cols),
+                             119.0f + (box.m_cellSize.y + box.m_cellSpacing.y) * float(rows));
         drag.back = &list;
         CUIDragDropListEx::m_drag_item = nullptr;
     }
@@ -435,7 +465,8 @@ int main()
     // from the first visible row, so this is where an off by one would show up.
     {
         Scene s(7, 14, 41, 0);
-        s.list.scroll_pos = 41 * 3;
+        // Three whole rows down, in UI base units the scroll bar works in.
+        s.list.scroll_pos = iFloor(3.0f * (s.box.m_cellSize.y + s.box.m_cellSpacing.y)) + 1;
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 4, 6);
 

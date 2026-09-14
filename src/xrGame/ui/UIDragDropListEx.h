@@ -72,7 +72,10 @@ public:
 	static CUIDragItem*		m_drag_item;
 							CUIDragDropListEx	();
 	virtual					~CUIDragDropListEx	();
-				void		InitDragDropList		(Fvector2 pos, Fvector2 size);
+				// scroll_profile picks the section of scroll_bar.xml the vertical bar takes
+				// its look and, for a vertical bar, its width from. Left alone every list
+				// keeps the shared "default" one.
+				void		InitDragDropList		(Fvector2 pos, Fvector2 size, LPCSTR scroll_profile = "default");
 
 	typedef					xr_delegate<bool(CUICellItem*)>			DRAG_CELL_EVENT;
 	typedef					xr_delegate<void(CUIDragItem*, bool)>	DRAG_ITEM_EVENT;
@@ -94,9 +97,10 @@ public:
 			void			SetCellsCapacity	(const Ivector2 c);
 			void			SetStartCellsCapacity(const Ivector2 c){m_orig_cell_capacity=c;SetCellsCapacity(c);};
 			void			ResetCellsCapacity	(){VERIFY(ItemsCount()==0);SetCellsCapacity(m_orig_cell_capacity);};
-	 const	Ivector2&		CellSize			();
+	 const	Fvector2&		CellSize			();
 			void			SetCellSize			(const Ivector2 new_sz);
-	const	Ivector2&		CellsSpacing		();
+			void			SetScreenCellSize	(int px);
+	const	Fvector2&		CellsSpacing		();
 			void			SetCellsSpacing		(const Ivector2& new_sz);
 			void			SetCellsVertAlignment(xr_string alignment);
 			void			SetCellsHorizAlignment(xr_string alignment);
@@ -170,8 +174,22 @@ protected:
 	bool						m_isInventoryGridDisabled;
 
 	Ivector2					m_cellsCapacity;			//count		(col,	row)
-	Ivector2					m_cellSize;					//pixels	(width, height)
-	Ivector2					m_cellSpacing;				//pixels	(width, height)
+
+	// One cell has to cover a whole number of screen pixels or neighbouring items
+	// gape and overlap by one after rasterization. The screen sizes are the truth;
+	// the UI-base ones are only what CUIWindow positions have to be expressed in.
+	//
+	// When positive m_screenCellSize is the whole geometry: one square cell of exactly this many
+	// screen pixels, from screen_cell_size in XML. Zero means derive it from the raw
+	// UI base size below, the way every layout without the attribute does.
+	int							m_screenCellSize;
+	Ivector2					m_cellSizeRaw;				//UI base	(width, height) as read from XML
+	Ivector2					m_cellSpacingRaw;			//UI base	(width, height) as read from XML
+	Ivector2					m_cellSizeScreen;			//screen px	(width, height) whole pixels
+	Ivector2					m_cellSpacingScreen;		//screen px	(width, height) whole pixels
+	Fvector2					m_cellSize;					//UI base	m_cellSizeScreen / scale
+	Fvector2					m_cellSpacing;				//UI base	m_cellSpacingScreen / scale
+	Fvector2					m_metricsScale;				//scale the four above were built at
 
 	UI_CELLS_VEC				m_cells;
 
@@ -190,14 +208,26 @@ public:
 
 protected:
 	virtual		void			Draw				();
+	virtual		void			Update				();
 				void			DrawDropPreview		(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len);
 
 	IC const	Ivector2&		CellsCapacity		()								{return m_cellsCapacity;};	
 				void			SetCellsCapacity	(const Ivector2& c);
-	IC const	Ivector2&		CellSize			()								{return m_cellSize;};	
+	IC const	Fvector2&		CellSize			()								{return m_cellSize;};	
 				void			SetCellSize			(const Ivector2& new_sz);
-	IC const	Ivector2&		CellsSpacing		()								{return m_cellSpacing;};	
+				void			SetScreenCellSize	(int px);
+	IC const	Fvector2&		CellsSpacing		()								{return m_cellSpacing;};	
 				void			SetCellsSpacing		(const Ivector2& new_sz);
+	IC const	Ivector2&		CellSizeScreen		()								{return m_cellSizeScreen;};
+	IC const	Ivector2&		CellsSpacingScreen	()								{return m_cellSpacingScreen;};
+
+				// The single place the grid step enters geometry: offset of a cell's top
+				// left corner from the container origin, in UI base units.
+				Fvector2		CellOffsetUI		(const Ivector2& cell_pos) const;
+				// Rebuilds the four metrics above from the current UI scale. True when
+				// they changed, which means the caller owes a ReinitSize + RefreshItemsPos.
+				bool			UpdateCellMetrics	();
+				void			RefreshItemsPos		();
 				Ivector2		TopVisibleCell		();
 				Ivector2		GetItemPos			(CUICellItem* itm);
 				Ivector2		FindFreeCell		(const Ivector2& size);
@@ -208,6 +238,7 @@ protected:
 				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);
 
 				void			PlaceItemAtPos		(CUICellItem* itm, Ivector2& cell_pos);
+				void			SetItemGeometry		(CUICellItem* itm, const Ivector2& cell_pos);
 				CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
 
 				void			Grow				();

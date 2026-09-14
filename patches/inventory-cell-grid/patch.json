@@ -1,0 +1,17 @@
+{
+  "name": "inventory-cell-grid",
+  "original_commits": [
+    "28424e0f3c53e3f986c0ae21c1de54c4fa922224",
+    "e9fb81e262c3218d13c445a537911c570d572e86"
+  ],
+  "original_parent": "0cea6397daab064674b25d6d9be95859a9889c08",
+  "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "patch": "0001-fix-inventory-cell-grid.patch",
+  "sha256": "5d210e4b737d984dd910dbec499a7f32f2ece2325e620e02cf546ccd1fd7cdb9",
+  "dependencies": [
+    "inventory-drop-cell",
+    "inventory-drop-preview"
+  ],
+  "ui_changes": true,
+  "format": "git format-patch; git am --keep-cr --3way"
+}
