@@ -45,6 +45,7 @@ public:
 	void			ClientToScreenScaledWidth		(float& src_and_dest)	const;
 	void			ClientToScreenScaledHeight		(float& src_and_dest)	const;
 	void			AlignPixel						(float& src_and_dest)	const;
+	void			SnapPixel						(float& src_and_dest)	const;
 
 	const C2DFrustum& ScreenFrustum					()	const						{return (m_bPostprocess)?m_2DFrustumPP:m_2DFrustum;}
 	C2DFrustum&		ScreenFrustumLIT				()								{return m_FrustumLIT;}
