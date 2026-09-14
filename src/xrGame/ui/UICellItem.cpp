@@ -19,25 +19,26 @@ namespace
 // the item had to be released in the lower right part of the wanted cell. Keep only
 // the whole-cell part of the grab offset - the cell under the cursor then receives
 // the cell of the item that was actually grabbed.
-Fvector2 quantize_grab_offset(const Fvector2& grab_offset, const Ivector2& cell_size, const Ivector2& grid_size)
+// cell_size is the list's effective cell size, the one the grid is really built on.
+Fvector2 quantize_grab_offset(const Fvector2& grab_offset, const Fvector2& cell_size, const Ivector2& grid_size)
 {
 	// grab_offset is icon_lt - cursor, so it is <= 0 on both axes.
 	Fvector2 res = grab_offset;
 
-	if (cell_size.x > 0)
+	if (cell_size.x > 0.0f)
 	{
-		int sub_cell	= iFloor(-grab_offset.x / float(cell_size.x));
+		int sub_cell	= iFloor(-grab_offset.x / cell_size.x);
 		int last_cell	= (grid_size.x > 1) ? grid_size.x - 1 : 0;
 		clamp			(sub_cell, 0, last_cell);
-		res.x			= -float(sub_cell * cell_size.x);
+		res.x			= -(float(sub_cell) * cell_size.x);
 	}
 
-	if (cell_size.y > 0)
+	if (cell_size.y > 0.0f)
 	{
-		int sub_cell	= iFloor(-grab_offset.y / float(cell_size.y));
+		int sub_cell	= iFloor(-grab_offset.y / cell_size.y);
 		int last_cell	= (grid_size.y > 1) ? grid_size.y - 1 : 0;
 		clamp			(sub_cell, 0, last_cell);
-		res.y			= -float(sub_cell * cell_size.y);
+		res.y			= -(float(sub_cell) * cell_size.y);
 	}
 
 	return res;
@@ -377,8 +378,8 @@ void CUICellItem::UpdateConditionProgressBar()
 			if(m_pParentList->GetVerticalPlacement())
 				std::swap(itm_grid_size.x, itm_grid_size.y);
 
-			Ivector2 cell_size = m_pParentList->CellSize();
-			Ivector2 cell_space = m_pParentList->CellsSpacing();
+			Fvector2 cell_size = m_pParentList->CellSize();
+			Fvector2 cell_space = m_pParentList->CellsSpacing();
 			float x = 1.f;
 			float y = itm_grid_size.y * (cell_size.y + cell_space.y) - m_pConditionState->GetHeight() - 2.f;
 
