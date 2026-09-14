@@ -26,6 +26,15 @@ struct CUICell{
 typedef xr_vector<CUICell>			UI_CELLS_VEC;
 typedef UI_CELLS_VEC::iterator		UI_CELLS_VEC_IT;
 
+// What dropping an item at a given position does: merge it into a similar stack,
+// place it at the cell it points at, or hand it to automatic placement.
+enum EDropPreview
+{
+	dpMerge,
+	dpPlace,
+	dpAuto,
+};
+
 class CUIDragDropListEx :public CUIWindow, public CUIWndCallback
 {
 private:
@@ -118,6 +127,7 @@ public:
 			virtual void	SetItem				(CUICellItem* itm); //auto
 			virtual bool	SetItem				(CUICellItem* itm, Fvector2 abs_pos);  // start at cursor pos
 			virtual void	SetItem				(CUICellItem* itm, Ivector2 cell_pos); // start at cell
+	virtual EDropPreview	PredictDrop			(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
 					bool	CanSetItem			(CUICellItem* itm);
 			
 			u32				ItemsCount			();
@@ -180,6 +190,7 @@ public:
 
 protected:
 	virtual		void			Draw				();
+				void			DrawDropPreview		(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len);
 
 	IC const	Ivector2&		CellsCapacity		()								{return m_cellsCapacity;};	
 				void			SetCellsCapacity	(const Ivector2& c);
@@ -191,10 +202,10 @@ protected:
 				Ivector2		GetItemPos			(CUICellItem* itm);
 				Ivector2		FindFreeCell		(const Ivector2& size);
 				bool			HasFreeSpace		(const Ivector2& size);
-				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size);
+				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const CUICellItem* ignore = nullptr);
 				
 				bool			AddSimilar			(CUICellItem* itm);
-				CUICellItem*	FindSimilar			(CUICellItem* itm);
+				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);
 
 				void			PlaceItemAtPos		(CUICellItem* itm, Ivector2& cell_pos);
 				CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
