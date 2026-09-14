@@ -54,6 +54,10 @@ bool CUIXmlInitGame::InitDragDropListEx(CUIXml& xml_doc, LPCSTR path, int index,
 	w_cell_sp.x = xml_doc.ReadAttribInt(path, index, "cell_sp_x");
 	w_cell_sp.y = xml_doc.ReadAttribInt(path, index, "cell_sp_y");
 
+	// Optional: one square cell of exactly this many screen pixels. Without it the
+	// cell keeps coming from cell_width / cell_height in UI base units.
+	pWnd->SetScreenCellSize(xml_doc.ReadAttribInt(path, index, "screen_cell_size", 0));
+
 	pWnd->SetCellSize(w_cell_sz);
 	pWnd->SetCellsSpacing(w_cell_sp);
 	pWnd->SetStartCellsCapacity(w_cells);
