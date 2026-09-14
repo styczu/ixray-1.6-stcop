@@ -43,6 +43,7 @@ void CUIDragDropReferenceList::PlaceReferences()
 	{
 		m_references[i]->SetWndPos(m_container->CellOffsetUI(Ivector2().set(int(i),0)));
 		m_references[i]->SetWndSize(m_container->CellSize());
+		m_references[i]->GetUIStaticItem().SetPixelSnap(true);
 	}
 }
 

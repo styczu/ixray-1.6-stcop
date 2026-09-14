@@ -29,9 +29,8 @@ valid_cell = body(drag_drop, 'bool CUICellContainer::ValidCell(')
 metrics = body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics(')
 cell_offset = body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI(')
 
-# kCellPixelBias and screen_cell_len live in the anonymous namespace at the top.
-helper = drag_drop[drag_drop.index('constexpr float kCellPixelBias'):drag_drop.index('IC int screen_cell_len(')]
-helper += 'IC int screen_cell_len(int ui_len, float scale)' + body(drag_drop, 'IC int screen_cell_len(')
+# screen_cell_len lives in the anonymous namespace at the top of the file.
+helper = 'IC int screen_cell_len(int ui_len, float scale)' + body(drag_drop, 'IC int screen_cell_len(')
 
 code = r'''
 #include <cassert>
@@ -79,12 +78,14 @@ QUANTIZE_BODY
 // production one, so a change to the picking maths shows up here.
 struct Grid
 {
+    int m_screenCellSize;
     Ivector2 m_cellsCapacity, m_cellSizeRaw, m_cellSpacingRaw, m_cellSizeScreen, m_cellSpacingScreen;
     Fvector2 m_cellSize, m_cellSpacing, m_metricsScale;
     Fvector2 origin;
 
     Grid()
     {
+        m_screenCellSize = 0;
         m_cellsCapacity.set(0, 0);
         m_cellSizeRaw.set(0, 0);
         m_cellSpacingRaw.set(0, 0);

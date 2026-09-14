@@ -19,12 +19,14 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
 constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
 constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
 
-// Half a hundredth of a screen pixel. CUIStaticItem::RenderInternal floors the left
-// edge of every icon, and the float error along scale*(absolute position + offset)
-// reaches about 5e-4 px at inventory magnitudes: without the nudge a corner that
-// should land on a whole pixel can come out a hair under it and floor one pixel too
-// far left. It enters an offset once, so it never grows with the cell index.
-constexpr float kCellPixelBias = 0.01f;
+// A grid vertex, rounded the way CUICellItem's own rectangle is rounded
+// (CUIStaticItem::flSnapToScreenPixels), so the background of a cell and the icon on
+// top of it cover the same physical pixels. The trailing half pixel is the usual
+// texel centre offset and is not part of the rounding.
+IC float snap_grid_px(float v)
+{
+	return float(iFloor(v + 0.5f)) - 0.5f;
+}
 
 // A cell has to cover a whole number of screen pixels. Left fractional, 81.6 px
 // rasterizes as 81 or 82 depending on where the cell falls, and since
@@ -451,6 +453,11 @@ void CUIDragDropListEx::SetCellSize(const Ivector2 new_sz)
 	m_container->SetCellSize(new_sz);
 }
 
+void CUIDragDropListEx::SetScreenCellSize(int px)
+{
+	m_container->SetScreenCellSize(px);
+}
+
 void CUIDragDropListEx::SetCellsSpacing(const Ivector2& new_sz)
 {
 	m_container->SetCellsSpacing(new_sz);
@@ -638,6 +645,7 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
 	}
 //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
 	m_cellsCapacity.set			( 0, 0 );
+	m_screenCellSize			= 0;
 	m_cellSizeRaw.set			( 0, 0 );
 	m_cellSpacingRaw.set		( 0, 0 );
 	m_cellSizeScreen.set		( 0, 0 );
@@ -920,6 +928,15 @@ void CUICellContainer::SetCellsSpacing(const Ivector2& c)
 	ReinitSize					();
 }
 
+// screen_cell_size from XML: a square cell of exactly this many screen pixels,
+// whatever the resolution. Zero hands the list back to cell_width / cell_height.
+void CUICellContainer::SetScreenCellSize(int px)
+{
+	m_screenCellSize			= _max(0, px);
+	UpdateCellMetrics			();
+	ReinitSize					();
+}
+
 // The whole geometry of a list hangs off these four values: the grid background, the
 // item rectangles, PlaceItemAtPos, PickCell and the drop preview all read them and
 // nothing rounds on its own any more.
@@ -938,7 +955,11 @@ bool CUICellContainer::UpdateCellMetrics()
 		return false;
 
 	Ivector2 cell_screen, spacing_screen;
-	cell_screen.set				(screen_cell_len(m_cellSizeRaw.x, scale.x),		screen_cell_len(m_cellSizeRaw.y, scale.y));
+	if(m_screenCellSize>0)
+		cell_screen.set			(m_screenCellSize,								m_screenCellSize);
+	else
+		cell_screen.set			(screen_cell_len(m_cellSizeRaw.x, scale.x),		screen_cell_len(m_cellSizeRaw.y, scale.y));
+
 	spacing_screen.set			(screen_cell_len(m_cellSpacingRaw.x, scale.x),	screen_cell_len(m_cellSpacingRaw.y, scale.y));
 
 	if	(scale.x == m_metricsScale.x		&& scale.y == m_metricsScale.y
@@ -959,11 +980,12 @@ bool CUICellContainer::UpdateCellMetrics()
 Fvector2 CUICellContainer::CellOffsetUI(const Ivector2& cell_pos) const
 {
 	// The step is the whole-pixel screen step; it is divided back into UI base units
-	// only because that is where CUIWindow keeps its positions. kCellPixelBias holds
-	// the corner a hair above the whole pixel, see its declaration.
+	// only because that is where CUIWindow keeps its positions. Nothing is nudged: both
+	// edges of a cell item are rounded to the nearest pixel when it is drawn, which
+	// absorbs the float error instead of letting a floor turn it into a whole pixel.
 	Fvector2 res;
-	res.set		(float((m_cellSizeScreen.x + m_cellSpacingScreen.x) * cell_pos.x) + kCellPixelBias,
-				 float((m_cellSizeScreen.y + m_cellSpacingScreen.y) * cell_pos.y) + kCellPixelBias);
+	res.set		(float((m_cellSizeScreen.x + m_cellSpacingScreen.x) * cell_pos.x),
+				 float((m_cellSizeScreen.y + m_cellSpacingScreen.y) * cell_pos.y));
 
 	res.x		/= m_metricsScale.x;
 	res.y		/= m_metricsScale.y;
@@ -1274,8 +1296,8 @@ void CUICellContainer::Draw()
 				//pv->set			(iFloor(drawLT.x + p.x*(f_len.x) + f_len.x*x)-0.5f, 
 				//				 iFloor(drawLT.y + p.y*(f_len.y) + f_len.y*y)-0.5f, 
 				//				 0xFFFFFFFF,tp.x+uv.x,tp.y+uv.y);
-				UIRender->PushPoint(iFloor( rect_offset.x + p.x*(f_len.x) )-0.5f, 
-									iFloor( rect_offset.y + p.y*(f_len.y) )-0.5f,
+				UIRender->PushPoint(snap_grid_px( rect_offset.x + p.x*(f_len.x) ),
+									snap_grid_px( rect_offset.y + p.y*(f_len.y) ),
 									0,
 									m_pParentDragDropList->back_color,
 									tp.x+uv.x, tp.y+uv.y);
@@ -1363,8 +1385,8 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 			{
 				const Fvector2& p	= pts[k];
 				const Fvector2& uv	= uvs[k];
-				UIRender->PushPoint(iFloor( rect_offset.x + p.x*(f_len.x) )-0.5f,
-									iFloor( rect_offset.y + p.y*(f_len.y) )-0.5f,
+				UIRender->PushPoint(snap_grid_px( rect_offset.x + p.x*(f_len.x) ),
+									snap_grid_px( rect_offset.y + p.y*(f_len.y) ),
 									0,
 									color,
 									tp.x+uv.x, tp.y+uv.y);

@@ -91,6 +91,10 @@ void CUICellItem::init()
 		is_xml_ready = true;
 	}
 	
+	// The whole point of the integer cell grid: an icon covers whole screen pixels and
+	// shares its edge with the neighbouring cell exactly. Local to cell items.
+	GetUIStaticItem().SetPixelSnap(true);
+
 	m_text					= new CUIStatic();
 	m_text->SetAutoDelete	( true );
 	AttachChild				( m_text );
