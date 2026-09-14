@@ -168,7 +168,13 @@ To jest powód, dla którego próba w grze poniżej jest obowiązkowa, a nie kur
 
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-**Nie wykonano kompilacji na Windowsie ani próby w grze.** Po kompilacji sprawdź na kilku
+Kompilacja na Windowsie przeszła. Na commicie `ce9a92e87` zielone są oba workflow:
+`Build engine` w Release i RelWithDebInfo oraz `Non-Unity build` w Debug, RelWithDebInfo
+i Release. Ta ostatnia konfiguracja ma tu znaczenie: `FindSimilar` w zmienianym
+`UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją wyłącznie
+`Non-Unity build` w Debug.
+
+**Nie wykonano próby w grze, więc siatki nie oglądano na ekranie.** Sprawdź na kilku
 rozdzielczościach, w tym takiej, przy której skala daje ułamek:
 
 - plecak zapełniony po brzegi — żadnej szczeliny ani nachodzenia między ikonami;
