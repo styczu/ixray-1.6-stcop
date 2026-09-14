@@ -10,6 +10,11 @@ private:
 	typedef xr_vector<CUIStatic*> ITEMS_REFERENCES_VEC;
 	typedef ITEMS_REFERENCES_VEC::iterator ITEMS_REFERENCES_VEC_IT;
 	ITEMS_REFERENCES_VEC m_references;
+	// Scale the reference icons were laid out at; they sit on the container cells,
+	// which move when the screen scale changes.
+	Fvector2 m_references_scale;
+
+	void PlaceReferences();
 
 public:
 	CUIDragDropReferenceList();
@@ -21,6 +26,7 @@ public:
 	virtual CUICellItem* RemoveItem(CUICellItem* itm, bool force_root);
 
 	void Initialize();
+	virtual void Update();
 	CUICellContainer* GetContainer() {return m_container;};
 	void LoadItemTexture(LPCSTR section, Ivector2 cell_pos);
 	void ReloadReferences(CInventoryOwner* pActor);
