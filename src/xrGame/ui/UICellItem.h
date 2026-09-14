@@ -101,7 +101,8 @@ class CUIDragItem: public CUIWindow, public pureRender, public pureFrame
 	typedef		CUIWindow	inherited;
 	CUIStatic				m_static;
 	CUICellItem*			m_pParent;
-	Fvector2				m_pos_offset;
+	Fvector2				m_pos_offset;	// grab offset, drives where the icon is drawn
+	Fvector2				m_drop_offset;	// same, rounded down to whole cells, drives the drop
 	CUIDragDropListEx*		m_back_list;
 	ICustomDrawDragItem*	m_custom_draw;
 public:
