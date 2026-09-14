@@ -17,6 +17,7 @@ public:
 	virtual void SetItem(CUICellItem* itm);
 	virtual bool SetItem(CUICellItem* itm, Fvector2 abs_pos);
 	virtual void SetItem(CUICellItem* itm, Ivector2 cell_pos);
+	virtual EDropPreview PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
 	virtual CUICellItem* RemoveItem(CUICellItem* itm, bool force_root);
 
 	void Initialize();
