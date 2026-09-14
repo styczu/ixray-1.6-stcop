@@ -26,6 +26,12 @@ drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
 quantize = body(cell_item, 'Fvector2 quantize_grab_offset(')
 pick_cell = body(drag_drop, 'Ivector2 CUICellContainer::PickCell(')
 valid_cell = body(drag_drop, 'bool CUICellContainer::ValidCell(')
+metrics = body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics(')
+cell_offset = body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI(')
+
+# kCellPixelBias and screen_cell_len live in the anonymous namespace at the top.
+helper = drag_drop[drag_drop.index('constexpr float kCellPixelBias'):drag_drop.index('IC int screen_cell_len(')]
+helper += 'IC int screen_cell_len(int ui_len, float scale)' + body(drag_drop, 'IC int screen_cell_len(')
 
 code = r'''
 #include <cassert>
@@ -50,27 +56,58 @@ struct Ivector2
 };
 
 static int iFloor(float f) { return (int)std::floor(f); }
+template <class T> static T _max(T a, T b) { return a > b ? a : b; }
 template <class T> static void clamp(T& v, const T& lo, const T& hi) { if (v < lo) v = lo; else if (v > hi) v = hi; }
+#define IC inline
 
-Fvector2 quantize_grab_offset(const Fvector2& grab_offset, const Ivector2& cell_size, const Ivector2& grid_size)
+// The device scale the list builds its effective cell size from.
+static float g_scale_x = 1.0f, g_scale_y = 1.0f;
+struct UiCore
+{
+    float ClientToScreenScaledX(float v) const { return v * g_scale_x; }
+    float ClientToScreenScaledY(float v) const { return v * g_scale_y; }
+};
+static UiCore ui_core_instance;
+static UiCore& UI() { return ui_core_instance; }
+
+HELPER_BODY
+
+Fvector2 quantize_grab_offset(const Fvector2& grab_offset, const Fvector2& cell_size, const Ivector2& grid_size)
 QUANTIZE_BODY
 
-// The container the engine picks the destination cell from. Both bodies below are
-// the production ones, so a change to the picking maths shows up here.
+// The container the engine picks the destination cell from. Every body below is the
+// production one, so a change to the picking maths shows up here.
 struct Grid
 {
-    Ivector2 m_cellSize, m_cellSpacing, m_cellsCapacity;
+    Ivector2 m_cellsCapacity, m_cellSizeRaw, m_cellSpacingRaw, m_cellSizeScreen, m_cellSpacingScreen;
+    Fvector2 m_cellSize, m_cellSpacing, m_metricsScale;
     Fvector2 origin;
 
+    Grid()
+    {
+        m_cellsCapacity.set(0, 0);
+        m_cellSizeRaw.set(0, 0);
+        m_cellSpacingRaw.set(0, 0);
+        m_cellSizeScreen.set(0, 0);
+        m_cellSpacingScreen.set(0, 0);
+        m_cellSize.set(0.0f, 0.0f);
+        m_cellSpacing.set(0.0f, 0.0f);
+        m_metricsScale.set(1.0f, 1.0f);
+        origin.set(0.0f, 0.0f);
+    }
+
     void GetAbsolutePos(Fvector2& p) { p = origin; }
+    bool UpdateCellMetrics() METRICS_BODY
+    Fvector2 CellOffsetUI(const Ivector2& cell_pos) const OFFSET_BODY
     bool ValidCell(const Ivector2& pos) const VALID_BODY
     Ivector2 PickCell(const Fvector2& abs_pos) PICK_BODY
 
     Fvector2 cell_lt(int cx, int cy) const
     {
+        Ivector2 c;
+        c.set(cx, cy);
         Fvector2 p;
-        p.set(origin.x + float((m_cellSize.x + m_cellSpacing.x) * cx),
-              origin.y + float((m_cellSize.y + m_cellSpacing.y) * cy));
+        p.add(origin, CellOffsetUI(c));
         return p;
     }
 };
@@ -93,10 +130,12 @@ int main()
 {
     // gamedata/configs/ui/actor_menu.xml, dragdrop_bag: 7x14 cells of 41x41, no spacing.
     Grid g;
-    g.m_cellSize.set(41, 41);
-    g.m_cellSpacing.set(0, 0);
+    g.m_cellSizeRaw.set(41, 41);
+    g.m_cellSpacingRaw.set(0, 0);
     g.m_cellsCapacity.set(7, 14);
     g.origin.set(702.0f, 119.0f);
+    assert(g.UpdateCellMetrics());
+    assert(g.m_cellSizeScreen.x == 41 && g.m_cellSizeScreen.y == 41);
 
     const float grabs[] = { 0.5f, 20.5f, 40.5f };   // corner, centre and far edge of the icon
     const float aims[] = { 0.5f, 20.5f, 40.5f };    // where inside the target cell the mouse is released
@@ -207,8 +246,8 @@ int main()
         two_by_one.set(2, 1);
         Fvector2 huge;
         huge.set(-1000.0f, -1000.0f);
-        Ivector2 cell41;
-        cell41.set(41, 41);
+        Fvector2 cell41;
+        cell41.set(41.0f, 41.0f);
         const Fvector2 res = quantize_grab_offset(huge, cell41, two_by_one);
         assert(res.x == -41.0f && res.y == 0.0f);
     }
@@ -217,8 +256,8 @@ int main()
     {
         Fvector2 raw;
         raw.set(-13.0f, -7.0f);
-        Ivector2 none;
-        none.set(0, 0);
+        Fvector2 none;
+        none.set(0.0f, 0.0f);
         const Fvector2 res = quantize_grab_offset(raw, none, one);
         assert(res.x == raw.x && res.y == raw.y);
     }
@@ -229,7 +268,10 @@ int main()
 '''
 
 code = (code
+        .replace('HELPER_BODY', helper)
         .replace('QUANTIZE_BODY', quantize)
+        .replace('METRICS_BODY', metrics)
+        .replace('OFFSET_BODY', cell_offset)
         .replace('VALID_BODY', valid_cell)
         .replace('PICK_BODY', pick_cell))
 

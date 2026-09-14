@@ -18,6 +18,25 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
 // texture, so no extra shader or asset is needed.
 constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
 constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+
+// Half a hundredth of a screen pixel. CUIStaticItem::RenderInternal floors the left
+// edge of every icon, and the float error along scale*(absolute position + offset)
+// reaches about 5e-4 px at inventory magnitudes: without the nudge a corner that
+// should land on a whole pixel can come out a hair under it and floor one pixel too
+// far left. It enters an offset once, so it never grows with the cell index.
+constexpr float kCellPixelBias = 0.01f;
+
+// A cell has to cover a whole number of screen pixels. Left fractional, 81.6 px
+// rasterizes as 81 or 82 depending on where the cell falls, and since
+// CUIStaticItem::RenderInternal floors an icon's left edge but not its right one,
+// neighbouring items gape by a pixel here and overlap by one there.
+IC int screen_cell_len(int ui_len, float scale)
+{
+	if (ui_len <= 0)
+		return 0;
+
+	return _max(1, iFloor(float(ui_len) * scale + 0.5f));
+}
 }
 
 void CUICell::Clear()
@@ -381,7 +400,7 @@ void CUIDragDropListEx::ReinitScroll()
 			m_vScrollBar->SetRange	(0, iFloor(dh));
 		}
 		m_vScrollBar->SetScrollPos	(0);
-		m_vScrollBar->SetStepSize	(CellSize().y/3);
+		m_vScrollBar->SetStepSize	(iFloor(CellSize().y/3.0f));
 		m_vScrollBar->SetPageSize	( 1/*CellSize().y*/ );
 		m_vScrollBar->SetWndSize({ m_vScrollBar->GetWndSize().x, h2 });
 		m_container->SetWndPos		(Fvector2().set(0,0));
@@ -418,11 +437,11 @@ void CUIDragDropListEx::SetCellsCapacity(const Ivector2 c)
 	m_container->SetCellsCapacity(c);
 }
 
-const Ivector2& CUIDragDropListEx::CellSize()
+const Fvector2& CUIDragDropListEx::CellSize()
 {
 	return m_container->CellSize();
 }
-const Ivector2& CUIDragDropListEx::CellsSpacing()
+const Fvector2& CUIDragDropListEx::CellsSpacing()
 {
 	return m_container->CellsSpacing();
 }
@@ -618,7 +637,16 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
 		hShader->create("hud\\fog_of_war", "ui\\ui_grid");
 	}
 //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
-	m_cellSpacing.set			( 0, 0 );
+	m_cellsCapacity.set			( 0, 0 );
+	m_cellSizeRaw.set			( 0, 0 );
+	m_cellSpacingRaw.set		( 0, 0 );
+	m_cellSizeScreen.set		( 0, 0 );
+	m_cellSpacingScreen.set		( 0, 0 );
+	m_cellSize.set				( 0.0f, 0.0f );
+	m_cellSpacing.set			( 0.0f, 0.0f );
+	// A usable divisor from the start; the real one arrives with the first
+	// UpdateCellMetrics, which a zero cell size cannot make it skip.
+	m_metricsScale.set			( 1.0f, 1.0f );
 }
 
 CUICellContainer::~CUICellContainer()
@@ -683,6 +711,22 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
 			C.SetItem		(itm,(x==0&&y==0));
 		}
 	}
+
+	SetItemGeometry			(itm, cell_pos);
+
+	AttachChild				(itm);
+	itm->OnAfterChild		(m_pParentDragDropList);
+}
+
+// Size and position only. Attaching the item and OnAfterChild stay in the caller:
+// RefreshItemsPos runs this for every item whenever the screen scale changes, and
+// CUIWeaponCellItem::OnAfterChild rebuilds the addon overlays.
+void CUICellContainer::SetItemGeometry(CUICellItem* itm, const Ivector2& cell_pos)
+{
+	Ivector2 cs				= itm->GetGridSize();
+	if(m_pParentDragDropList->GetVerticalPlacement())
+		std::swap(cs.x,cs.y);
+
 	// without this will be double compression on wide screens
 	// solution works only for "quads" cells
 	if (m_pParentDragDropList->GetVerticalPlacement())
@@ -695,9 +739,7 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
 	}
 
 	if (!m_pParentDragDropList->GetVirtualCells()) {
-		// FX: (Отступ + размер) * позиция грида... Логично
-		Fvector2 ValidItemPos = { float((m_cellSpacing.x + m_cellSize.x) * cell_pos.x), float(((m_cellSpacing.y + m_cellSize.y) * cell_pos.y)) };
-		itm->SetWndPos(ValidItemPos);
+		itm->SetWndPos(CellOffsetUI(cell_pos));
 	}
 	else
 	{
@@ -709,10 +751,6 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
 
 		itm->SetWndPos(AlignPos);
 	}
-
-
-	AttachChild				(itm);
-	itm->OnAfterChild		(m_pParentDragDropList);
 }
 
 CUICellItem* CUICellContainer::RemoveItem(CUICellItem* itm, bool force_root)
@@ -870,19 +908,99 @@ void CUICellContainer::SetCellsCapacity(const Ivector2& c)
 
 void CUICellContainer::SetCellSize(const Ivector2& new_sz)
 {
-	m_cellSize					= new_sz;
+	m_cellSizeRaw				= new_sz;
+	UpdateCellMetrics			();
 	ReinitSize					();
 }
 
 void CUICellContainer::SetCellsSpacing(const Ivector2& c)
 {
-	m_cellSpacing				= c;
+	m_cellSpacingRaw			= c;
+	UpdateCellMetrics			();
 	ReinitSize					();
+}
+
+// The whole geometry of a list hangs off these four values: the grid background, the
+// item rectangles, PlaceItemAtPos, PickCell and the drop preview all read them and
+// nothing rounds on its own any more.
+bool CUICellContainer::UpdateCellMetrics()
+{
+	Fvector2 scale;
+	// The scalar form on purpose: the Fvector2 overload hands back unscaled lengths
+	// under pttLIT, and that point type belongs to the detector and dosimeter screens,
+	// never to a drag&drop list.
+	scale.set					(UI().ClientToScreenScaledX(1.0f), UI().ClientToScreenScaledY(1.0f));
+
+	// CellOffsetUI divides by the scale. A device that has not reported its size yet
+	// would leave a zero here and turn every item position into an infinity, so keep
+	// whatever was built last instead.
+	if(scale.x<=0.0f || scale.y<=0.0f)
+		return false;
+
+	Ivector2 cell_screen, spacing_screen;
+	cell_screen.set				(screen_cell_len(m_cellSizeRaw.x, scale.x),		screen_cell_len(m_cellSizeRaw.y, scale.y));
+	spacing_screen.set			(screen_cell_len(m_cellSpacingRaw.x, scale.x),	screen_cell_len(m_cellSpacingRaw.y, scale.y));
+
+	if	(scale.x == m_metricsScale.x		&& scale.y == m_metricsScale.y
+	&&	 cell_screen.x == m_cellSizeScreen.x	&& cell_screen.y == m_cellSizeScreen.y
+	&&	 spacing_screen.x == m_cellSpacingScreen.x	&& spacing_screen.y == m_cellSpacingScreen.y)
+		return false;
+
+	m_metricsScale				= scale;
+	m_cellSizeScreen			= cell_screen;
+	m_cellSpacingScreen			= spacing_screen;
+
+	m_cellSize.set				(float(m_cellSizeScreen.x)		/ scale.x,	float(m_cellSizeScreen.y)		/ scale.y);
+	m_cellSpacing.set			(float(m_cellSpacingScreen.x)	/ scale.x,	float(m_cellSpacingScreen.y)	/ scale.y);
+
+	return true;
+}
+
+Fvector2 CUICellContainer::CellOffsetUI(const Ivector2& cell_pos) const
+{
+	// The step is the whole-pixel screen step; it is divided back into UI base units
+	// only because that is where CUIWindow keeps its positions. kCellPixelBias holds
+	// the corner a hair above the whole pixel, see its declaration.
+	Fvector2 res;
+	res.set		(float((m_cellSizeScreen.x + m_cellSpacingScreen.x) * cell_pos.x) + kCellPixelBias,
+				 float((m_cellSizeScreen.y + m_cellSpacingScreen.y) * cell_pos.y) + kCellPixelBias);
+
+	res.x		/= m_metricsScale.x;
+	res.y		/= m_metricsScale.y;
+
+	return res;
+}
+
+// Item positions carry the screen scale, so they do not survive a resolution change
+// on their own the way plain UI base units used to.
+void CUICellContainer::RefreshItemsPos()
+{
+	for(int y=0; y<m_cellsCapacity.y; ++y)
+		for(int x=0; x<m_cellsCapacity.x; ++x)
+		{
+			CUICell& C		= m_cells[m_cellsCapacity.x*y+x];
+			if(C.Empty() || !C.MainItem())	continue;
+
+			SetItemGeometry	(C.m_item, Ivector2().set(x,y));
+		}
+}
+
+void CUICellContainer::Update()
+{
+	// Here and not in Draw: ReinitSize resets the scroll bar, which is a sibling being
+	// drawn in the same frame.
+	if(UpdateCellMetrics())
+	{
+		ReinitSize		();
+		RefreshItemsPos	();
+	}
+
+	inherited::Update	();
 }
 
 Ivector2 CUICellContainer::TopVisibleCell()
 {
-	return Ivector2().set	(0, iFloor(m_pParentDragDropList->ScrollPos()/float(CellSize().y+m_cellSpacing.y)));
+	return Ivector2().set	(0, iFloor(m_pParentDragDropList->ScrollPos()/(CellSize().y+m_cellSpacing.y)));
 }
 
 CUICell& CUICellContainer::GetCellAt(const Ivector2& pos)
@@ -919,12 +1037,12 @@ u32 CUICellContainer::GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res)
 
 void CUICellContainer::ReinitSize()
 {
-	Ivector2							sz;
+	Fvector2							sz;
 	sz.add								(CellsSpacing(), CellSize());
-	sz.mul								(CellsCapacity());
+	sz.mul								(Fvector2().set(float(CellsCapacity().x), float(CellsCapacity().y)));
 	sz.sub								(CellsSpacing());
 
-	SetWndSize							(Fvector2().set(sz.x,sz.y));
+	SetWndSize							(sz);
 	m_pParentDragDropList->ReinitScroll	();
 }
 
@@ -1043,12 +1161,22 @@ void CUICellContainer::ClearAll(bool bDestroy, xr_vector<u16> IgnoredItemsIds)
 Ivector2 CUICellContainer::PickCell(const Fvector2& abs_pos)
 {
 	Ivector2 res;
+	res.set			(-1, -1);
+
+	// Capacity (0,0) is a legal transient state, see the CUIDragDropListEx constructor.
+	if(m_cellsCapacity.x<=0 || m_cellsCapacity.y<=0)
+		return res;
+
 	Fvector2 ap;
 	GetAbsolutePos	(ap);
 	ap.sub			(abs_pos);
 	ap.mul			(-1);
-	res.x			= iFloor(ap.x/(m_cellSize.x+m_cellSpacing.x*(m_cellsCapacity.x-1)/m_cellsCapacity.x));
-	res.y			= iFloor(ap.y/(m_cellSize.y+m_cellSpacing.y*(m_cellsCapacity.y-1)/m_cellsCapacity.y));
+	// The divisor stays averaged over the row on purpose - it spreads the whole strip
+	// evenly over the cells so the gaps fall to their neighbours; see the README of the
+	// inventory-drop-cell package. Only the units change, to the effective cell size,
+	// and with them the spacing term stops truncating to whole UI units.
+	res.x			= iFloor(ap.x/(m_cellSize.x+m_cellSpacing.x*float(m_cellsCapacity.x-1)/float(m_cellsCapacity.x)));
+	res.y			= iFloor(ap.y/(m_cellSize.y+m_cellSpacing.y*float(m_cellsCapacity.y-1)/float(m_cellsCapacity.y)));
 	if(!ValidCell(res))		
 		res.set(-1, -1);
 	return res;
@@ -1063,13 +1191,13 @@ void CUICellContainer::Draw()
 	Ivector2			cell_cnt = m_pParentDragDropList->CellsCapacity();
 	if					(cell_cnt.x==0 || cell_cnt.y==0)	return;
 
-	Ivector2			cell_sz = CellSize();
-	cell_sz.add			(m_cellSpacing);
+	Fvector2			cell_sz;
+	cell_sz.add			(CellSize(), m_cellSpacing);
 
 	Irect				tgt_cells;
 	tgt_cells.lt		= TopVisibleCell();
-	tgt_cells.x2		= iFloor( (float(clientArea.width())+float(cell_sz.x)-EPS)/float(cell_sz.x)) + tgt_cells.lt.x;
-	tgt_cells.y2		= iFloor( (float(clientArea.height())+float(cell_sz.y)-EPS)/float(cell_sz.y)) + tgt_cells.lt.y;
+	tgt_cells.x2		= iFloor( (clientArea.width()+cell_sz.x-EPS)/cell_sz.x) + tgt_cells.lt.x;
+	tgt_cells.y2		= iFloor( (clientArea.height()+cell_sz.y-EPS)/cell_sz.y) + tgt_cells.lt.y;
 
 	clamp				(tgt_cells.x2, 0, cell_cnt.x-1);
 	clamp				(tgt_cells.y2, 0, cell_cnt.y-1);
@@ -1078,7 +1206,9 @@ void CUICellContainer::Draw()
 	GetAbsolutePos		(lt_abs_pos);
 
 	Fvector2					drawLT;
-	drawLT.set					(lt_abs_pos.x+tgt_cells.lt.x*(cell_sz.x+m_cellSpacing.x), lt_abs_pos.y+tgt_cells.lt.y*(cell_sz.y+m_cellSpacing.y));
+	// The very offset the items get, so the grid background and the icon on top of it
+	// floor the same number. The old form here also counted the spacing twice.
+	drawLT.add					(lt_abs_pos, CellOffsetUI(tgt_cells.lt));
 	UI().ClientToScreenScaled	(drawLT, drawLT.x, drawLT.y);
 
 	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
@@ -1088,10 +1218,10 @@ void CUICellContainer::Draw()
 	const Fvector2 uvs[6] =		{{0.0f,0.0f},{texUSpan,0.0f},{texUSpan,texVSpan},
 								 {0.0f,0.0f},{texUSpan,texVSpan},{0.0f,texVSpan}};
 
-	// calculate cell size in screen pixels
+	// the effective cell size, whole screen pixels by construction
 	Fvector2 f_len, sp_len;
-	UI().ClientToScreenScaled(f_len, float(CellSize().x), float(CellSize().y) );
-	UI().ClientToScreenScaled(sp_len, float(CellsSpacing().x), float(CellsSpacing().y) );
+	f_len.set	(float(m_cellSizeScreen.x),		float(m_cellSizeScreen.y));
+	sp_len.set	(float(m_cellSpacingScreen.x),	float(m_cellSpacingScreen.y));
 
 	GetCellsInRange(tgt_cells,m_cells_to_draw);
 
