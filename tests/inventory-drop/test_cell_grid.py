@@ -41,6 +41,7 @@ bodies = {
     'GEOMETRY_BODY': body(drag_drop, 'void CUICellContainer::SetItemGeometry('),
     'REFRESH_BODY': body(drag_drop, 'void CUICellContainer::RefreshItemsPos('),
     'REINIT_BODY': body(drag_drop, 'void CUICellContainer::ReinitSize('),
+    'REINIT_SCROLL_BODY': body(drag_drop, 'void CUIDragDropListEx::ReinitScroll('),
     'VALID_BODY': body(drag_drop, 'bool CUICellContainer::ValidCell('),
     'CELL_AT_BODY': body(drag_drop, 'CUICell& CUICellContainer::GetCellAt('),
     'PICK_BODY': body(drag_drop, 'Ivector2 CUICellContainer::PickCell('),
@@ -60,6 +61,8 @@ code = r'''
 #include <algorithm>
 
 #define R_ASSERT(x) assert(x)
+#define VERIFY(x) assert(x)
+static bool _valid(float f) { return !std::isnan(f) && !std::isinf(f); }
 #define IC inline
 typedef unsigned int u32;
 typedef unsigned char u8;
@@ -169,6 +172,31 @@ struct CUICellContainer;
 struct CUICellItem;
 struct CUIDragItem;
 
+// Records what ReinitScroll asks of the bar. Show/Enable is the ghost scrollbar
+// question; the range is what decides whether scrolling can happen at all.
+struct ScrollBarStub
+{
+    bool shown = false, enabled = false;
+    int range_min = 0, range_max = 0, scroll_pos = 0, step = 0, page = 0;
+    Fvector2 wnd_size{15.0f, 0.0f};
+
+    void Show(bool b) { shown = b; }
+    void Enable(bool b) { enabled = b; }
+    void SetRange(int a, int b) { range_min = a; range_max = b; }
+    void SetScrollPos(int p) { scroll_pos = p; }
+    void SetStepSize(int s) { step = s; }
+    void SetPageSize(int p) { page = p; }
+    void SetWndSize(const Fvector2& s) { wnd_size = s; }
+    const Fvector2& GetWndSize() { return wnd_size; }
+    float GetWidth() { return wnd_size.x; }
+};
+
+struct FlagsStub
+{
+    bool always_show = false;
+    bool test(int) const { return always_show; }
+};
+
 struct CUIDragDropListEx
 {
     static CUIDragItem* m_drag_item;
@@ -187,7 +215,15 @@ struct CUIDragDropListEx
     int ScrollPos() { return scroll_pos; }
     void GetClientArea(Frect& r) { r = client_area; }
     const Fvector2& GetWndSize() { return wnd_size; }
-    void ReinitScroll() { ++reinit_scrolls; }
+    ScrollBarStub scroll_bar;
+    ScrollBarStub* m_vScrollBar = &scroll_bar;
+    FlagsStub m_flags;
+    static const int flAlwaysShowScroll = 1 << 4;
+
+    const Fvector2& CellSize();
+    // The counter the older checks watch, then the production body itself.
+    void ReinitScroll() { ++reinit_scrolls; ReinitScrollProduction(); }
+    void ReinitScrollProduction();
 
     const Ivector2& CellsCapacity();
     EDropPreview PredictDrop(CUICellItem*, const Fvector2&, Irect& out_cells, CUICellItem* = nullptr)
@@ -243,7 +279,7 @@ struct CUICellContainer
     Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
     Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
     Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
-    Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f};
+    Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f}, wnd_pos{0.0f, 0.0f};
     bool m_isInventoryGridDisabled = true;
     ui_shader hShader;
     UI_CELLS_VEC m_cells, m_cells_to_draw;
@@ -251,6 +287,8 @@ struct CUICellContainer
 
     void GetAbsolutePos(Fvector2& p) { p = origin; }
     void SetWndSize(const Fvector2& s) { wnd_size = s; }
+    const Fvector2& GetWndSize() { return wnd_size; }
+    void SetWndPos(const Fvector2& p) { wnd_pos = p; }
     const Fvector2& CellSize() { return m_cellSize; }
     const Fvector2& CellsSpacing() { return m_cellSpacing; }
     const Ivector2& CellsCapacity() { return m_cellsCapacity; }
@@ -296,6 +334,8 @@ struct CUICellContainer
 };
 
 const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
+const Fvector2& CUIDragDropListEx::CellSize() { return m_container->m_cellSize; }
+void CUIDragDropListEx::ReinitScrollProduction() REINIT_SCROLL_BODY
 
 // --- the rasterizer, modelled -----------------------------------------------------
 // With flSnapToScreenPixels CUIStaticItem::RenderInternal takes both corners from the
@@ -376,6 +416,31 @@ static Rasterized grid_quad(const std::vector<Point>& pts, const Fvector2& tp)
     assert(false && "cell was not drawn");
     return Rasterized{0.0f, 0.0f, 0.0f, 0.0f};
 }
+
+// A list the way actor_menu XML describes one: the window height is the XML height and
+// owes nothing to the grid inside it. That is precisely where the two can disagree.
+struct ScrollScene
+{
+    CUIDragDropListEx list;
+    CUICellContainer box;
+
+    ScrollScene(int cols, int rows, int cell_w, int cell_h, float wnd_w, float wnd_h,
+                int screen_cell = 0, bool always_show = false)
+    {
+        list.m_container = &box;
+        box.m_pParentDragDropList = &list;
+        box.m_cellSizeRaw.set(cell_w, cell_h);
+        box.m_cellSpacingRaw.set(0, 0);
+        box.m_screenCellSize = screen_cell;
+        list.wnd_size.set(wnd_w, wnd_h);
+        list.m_flags.always_show = always_show;
+        box.UpdateCellMetrics();
+        box.reset(cols, rows);
+        box.ReinitSize();   // -> ReinitScroll
+    }
+
+    float overflow() const { return box.wnd_size.y - list.wnd_size.y; }
+};
 
 struct Mode { float sx, sy; const char* name; };
 
@@ -806,6 +871,84 @@ int main()
         assert(s.box.PickCell(last) == want);
     }
 
+    // ---- a scroll bar appears only when it has somewhere to scroll -------------------
+    // Rounding a cell to whole screen pixels and dividing it back by the scale leaves a
+    // one row list a fraction of a unit taller than the window it used to fill exactly.
+    // That fraction is a positive overflow, but it floors to an empty range, so the bar
+    // it used to raise could not move anything. Real overflow is a whole row away.
+    {
+        g_scale_x = 2.5f;
+        g_scale_y = 1.875f;     // 2560 x 1440
+
+        // Quick slots: 4 cells of 33x41 on one row in a 227x41 window.
+        ScrollScene quick(4, 1, 33, 41, 227.0f, 41.0f);
+        assert(quick.box.m_cellSizeScreen.y == 77);                 // 41 * 1.875 = 76.875
+        assert(quick.overflow() > 0.0f);                            // the container is taller
+        assert(quick.overflow() < 1.0f);                            // but by a fraction of a unit
+        assert(quick.list.scroll_bar.range_max == 0);               // nothing to scroll to
+        assert(!quick.list.scroll_bar.shown);                       // so: no bar
+        assert(!quick.list.scroll_bar.enabled);
+
+        // The belt carries the same shape and used to raise the same dead bar.
+        ScrollScene belt(5, 1, 33, 41, 240.0f, 41.0f);
+        assert(belt.overflow() > 0.0f && belt.overflow() < 1.0f);
+        assert(!belt.list.scroll_bar.shown);
+    }
+
+    // ---- real overflow still scrolls -------------------------------------------------
+    {
+        // The bag at 1080p: 14 rows of 75 px are 746.67 units against a 574 window.
+        g_scale_x = 1.875f;
+        g_scale_y = 1.40625f;   // 1920 x 1080
+        ScrollScene bag(8, 14, 33, 41, 247.0f, 574.0f, 75);
+        assert(std::fabs(bag.box.m_cellSize.y - 75.0f / 1.40625f) < EPS);
+        assert(bag.overflow() > 170.0f);
+        assert(bag.list.scroll_bar.range_max == 172);               // unchanged by the fix
+        assert(bag.list.scroll_bar.shown);
+        assert(bag.list.scroll_bar.enabled);
+        assert(bag.list.scroll_bar.step > 0);                       // the wheel has something to move
+    }
+
+    // ---- always_show_scroll still wins when nothing overflows ------------------------
+    {
+        g_scale_x = 2.5f;
+        g_scale_y = 1.875f;
+        // The bag at 1440p fits: 14 rows of 75 px are 560 units in a 574 window.
+        ScrollScene bag(8, 14, 33, 41, 247.0f, 574.0f, 75, /*always_show*/ true);
+        assert(bag.overflow() < 0.0f);
+        assert(bag.list.scroll_bar.range_max == 0);
+        assert(bag.list.scroll_bar.shown);                          // shown because the flag says so
+        assert(bag.list.scroll_bar.enabled);
+
+        // Without the flag the very same list raises nothing.
+        ScrollScene plain(8, 14, 33, 41, 247.0f, 574.0f, 75);
+        assert(!plain.list.scroll_bar.shown);
+    }
+
+    // ---- eight 75 px columns fit the client area at 1440p ----------------------------
+    // The check is on the client area the engine actually hands out, not on arithmetic
+    // done here: a scroll_profile that failed to load would leave the bar at 15 or fall
+    // back to 16, and the eighth column would be scissored away.
+    {
+        g_scale_x = 2.5f;
+        g_scale_y = 1.875f;
+        ScrollScene bag(8, 14, 33, 41, 247.0f, 574.0f, 75, true);
+
+        assert(std::fabs(bag.box.m_cellSize.x - 30.0f) < EPS);      // 75 / 2.5
+        assert(std::fabs(bag.box.wnd_size.x - 240.0f) < EPS);       // 8 columns
+
+        // GetClientArea: the list rect less the bar's real width.
+        bag.list.scroll_bar.wnd_size.x = 6.0f;                      // the inventory profile
+        Frect r;
+        r.set(0.0f, 0.0f, bag.list.wnd_size.x, bag.list.wnd_size.y);
+        r.x2 -= bag.list.scroll_bar.GetWidth();
+        assert(std::fabs(r.width() - 241.0f) < EPS);
+        assert(bag.box.wnd_size.x <= r.width());                    // nothing clipped
+
+        // The stock 15 unit bar is what used to make eight columns impossible.
+        assert(bag.box.wnd_size.x > bag.list.wnd_size.x - 15.0f);
+    }
+
     std::printf("ok\n");
     return 0;
 }
@@ -833,4 +976,7 @@ print('PASS: production UpdateCellMetrics, SetScreenCellSize, CellOffsetUI, SetI
       'one constant step for ten list shapes over six scales, neighbouring icon edges on the '
       'same pixel, grid background on the same pixels, PickCell over 64 points per cell, a '
       'scrolled list, a scale change, a refused zero scale, vertical placement, the pre-fix '
-      'varying step and missed edges reproduced, the belt last pixel; ASan/UBSan')
+      'varying step and missed edges reproduced, the belt last pixel; a scroll bar only '
+      'when its range is not empty, so the quick slots and the belt raise none while '
+      'the bag still scrolls at 1080p and always_show_scroll still wins; eight 75 px '
+      'columns inside the client area a 6 unit bar leaves; ASan/UBSan')
