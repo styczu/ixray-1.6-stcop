@@ -2,8 +2,13 @@
 
 Po przeskalowaniu UI komórka wypadała na ekranie ułamkowo, na przykład 81.6 px.
 W efekcie w plecaku jedne sąsiednie ikony stykały się poprawnie, inne miały piksel
-szczeliny, a jeszcze inne lekko na siebie nachodziły. Po poprawce każda lista ma
-jeden, stały, całkowity rozmiar komórki i całą geometrię liczy właśnie z niego.
+szczeliny, a jeszcze inne lekko na siebie nachodziły. Po poprawce każda lista ma jeden,
+stały, całkowity rozmiar komórki, całą geometrię liczy właśnie z niego, a ikona
+rysuje się na pełnych pikselach obiema krawędziami.
+
+Dodatkowo nowy atrybut XML `screen_cell_size` pozwala podać rozmiar kwadratowej komórki
+wprost w pikselach ekranu, niezależnie od proporcji, w których `cell_width`/`cell_height`
+dają prostokąt (33x41 przy skali 2.5/1.875 to 83x77 px).
 
 **Wymaga wcześniejszego nałożenia `inventory-drop-cell` i `inventory-drop-preview`.**
 Ten patch zmienia rozmiar komórki, którym tamte dwa się posługują: `quantize_grab_offset`
@@ -39,10 +44,10 @@ Przy kroku 81.6 prawa krawędź pierwszej ikony wypada na 81.6, a lewa drugiej n
 `floor(81.6) = 81` — nachodzenie 0.6 px. Dalej prawa drugiej na 162.6, lewa trzeciej na
 `floor(163.2) = 163` — szczelina 0.4 px. I tak w kółko, bo część ułamkowa wędruje.
 
-Jeżeli `skala * rozmiar_komórki` jest liczbą całkowitą, odstęp między kolejnymi lewymi
-krawędziami jest stały i równy tej liczbie, a prawa krawędź ikony wypada dokładnie na
-lewej krawędzi sąsiada. Nie trzeba ruszać globalnej ścieżki renderowania — wystarczy,
-żeby lista dobrała sobie taki rozmiar komórki.
+Sam stały krok nie wystarczył. Nawet przy całkowitym `skala * rozmiar_komórki` prawa
+krawędź ikony dalej była liczona jako `podłoga(LT) + przeskalowany_rozmiar`, czyli
+wychodziła ułamkowo, podczas gdy lewa krawędź sąsiada była już zaokrąglona. Dlatego
+potrzebne są **obie** rzeczy: stały całkowity krok i zaokrąglanie obu rogów.
 
 ## Co zmienia patch
 
@@ -64,11 +69,51 @@ zmiana typu, a nie nowy akcesor obok starego: gdyby obie wersje istniały naraz,
 dokładnie to niezależne zaokrąglanie w kilku miejscach, które ma zniknąć. Kompilator
 wylicza wszystkie cztery miejsca poza kontenerem, które trzeba było przejrzeć.
 
-`CellOffsetUI` dokłada `kCellPixelBias`, jedną setną piksela ekranu. `RenderInternal`
-zaokrągla lewą krawędź w dół, a błąd `float` na drodze `skala * (pozycja + offset)` sięga
-przy rozmiarach ekwipunku około 5e-4 px: bez tego narożnik, który powinien wypaść na
-równym pikselu, może wyjść o włos poniżej i zejść o piksel za daleko w lewo. Bias wchodzi
-do offsetu raz, więc nie rośnie z numerem komórki, i jest sto razy mniejszy od piksela.
+### Kwadratowa komórka: `screen_cell_size`
+
+Opcjonalny atrybut na węźle listy:
+
+```xml
+<dragdrop_bag ... cell_width="33" cell_height="41" screen_cell_size="75" .../>
+```
+
+Gdy jest dodatni, to on jest całą geometrią listy: `m_cellSizeScreen` to `(px, px)`,
+a wartości dla `CUIWindow` biorą się z niego, osobno na każdej osi:
+
+```
+m_cellSize.x = screen_cell_size / skala_x
+m_cellSize.y = screen_cell_size / skala_y
+```
+
+`cell_width` i `cell_height` przestają wtedy decydować o rozmiarze. Bez atrybutu nic się
+nie zmienia — rozmiar dalej wychodzi z nich przez `round(wartość * skala)`, więc wszystkie
+istniejące layouty działają jak dotąd.
+
+Ustawione na `75` dla sześciu ciągłych siatek w `gamedata/configs/ui/actor_menu_16.xml`:
+`dragdrop_bag`, `dragdrop_actor_trade`, `dragdrop_actor_trade_bag`,
+`dragdrop_partner_trade`, `dragdrop_partner_bag`, `dragdrop_deadbody_bag`. Kosz, pas,
+szybkie sloty i sloty wyposażenia zostają bez atrybutu, na dotychczasowym zachowaniu.
+
+### Obie krawędzie ikony na pełnym pikselu
+
+`CUIStaticItem` dostaje flagę `flSnapToScreenPixels`, domyślnie wyłączoną. Gdy jest
+włączona, `RenderInternal` bierze oba rogi z pozycji bezwzględnej i zaokrągla oba do
+najbliższego piksela nowym `ui_core::SnapPixel`:
+
+```
+LT = snap(skala * pozycja)
+RB = snap(skala * (pozycja + rozmiar))
+```
+
+Krawędź wspólna dwóch sąsiadów to wtedy ta sama wartość zaokrąglona tak samo z obu stron,
+więc `prawa(N) == lewa(N+1)` i `dół(N) == góra(pod N)` z definicji, a nie z dokładności
+arytmetyki. Flagę włączają wyłącznie `CUICellItem` i ikony tła szybkich slotów — reszta
+UI rysuje się bez żadnej zmiany. Wierzchołki siatki i podglądu upuszczania przeszły na to
+samo zaokrąglenie (`snap_grid_px`), żeby tło dalej leżało na tych samych pikselach.
+
+Zaokrąglanie do najbliższego piksela samo pochłania błąd `float` na granicy całkowitej —
+tam, gdzie zaokrąglanie w dół zamieniało 1e-4 w cały piksel. Dlatego `kCellPixelBias`
+z pierwszej wersji tego pakietu **został usunięty**; nie ma już czego korygować.
 
 ## Świadome konsekwencje
 
@@ -97,6 +142,20 @@ w oknie `width="247"`, więc zapas jest duży; pas ma już dziś 241 przy `width
 a szybkie sloty 228 przy `227`. `GetClientArea` obcina nożycami, więc w najgorszym razie
 ostatnia kolumna traci kilka pikseli po prawej.
 
+**`screen_cell_size` jest fizyczny, więc w jednostkach bazowych rośnie przy niższej
+rozdzielczości — i to trzeba mieć na uwadze przy doborze wartości.** Przy `75`
+i oknie plecaka `width="247" height="574"`:
+
+| rozdzielczość | skala | komórka w jedn. bazowych | siatka 7x14 | mieści się? |
+|---|---|---|---|---|
+| 2560x1440 | 2.5 / 1.875 | 30.0 x 40.0 | 210 x 560 | tak, z zapasem |
+| 1920x1080 | 1.875 / 1.40625 | 40.0 x 53.3 | 280 x 746 | **nie** — 7. kolumna obcięta, plecak przewija |
+
+Czyli `75` jest dobrane pod 1440p. Na 1080p ta sama wartość wyjdzie poza okno w poziomie
+(nożyce utną ostatnią kolumnę) i doda przewijanie w pionie. Jeżeli ma działać na wielu
+rozdzielczościach, wartość trzeba dobrać do najmniejszej z nich albo rozszerzyć okna
+w XML. Listy bez atrybutu nie mają tego problemu, bo skalują się razem z oknem.
+
 **Rozmiar w pikselach zależy od rozdzielczości.** Dotąd wszystko było w jednostkach
 bazowych i skalowało się samo. Teraz pozycje przedmiotów niosą w sobie skalę, więc
 `CUICellContainer::Update` sprawdza, czy skala się zmieniła, i wtedy przelicza metryki,
@@ -124,9 +183,13 @@ samo co dotąd, wejście `SetCellSize` dalej bierze `Ivector2`, nie ma nowych op
 w `gamedata`. Nie zmienia się też rozmiar ikony wynikający z `inv_scale` — `ScaleIcon`
 trafia wyłącznie do prostokąta tekstury, co opisuje README pakietu `inventory-drop-cell`.
 
-Trzy pary plików źródłowych (`UIDragDropListEx.{h,cpp}`, `UICellItem.cpp`,
-`UIDragDropReferenceList.{h,cpp}`) i test `tests/inventory-drop/test_cell_grid.py`.
-Dwa istniejące testy zmieniają się razem z typami, które sprawdzają.
+Po stronie gry: `UIDragDropListEx.{h,cpp}`, `UICellItem.cpp`,
+`UIDragDropReferenceList.{h,cpp}`, `UIHelperGame.cpp` i sześć węzłów
+w `gamedata/configs/ui/actor_menu_16.xml`. Po stronie `xrUI`: `ui_base.{h,cpp}`
+(`SnapPixel`) oraz `UIStaticItem.{h,cpp}` (flaga i gałąź w `RenderInternal`) — obie
+zmiany są opcjonalne i nieaktywne, dopóki ktoś nie włączy flagi. Test
+`tests/inventory-drop/test_cell_grid.py`; dwa istniejące testy zmieniają się razem
+z typami i modelem rasteryzacji, które sprawdzają.
 
 ## Sprawdzone
 
@@ -155,6 +218,13 @@ Dołączony test przechodzi w świeżo zapatchowanym checkoucie. Kompiluje produ
   `UpdateCellMetrics` nie zgłasza nic;
 - skala zerowa jest odrzucana, metryki zostają poprzednie, a `CellOffsetUI` dalej zwraca
   wartości skończone;
+- `screen_cell_size` daje komórkę **kwadratową i dokładnie zadaną** przy pięciu skalach,
+  a `m_cellSize` to ta wartość podzielona przez skalę osobno na każdej osi;
+- przy `screen_cell_size="75"`: 1x1 to 75x75, 2x1 to 150x75, 5x2 to 375x150, a trzy pełne
+  ikony 1x1 obok siebie zajmują dokładnie 225 px, tak samo trzy w kolumnie — z równością
+  `prawa(N) == lewa(N+1)`, nie z tolerancją;
+- bez atrybutu wyliczenie zostaje stare (33x41 przy skali 2.5/1.875 to nadal 83x77),
+  a ustawienie i wyzerowanie atrybutu wraca dokładnie do tego;
 - lista `vertical_placement` zachowuje sztuczkę kwadratowych komórek;
 - ostatni piksel pasa wskazuje ostatnią komórkę, a nie nieistniejącą;
 - **zachowanie sprzed poprawki jest odtworzone**: przy tej samej skali stara geometria daje
@@ -165,19 +235,28 @@ Dołączony test przechodzi w świeżo zapatchowanym checkoucie. Kompiluje produ
 w teście **odtworzona ręcznie**, nie skompilowana — skompilowanie jej wciąga `sPoly2D`,
 `ClipPoly` i renderer. Test sprawdza więc model rasteryzatora, a nie sam rasteryzator.
 To jest powód, dla którego próba w grze poniżej jest obowiązkowa, a nie kurtuazyjna.
+Sprawdzono też mutacjami, że test nie jest pusty: zamiana `snap_grid_px` z powrotem na
+zaokrąglanie w dół, zignorowanie `screen_cell_size` i odwrócenie dzielenia przez skalę
+w `CellOffsetUI` — każda z nich wywala test.
 
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-Kompilacja na Windowsie przeszła. Na commicie `ce9a92e87` zielone są oba workflow:
-`Build engine` w Release i RelWithDebInfo oraz `Non-Unity build` w Debug, RelWithDebInfo
-i Release. Ta ostatnia konfiguracja ma tu znaczenie: `FindSimilar` w zmienianym
-`UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją wyłącznie
-`Non-Unity build` w Debug.
+Pierwsza wersja pakietu (sam całkowity rozmiar komórki, bez `screen_cell_size` i bez
+snapowania obu krawędzi) skompilowała się na Windowsie: na commicie `ce9a92e87` zielone
+były oba workflow, `Build engine` w Release i RelWithDebInfo oraz `Non-Unity build`
+w Debug, RelWithDebInfo i Release. Ta ostatnia konfiguracja ma tu znaczenie: `FindSimilar`
+w zmienianym `UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją
+wyłącznie `Non-Unity build` w Debug. **Wynik kompilacji obecnej wersji uzupełnij po
+przejściu CI** — ta wersja rusza dodatkowo `xrUI`, więc zakres kompilacji jest szerszy.
 
-**Nie wykonano próby w grze, więc siatki nie oglądano na ekranie.** Sprawdź na kilku
-rozdzielczościach, w tym takiej, przy której skala daje ułamek:
+Pierwszą wersję sprawdzono w grze i to ona wykazała oba problemy, które ten pakiet teraz
+rozwiązuje: komórki 83x77 zamiast kwadratowych i szczeliny jednego piksela między pełnymi
+ikonami. **Obecnej wersji nie sprawdzono w grze.** Sprawdź na kilku rozdzielczościach,
+w tym takiej, przy której skala daje ułamek:
 
 - plecak zapełniony po brzegi — żadnej szczeliny ani nachodzenia między ikonami;
+- komórki są kwadratowe: trzy pełne ikony 1x1 obok siebie zajmują dokładnie 3 x 75 px;
+- na 1080p sprawdź prawą krawędź plecaka i przewijanie, patrz tabelka wyżej;
 - tło siatki pokrywa się z ikonami, także po przewinięciu;
 - pas i szybkie sloty — odstępy równe, upuszczanie trafia w komórkę pod kursorem;
 - broń 2x1 i kombinezon — rozmiar dokładnie wielokrotność komórki;

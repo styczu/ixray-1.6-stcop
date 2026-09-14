@@ -1,8 +1,8 @@
-From 28424e0f3c53e3f986c0ae21c1de54c4fa922224 Mon Sep 17 00:00:00 2001
+From 7c878f210a99006d4aff00287d70340abfef41d0 Mon Sep 17 00:00:00 2001
 From: tmz <styczu@gmail.com>
 Date: Mon, 14 Sep 2026 16:05:07 +0200
-Subject: [PATCH] =?UTF-8?q?Sta=C5=82y=20rozmiar=20kom=C3=B3rki=20ekwipunku?=
- =?UTF-8?q?=20w=20pe=C5=82nych=20pikselach=20ekranu?=
+Subject: [PATCH 1/2] =?UTF-8?q?Sta=C5=82y=20rozmiar=20kom=C3=B3rki=20ekwip?=
+ =?UTF-8?q?unku=20w=20pe=C5=82nych=20pikselach=20ekranu?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -1532,6 +1532,799 @@ index 47b87ce53..caa7825f0 100644
          CUICellItem pill(1, 1, 5);
          s.run(&pill, 4, 6);
  
+-- 
+2.47.3
+
+
+From 4c2cb572ed3fcb0dbfdfc563b3abef4689badbc6 Mon Sep 17 00:00:00 2001
+From: tmz <styczu@gmail.com>
+Date: Mon, 14 Sep 2026 17:11:08 +0200
+Subject: [PATCH 2/2] =?UTF-8?q?Kwadratowa=20kom=C3=B3rka=20z=20screen=5Fce?=
+ =?UTF-8?q?ll=5Fsize=20i=20snapowanie=20obu=20kraw=C4=99dzi=20ikony?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Próba w grze pokazała dwie rzeczy: efektywne komórki dalej nie były kwadratowe
+(33x41 przy skali 2.5/1.875 daje 83x77 px), a między pełnymi ikonami nadal
+zdarzała się szczelina jednego piksela.
+
+Kwadratowa komórka. Nowy opcjonalny atrybut XML screen_cell_size podaje rozmiar
+jednej kwadratowej komórki wprost w pikselach ekranu i staje się wtedy jedynym
+źródłem geometrii listy: m_cellSizeScreen to (px, px), a m_cellSize to px/skala
+osobno na każdej osi. Bez atrybutu wszystko zostaje po staremu, wyliczane
+z cell_width/cell_height, więc istniejące layouty się nie ruszają. Ustawione na
+75 dla sześciu ciągłych siatek w actor_menu_16.xml; kosz, pas, szybkie sloty
+i sloty wyposażenia zostają na dotychczasowym zachowaniu.
+
+Szczelina. Stały krok siatki nie wystarczył, bo CUIStaticItem::RenderInternal
+zaokrąglał w dół tylko lewy górny róg, a prawy dolny liczył jako
+podłoga(LT) + przeskalowany rozmiar - prawa krawędź ikony wypadała ułamkowo.
+Nowa flaga CUIStaticItem::flSnapToScreenPixels bierze oba rogi z pozycji
+bezwzględnej i zaokrągla oba do najbliższego piksela (ui_core::SnapPixel), więc
+krawędź wspólna dwóch sąsiadów to ta sama wartość zaokrąglona tak samo z obu
+stron. Flaga jest domyślnie wyłączona i włącza ją tylko CUICellItem oraz ikony
+tła szybkich slotów - reszta UI rysuje się bez zmian. Wierzchołki siatki i
+podglądu upuszczania przeszły na to samo zaokrąglenie (snap_grid_px).
+
+Dzięki temu kCellPixelBias przestał być potrzebny i został usunięty:
+zaokrąglanie do najbliższego piksela samo pochłania błąd float na granicy
+całkowitej, zamiast zamieniać go w cały piksel.
+
+Ścieżka z obrotem (listy vertical_placement) zostaje bez zmian - nie ma tam
+krawędzi równoległych do osi, które ktoś mógłby współdzielić.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RxySzhoKaG8quQJnGaYkjH
+---
+ gamedata/configs/ui/actor_menu_16.xml     |  12 +-
+ src/xrGame/ui/UICellItem.cpp              |   4 +
+ src/xrGame/ui/UIDragDropListEx.cpp        |  52 ++++--
+ src/xrGame/ui/UIDragDropListEx.h          |   7 +
+ src/xrGame/ui/UIDragDropReferenceList.cpp |   1 +
+ src/xrGame/ui/UIHelperGame.cpp            |   4 +
+ src/xrUI/Widgets/UIStaticItem.cpp         |  31 +++-
+ src/xrUI/Widgets/UIStaticItem.h           |   8 +
+ src/xrUI/ui_base.cpp                      |   9 +
+ src/xrUI/ui_base.h                        |   1 +
+ tests/inventory-drop/test_cell_grid.py    | 198 +++++++++++++++++-----
+ tests/inventory-drop/test_drop_cell.py    |   7 +-
+ tests/inventory-drop/test_drop_preview.py |   6 +-
+ 13 files changed, 269 insertions(+), 71 deletions(-)
+
+diff --git a/gamedata/configs/ui/actor_menu_16.xml b/gamedata/configs/ui/actor_menu_16.xml
+index 43d4e6074..3c92507af 100644
+--- a/gamedata/configs/ui/actor_menu_16.xml
++++ b/gamedata/configs/ui/actor_menu_16.xml
+@@ -268,7 +268,7 @@
+     	cell_width="375" cell_height="768" rows_num="1" cols_num="1" a="0"/>
+ 
+   <dragdrop_bag x="662" y="119" width="247" height="574"
+-    	cell_width="33" cell_height="41" rows_num="14" cols_num="7"
++    	cell_width="33" cell_height="41" screen_cell_size="75" rows_num="14" cols_num="7"
+ 		unlimited="1" group_similar="1" always_show_scroll="1" condition_progress_bar="1"/>
+ 
+ 	<dragdrop_belt x="390" y="480" width="240" height="41"
+@@ -276,23 +276,23 @@
+ 		cell_sp_x="19" cell_sp_y="0" a="0"/>
+ 
+ 	<dragdrop_actor_trade x="662" y="114" width="247" height="164"
+-		cell_width="33" cell_height="41" rows_num="4" cols_num="7"
++		cell_width="33" cell_height="41" screen_cell_size="75" rows_num="4" cols_num="7"
+ 		unlimited="1" group_similar="1" always_show_scroll="1" condition_progress_bar="1"/>
+ 
+ 	<dragdrop_actor_trade_bag x="662" y="340" width="247" height="369"
+-		cell_width="33" cell_height="41" rows_num="9" cols_num="7"
++		cell_width="33" cell_height="41" screen_cell_size="75" rows_num="9" cols_num="7"
+ 		unlimited="1" group_similar="1" always_show_scroll="1" condition_progress_bar="1"/>
+ 
+ 	<dragdrop_partner_trade x="117" y="114" width="247" height="164"
+-	    cell_width="33" cell_height="41" rows_num="4" cols_num="7"
++	    cell_width="33" cell_height="41" screen_cell_size="75" rows_num="4" cols_num="7"
+ 	    unlimited="1" group_similar="1" always_show_scroll="1" condition_progress_bar="1"/>
+ 
+ 	<dragdrop_partner_bag x="117" y="340" width="247" height="369"
+-	    cell_width="33" cell_height="41" rows_num="9" cols_num="7"
++	    cell_width="33" cell_height="41" screen_cell_size="75" rows_num="9" cols_num="7"
+ 	    unlimited="1" group_similar="1" always_show_scroll="1" condition_progress_bar="1"/>
+ 
+ 	<dragdrop_deadbody_bag x="117" y="119" width="247" height="574"
+-	    cell_width="33" cell_height="41" rows_num="14" cols_num="7"
++	    cell_width="33" cell_height="41" screen_cell_size="75" rows_num="14" cols_num="7"
+ 	    unlimited="1" group_similar="1" always_show_scroll="1" condition_progress_bar="1"/>
+ 
+ 	<dragdrop_quick_slots x="398" y="407" width="227" height="41"
+diff --git a/src/xrGame/ui/UICellItem.cpp b/src/xrGame/ui/UICellItem.cpp
+index bb57a127f..a97702a56 100644
+--- a/src/xrGame/ui/UICellItem.cpp
++++ b/src/xrGame/ui/UICellItem.cpp
+@@ -91,6 +91,10 @@ void CUICellItem::init()
+ 		is_xml_ready = true;
+ 	}
+ 	
++	// The whole point of the integer cell grid: an icon covers whole screen pixels and
++	// shares its edge with the neighbouring cell exactly. Local to cell items.
++	GetUIStaticItem().SetPixelSnap(true);
++
+ 	m_text					= new CUIStatic();
+ 	m_text->SetAutoDelete	( true );
+ 	AttachChild				( m_text );
+diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
+index 8f349b12f..af5fd5712 100644
+--- a/src/xrGame/ui/UIDragDropListEx.cpp
++++ b/src/xrGame/ui/UIDragDropListEx.cpp
+@@ -19,12 +19,14 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
+ constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
+ constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+ 
+-// Half a hundredth of a screen pixel. CUIStaticItem::RenderInternal floors the left
+-// edge of every icon, and the float error along scale*(absolute position + offset)
+-// reaches about 5e-4 px at inventory magnitudes: without the nudge a corner that
+-// should land on a whole pixel can come out a hair under it and floor one pixel too
+-// far left. It enters an offset once, so it never grows with the cell index.
+-constexpr float kCellPixelBias = 0.01f;
++// A grid vertex, rounded the way CUICellItem's own rectangle is rounded
++// (CUIStaticItem::flSnapToScreenPixels), so the background of a cell and the icon on
++// top of it cover the same physical pixels. The trailing half pixel is the usual
++// texel centre offset and is not part of the rounding.
++IC float snap_grid_px(float v)
++{
++	return float(iFloor(v + 0.5f)) - 0.5f;
++}
+ 
+ // A cell has to cover a whole number of screen pixels. Left fractional, 81.6 px
+ // rasterizes as 81 or 82 depending on where the cell falls, and since
+@@ -451,6 +453,11 @@ void CUIDragDropListEx::SetCellSize(const Ivector2 new_sz)
+ 	m_container->SetCellSize(new_sz);
+ }
+ 
++void CUIDragDropListEx::SetScreenCellSize(int px)
++{
++	m_container->SetScreenCellSize(px);
++}
++
+ void CUIDragDropListEx::SetCellsSpacing(const Ivector2& new_sz)
+ {
+ 	m_container->SetCellsSpacing(new_sz);
+@@ -638,6 +645,7 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
+ 	}
+ //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
+ 	m_cellsCapacity.set			( 0, 0 );
++	m_screenCellSize			= 0;
+ 	m_cellSizeRaw.set			( 0, 0 );
+ 	m_cellSpacingRaw.set		( 0, 0 );
+ 	m_cellSizeScreen.set		( 0, 0 );
+@@ -920,6 +928,15 @@ void CUICellContainer::SetCellsSpacing(const Ivector2& c)
+ 	ReinitSize					();
+ }
+ 
++// screen_cell_size from XML: a square cell of exactly this many screen pixels,
++// whatever the resolution. Zero hands the list back to cell_width / cell_height.
++void CUICellContainer::SetScreenCellSize(int px)
++{
++	m_screenCellSize			= _max(0, px);
++	UpdateCellMetrics			();
++	ReinitSize					();
++}
++
+ // The whole geometry of a list hangs off these four values: the grid background, the
+ // item rectangles, PlaceItemAtPos, PickCell and the drop preview all read them and
+ // nothing rounds on its own any more.
+@@ -938,7 +955,11 @@ bool CUICellContainer::UpdateCellMetrics()
+ 		return false;
+ 
+ 	Ivector2 cell_screen, spacing_screen;
+-	cell_screen.set				(screen_cell_len(m_cellSizeRaw.x, scale.x),		screen_cell_len(m_cellSizeRaw.y, scale.y));
++	if(m_screenCellSize>0)
++		cell_screen.set			(m_screenCellSize,								m_screenCellSize);
++	else
++		cell_screen.set			(screen_cell_len(m_cellSizeRaw.x, scale.x),		screen_cell_len(m_cellSizeRaw.y, scale.y));
++
+ 	spacing_screen.set			(screen_cell_len(m_cellSpacingRaw.x, scale.x),	screen_cell_len(m_cellSpacingRaw.y, scale.y));
+ 
+ 	if	(scale.x == m_metricsScale.x		&& scale.y == m_metricsScale.y
+@@ -959,11 +980,12 @@ bool CUICellContainer::UpdateCellMetrics()
+ Fvector2 CUICellContainer::CellOffsetUI(const Ivector2& cell_pos) const
+ {
+ 	// The step is the whole-pixel screen step; it is divided back into UI base units
+-	// only because that is where CUIWindow keeps its positions. kCellPixelBias holds
+-	// the corner a hair above the whole pixel, see its declaration.
++	// only because that is where CUIWindow keeps its positions. Nothing is nudged: both
++	// edges of a cell item are rounded to the nearest pixel when it is drawn, which
++	// absorbs the float error instead of letting a floor turn it into a whole pixel.
+ 	Fvector2 res;
+-	res.set		(float((m_cellSizeScreen.x + m_cellSpacingScreen.x) * cell_pos.x) + kCellPixelBias,
+-				 float((m_cellSizeScreen.y + m_cellSpacingScreen.y) * cell_pos.y) + kCellPixelBias);
++	res.set		(float((m_cellSizeScreen.x + m_cellSpacingScreen.x) * cell_pos.x),
++				 float((m_cellSizeScreen.y + m_cellSpacingScreen.y) * cell_pos.y));
+ 
+ 	res.x		/= m_metricsScale.x;
+ 	res.y		/= m_metricsScale.y;
+@@ -1274,8 +1296,8 @@ void CUICellContainer::Draw()
+ 				//pv->set			(iFloor(drawLT.x + p.x*(f_len.x) + f_len.x*x)-0.5f, 
+ 				//				 iFloor(drawLT.y + p.y*(f_len.y) + f_len.y*y)-0.5f, 
+ 				//				 0xFFFFFFFF,tp.x+uv.x,tp.y+uv.y);
+-				UIRender->PushPoint(iFloor( rect_offset.x + p.x*(f_len.x) )-0.5f, 
+-									iFloor( rect_offset.y + p.y*(f_len.y) )-0.5f,
++				UIRender->PushPoint(snap_grid_px( rect_offset.x + p.x*(f_len.x) ),
++									snap_grid_px( rect_offset.y + p.y*(f_len.y) ),
+ 									0,
+ 									m_pParentDragDropList->back_color,
+ 									tp.x+uv.x, tp.y+uv.y);
+@@ -1363,8 +1385,8 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
+ 			{
+ 				const Fvector2& p	= pts[k];
+ 				const Fvector2& uv	= uvs[k];
+-				UIRender->PushPoint(iFloor( rect_offset.x + p.x*(f_len.x) )-0.5f,
+-									iFloor( rect_offset.y + p.y*(f_len.y) )-0.5f,
++				UIRender->PushPoint(snap_grid_px( rect_offset.x + p.x*(f_len.x) ),
++									snap_grid_px( rect_offset.y + p.y*(f_len.y) ),
+ 									0,
+ 									color,
+ 									tp.x+uv.x, tp.y+uv.y);
+diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
+index 906b473f1..7245596ec 100644
+--- a/src/xrGame/ui/UIDragDropListEx.h
++++ b/src/xrGame/ui/UIDragDropListEx.h
+@@ -96,6 +96,7 @@ public:
+ 			void			ResetCellsCapacity	(){VERIFY(ItemsCount()==0);SetCellsCapacity(m_orig_cell_capacity);};
+ 	 const	Fvector2&		CellSize			();
+ 			void			SetCellSize			(const Ivector2 new_sz);
++			void			SetScreenCellSize	(int px);
+ 	const	Fvector2&		CellsSpacing		();
+ 			void			SetCellsSpacing		(const Ivector2& new_sz);
+ 			void			SetCellsVertAlignment(xr_string alignment);
+@@ -174,6 +175,11 @@ protected:
+ 	// One cell has to cover a whole number of screen pixels or neighbouring items
+ 	// gape and overlap by one after rasterization. The screen sizes are the truth;
+ 	// the UI-base ones are only what CUIWindow positions have to be expressed in.
++	//
++	// When positive m_screenCellSize is the whole geometry: one square cell of exactly this many
++	// screen pixels, from screen_cell_size in XML. Zero means derive it from the raw
++	// UI base size below, the way every layout without the attribute does.
++	int							m_screenCellSize;
+ 	Ivector2					m_cellSizeRaw;				//UI base	(width, height) as read from XML
+ 	Ivector2					m_cellSpacingRaw;			//UI base	(width, height) as read from XML
+ 	Ivector2					m_cellSizeScreen;			//screen px	(width, height) whole pixels
+@@ -206,6 +212,7 @@ protected:
+ 				void			SetCellsCapacity	(const Ivector2& c);
+ 	IC const	Fvector2&		CellSize			()								{return m_cellSize;};	
+ 				void			SetCellSize			(const Ivector2& new_sz);
++				void			SetScreenCellSize	(int px);
+ 	IC const	Fvector2&		CellsSpacing		()								{return m_cellSpacing;};	
+ 				void			SetCellsSpacing		(const Ivector2& new_sz);
+ 	IC const	Ivector2&		CellSizeScreen		()								{return m_cellSizeScreen;};
+diff --git a/src/xrGame/ui/UIDragDropReferenceList.cpp b/src/xrGame/ui/UIDragDropReferenceList.cpp
+index 331084a66..fc0a193d5 100644
+--- a/src/xrGame/ui/UIDragDropReferenceList.cpp
++++ b/src/xrGame/ui/UIDragDropReferenceList.cpp
+@@ -43,6 +43,7 @@ void CUIDragDropReferenceList::PlaceReferences()
+ 	{
+ 		m_references[i]->SetWndPos(m_container->CellOffsetUI(Ivector2().set(int(i),0)));
+ 		m_references[i]->SetWndSize(m_container->CellSize());
++		m_references[i]->GetUIStaticItem().SetPixelSnap(true);
+ 	}
+ }
+ 
+diff --git a/src/xrGame/ui/UIHelperGame.cpp b/src/xrGame/ui/UIHelperGame.cpp
+index d6ef33f91..431fc7ced 100644
+--- a/src/xrGame/ui/UIHelperGame.cpp
++++ b/src/xrGame/ui/UIHelperGame.cpp
+@@ -54,6 +54,10 @@ bool CUIXmlInitGame::InitDragDropListEx(CUIXml& xml_doc, LPCSTR path, int index,
+ 	w_cell_sp.x = xml_doc.ReadAttribInt(path, index, "cell_sp_x");
+ 	w_cell_sp.y = xml_doc.ReadAttribInt(path, index, "cell_sp_y");
+ 
++	// Optional: one square cell of exactly this many screen pixels. Without it the
++	// cell keeps coming from cell_width / cell_height in UI base units.
++	pWnd->SetScreenCellSize(xml_doc.ReadAttribInt(path, index, "screen_cell_size", 0));
++
+ 	pWnd->SetCellSize(w_cell_sz);
+ 	pWnd->SetCellsSpacing(w_cell_sp);
+ 	pWnd->SetStartCellsCapacity(w_cells);
+diff --git a/src/xrUI/Widgets/UIStaticItem.cpp b/src/xrUI/Widgets/UIStaticItem.cpp
+index 948707d5a..bba951a02 100644
+--- a/src/xrUI/Widgets/UIStaticItem.cpp
++++ b/src/xrUI/Widgets/UIStaticItem.cpp
+@@ -41,11 +41,6 @@ void CUIStaticItem::SetHeadingPivot(const Fvector2& p, const Fvector2& offset, b
+ 
+ void CUIStaticItem::RenderInternal(const Fvector2& in_pos)
+ {
+-	Fvector2					pos;
+-	UI().ClientToScreenScaled	(pos, in_pos.x, in_pos.y);
+-	UI().AlignPixel				(pos.x);
+-	UI().AlignPixel				(pos.y);
+-
+ 	Fvector2		ts;
+ 	UIRender->GetActiveTextureResolution(ts);
+ 
+@@ -58,10 +53,30 @@ void CUIStaticItem::RenderInternal(const Fvector2& in_pos)
+ 	Fvector2 LTp,RBp;
+ 	Fvector2 LTt,RBt;
+ 	//координаты на экране в пикселях
+-	LTp.set						(pos);
++	if(uFlags.test(flSnapToScreenPixels))
++	{
++		// Both corners taken from the absolute position and both rounded. The right edge
++		// of one cell and the left edge of the next are then the same value rounded the
++		// same way, so they cannot land a pixel apart.
++		UI().ClientToScreenScaled	(LTp, in_pos.x, in_pos.y);
++		UI().ClientToScreenScaled	(RBp, in_pos.x + vSize.x, in_pos.y + vSize.y);
++		UI().SnapPixel				(LTp.x);
++		UI().SnapPixel				(LTp.y);
++		UI().SnapPixel				(RBp.x);
++		UI().SnapPixel				(RBp.y);
++	}
++	else
++	{
++		Fvector2					pos;
++		UI().ClientToScreenScaled	(pos, in_pos.x, in_pos.y);
++		UI().AlignPixel				(pos.x);
++		UI().AlignPixel				(pos.y);
++
++		LTp.set						(pos);
+ 
+-	UI().ClientToScreenScaled	(RBp, vSize.x, vSize.y);
+-	RBp.add						(pos);
++		UI().ClientToScreenScaled	(RBp, vSize.x, vSize.y);
++		RBp.add						(pos);
++	}
+ 
+ 	//текстурные координаты
+ 	LTt.set			( TextureRect.x1/ts.x, TextureRect.y1/ts.y);
+diff --git a/src/xrUI/Widgets/UIStaticItem.h b/src/xrUI/Widgets/UIStaticItem.h
+index 09fa4101c..1065fefbc 100644
+--- a/src/xrUI/Widgets/UIStaticItem.h
++++ b/src/xrUI/Widgets/UIStaticItem.h
+@@ -11,6 +11,8 @@ public:
+ 		flValidTextureRect		=(1<<1),
+ 		flValidHeadingPivot		=(1<<2),
+ 		flFixedLTWhileHeading	=(1<<3),
++		// Off by default: only the inventory cells ask for it, see SetPixelSnap.
++		flSnapToScreenPixels	=(1<<4),
+ 	};
+ 
+ 	Frect			TextureRect;
+@@ -54,6 +56,12 @@ public:
+ 	   IC bool		GetFixedLTWhileHeading	() const								{return !!uFlags.test(flFixedLTWhileHeading);}
+ 	   Fvector2		GetHeadingPivot			()										{return vHeadingPivot;}
+ 
++	   // Round both corners of the drawn rectangle to whole screen pixels instead of
++	   // flooring the top left one and letting the bottom right fall where it may. Two
++	   // widgets sharing an edge then draw it on the same physical pixel. Ignored by
++	   // the rotated path, which has no axis aligned edges to share.
++	   IC void		SetPixelSnap			(bool snap)							{uFlags.set(flSnapToScreenPixels, snap?TRUE:FALSE);}
++
+ private:
+ 	   void			RenderInternal			(const Fvector2& pos);
+ 	   void			RenderInternal			(float angle);
+diff --git a/src/xrUI/ui_base.cpp b/src/xrUI/ui_base.cpp
+index 9d8fe147b..58b889bbd 100644
+--- a/src/xrUI/ui_base.cpp
++++ b/src/xrUI/ui_base.cpp
+@@ -148,6 +148,15 @@ void ui_core::AlignPixel(float& src_and_dest)	const
+ 		src_and_dest		= (float)iFloor(src_and_dest);
+ }
+ 
++// Like AlignPixel, but to the nearest whole pixel instead of down. An edge that two
++// widgets compute from either side lands on a whole pixel by construction, and there
++// rounding down turns a float error of 1e-4 into a whole pixel of disagreement.
++void ui_core::SnapPixel(float& src_and_dest)	const
++{
++	if(m_currentPointType!=IUIRender::pttLIT)
++		src_and_dest		= (float)iFloor(src_and_dest + 0.5f);
++}
++
+ void ui_core::PushScissor(const Frect& r_tgt, bool overlapped)
+ {
+ 	if(UI().m_currentPointType==IUIRender::pttLIT)
+diff --git a/src/xrUI/ui_base.h b/src/xrUI/ui_base.h
+index 3552eaf77..88f2a24be 100644
+--- a/src/xrUI/ui_base.h
++++ b/src/xrUI/ui_base.h
+@@ -45,6 +45,7 @@ public:
+ 	void			ClientToScreenScaledWidth		(float& src_and_dest)	const;
+ 	void			ClientToScreenScaledHeight		(float& src_and_dest)	const;
+ 	void			AlignPixel						(float& src_and_dest)	const;
++	void			SnapPixel						(float& src_and_dest)	const;
+ 
+ 	const C2DFrustum& ScreenFrustum					()	const						{return (m_bPostprocess)?m_2DFrustumPP:m_2DFrustum;}
+ 	C2DFrustum&		ScreenFrustumLIT				()								{return m_FrustumLIT;}
+diff --git a/tests/inventory-drop/test_cell_grid.py b/tests/inventory-drop/test_cell_grid.py
+index d5d069ff3..3d3259ae4 100644
+--- a/tests/inventory-drop/test_cell_grid.py
++++ b/tests/inventory-drop/test_cell_grid.py
+@@ -30,11 +30,13 @@ def body(text, signature):
+ drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
+ 
+ constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
+-assert 'kCellPixelBias' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
++assert 'kInventoryCellUSpanGridDisabled' in constants, constants
+ 
+ bodies = {
+     'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
++    'SNAP_GRID_BODY': body(drag_drop, 'IC float snap_grid_px('),
+     'METRICS_BODY': body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics('),
++    'SET_SCREEN_BODY': body(drag_drop, 'void CUICellContainer::SetScreenCellSize('),
+     'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
+     'GEOMETRY_BODY': body(drag_drop, 'void CUICellContainer::SetItemGeometry('),
+     'REFRESH_BODY': body(drag_drop, 'void CUICellContainer::RefreshItemsPos('),
+@@ -160,6 +162,9 @@ CONSTANTS
+ IC int screen_cell_len(int ui_len, float scale)
+ SCREEN_LEN_BODY
+ 
++IC float snap_grid_px(float v)
++SNAP_GRID_BODY
++
+ struct CUICellContainer;
+ struct CUICellItem;
+ struct CUIDragItem;
+@@ -233,6 +238,7 @@ struct CUICellContainer
+     typedef CUICellContainer inherited;   // Update() is not exercised here
+ 
+     CUIDragDropListEx* m_pParentDragDropList = nullptr;
++    int m_screenCellSize = 0;
+     Ivector2 m_cellsCapacity{0, 0};
+     Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
+     Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
+@@ -250,6 +256,7 @@ struct CUICellContainer
+     const Ivector2& CellsCapacity() { return m_cellsCapacity; }
+ 
+     bool UpdateCellMetrics() METRICS_BODY
++    void SetScreenCellSize(int px) SET_SCREEN_BODY
+     Fvector2 CellOffsetUI(const Ivector2& cell_pos) const OFFSET_BODY
+     void SetItemGeometry(CUICellItem* itm, const Ivector2& cell_pos) GEOMETRY_BODY
+     void RefreshItemsPos() REFRESH_BODY
+@@ -291,11 +298,23 @@ struct CUICellContainer
+ const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
+ 
+ // --- the rasterizer, modelled -----------------------------------------------------
+-// CUIStaticItem::RenderInternal floors the scaled top left corner and then adds the
+-// scaled size to it without flooring. That asymmetry is the whole reason a fractional
+-// cell size makes neighbouring icons gape and overlap.
++// With flSnapToScreenPixels CUIStaticItem::RenderInternal takes both corners from the
++// absolute position and rounds both to the nearest whole screen pixel, so the edge two
++// neighbouring cells share is the same value rounded the same way from either side.
+ struct Rasterized { float x1, y1, x2, y2; };
+ static Rasterized rasterize(const Fvector2& abs_pos, const Fvector2& size)
++{
++    Rasterized r;
++    r.x1 = float(iFloor(abs_pos.x * g_scale_x + 0.5f));
++    r.y1 = float(iFloor(abs_pos.y * g_scale_y + 0.5f));
++    r.x2 = float(iFloor((abs_pos.x + size.x) * g_scale_x + 0.5f));
++    r.y2 = float(iFloor((abs_pos.y + size.y) * g_scale_y + 0.5f));
++    return r;
++}
++
++// What it did before any of this work: floor the top left corner, then add the scaled
++// size to it without rounding. Kept so the checks below can show they are not vacuous.
++static Rasterized rasterize_legacy(const Fvector2& abs_pos, const Fvector2& size)
+ {
+     Rasterized r;
+     r.x1 = float(iFloor(abs_pos.x * g_scale_x));
+@@ -310,12 +329,13 @@ struct Scene
+     CUIDragDropListEx list;
+     CUICellContainer box;
+ 
+-    Scene(int cols, int rows, int cell_w, int cell_h, int sp_x, int sp_y)
++    Scene(int cols, int rows, int cell_w, int cell_h, int sp_x, int sp_y, int screen_cell = 0)
+     {
+         list.m_container = &box;
+         box.m_pParentDragDropList = &list;
+         box.m_cellSizeRaw.set(cell_w, cell_h);
+         box.m_cellSpacingRaw.set(sp_x, sp_y);
++        box.m_screenCellSize = screen_cell;
+         box.UpdateCellMetrics();
+         box.origin.set(702.0f, 119.0f);
+         box.reset(cols, rows);
+@@ -417,6 +437,83 @@ int main()
+         assert(std::isfinite(off.x) && std::isfinite(off.y));
+     }
+ 
++    // ---- screen_cell_size: a square cell of exactly that many screen pixels ---------
++    {
++        const Mode forced[] = {
++            {1.0f, 1.0f, "1024x768"},
++            {1.875f, 1.40625f, "1920x1080"},
++            {2.5f, 1.875f, "2560x1440"},
++            {3.359375f, 1.875f, "3440x1440"},
++            {1.7f, 1.7f, "the reported 81.6 px cell"},
++        };
++
++        for (const Mode& m : forced)
++        {
++            g_scale_x = m.sx;
++            g_scale_y = m.sy;
++            Scene s(7, 14, 33, 41, 0, 0, 75);
++
++            // Square in physical pixels, whatever the aspect ratio does to the axes.
++            assert(s.box.m_cellSizeScreen.x == 75 && s.box.m_cellSizeScreen.y == 75);
++            // and the UI base size is that divided by the per-axis scale.
++            assert(s.box.m_cellSize.x == 75.0f / m.sx);
++            assert(s.box.m_cellSize.y == 75.0f / m.sy);
++
++            // 1x1 = 75x75, 2x1 = 150x75, 5x2 = 375x150.
++            CUICellItem one(1, 1), gun(2, 1), suit(5, 2);
++            s.box.put(&one, 0, 0);
++            s.box.put(&gun, 0, 2);
++            s.box.put(&suit, 0, 5);
++
++            const Rasterized r1 = rasterize(s.item_abs(one), one.wnd_size);
++            assert(r1.x2 - r1.x1 == 75.0f && r1.y2 - r1.y1 == 75.0f);
++            const Rasterized rg = rasterize(s.item_abs(gun), gun.wnd_size);
++            assert(rg.x2 - rg.x1 == 150.0f && rg.y2 - rg.y1 == 75.0f);
++            const Rasterized rs = rasterize(s.item_abs(suit), suit.wnd_size);
++            assert(rs.x2 - rs.x1 == 375.0f && rs.y2 - rs.y1 == 150.0f);
++
++            // Three full 1x1 icons side by side take exactly 3 * 75 px, with no pixel of
++            // gap and no pixel of overlap. Same down a column.
++            s.box.reset(7, 14);
++            CUICellItem row[3] = {CUICellItem(1, 1), CUICellItem(1, 1), CUICellItem(1, 1)};
++            CUICellItem col[3] = {CUICellItem(1, 1), CUICellItem(1, 1), CUICellItem(1, 1)};
++            for (int i = 0; i < 3; ++i)
++            {
++                s.box.put(&row[i], i, 0);
++                s.box.put(&col[i], 4, i);
++            }
++
++            const Rasterized a = rasterize(s.item_abs(row[0]), row[0].wnd_size);
++            const Rasterized b = rasterize(s.item_abs(row[1]), row[1].wnd_size);
++            const Rasterized c = rasterize(s.item_abs(row[2]), row[2].wnd_size);
++            assert(a.x2 == b.x1 && b.x2 == c.x1);
++            assert(c.x2 - a.x1 == 225.0f);
++
++            const Rasterized d = rasterize(s.item_abs(col[0]), col[0].wnd_size);
++            const Rasterized e = rasterize(s.item_abs(col[1]), col[1].wnd_size);
++            const Rasterized f = rasterize(s.item_abs(col[2]), col[2].wnd_size);
++            assert(d.y2 == e.y1 && e.y2 == f.y1);
++            assert(f.y2 - d.y1 == 225.0f);
++        }
++    }
++
++    // Without the attribute the old derivation stands, so existing layouts are untouched.
++    {
++        g_scale_x = 2.5f;
++        g_scale_y = 1.875f;
++        Scene derived(7, 14, 33, 41, 0, 0);
++        assert(derived.box.m_cellSizeScreen.x == 83 && derived.box.m_cellSizeScreen.y == 77);
++
++        // and setting it, then clearing it, goes back to exactly that.
++        Scene s(7, 14, 33, 41, 0, 0);
++        s.box.SetScreenCellSize(75);
++        assert(s.box.m_cellSizeScreen.x == 75 && s.box.m_cellSizeScreen.y == 75);
++        s.box.SetScreenCellSize(0);
++        assert(s.box.m_cellSizeScreen.x == 83 && s.box.m_cellSizeScreen.y == 77);
++        s.box.SetScreenCellSize(-5);    // clamped, not a negative cell
++        assert(s.box.m_cellSizeScreen.x == 83);
++    }
++
+     // ---- one constant step, whatever the mode --------------------------------------
+     const Mode modes[] = {
+         {1.0f, 1.0f, "1024x768"},
+@@ -429,16 +526,18 @@ int main()
+ 
+     // Every shipped list shape: bag, the 4:3 bag, the belt and the quick slots of both
+     // aspect ratios, and the one-cell trash panel.
+-    struct Shape { int cols, rows, cw, ch, spx, spy; };
++    struct Shape { int cols, rows, cw, ch, spx, spy, screen; };
+     const Shape shapes[] = {
+-        {7, 14, 33, 41, 0, 0},
+-        {7, 14, 41, 41, 0, 0},
+-        {5, 1, 33, 41, 19, 0},
+-        {5, 1, 41, 41, 24, 0},
+-        {4, 1, 33, 41, 32, 0},
+-        {4, 1, 41, 41, 40, 0},
+-        {1, 1, 375, 768, 0, 0},
+-        {5, 1, 32, 32, 0, 33},   // gamedata_cs vertical belt, spacing on y
++        {7, 14, 33, 41, 0, 0, 0},
++        {7, 14, 41, 41, 0, 0, 0},
++        {5, 1, 33, 41, 19, 0, 0},
++        {5, 1, 41, 41, 24, 0, 0},
++        {4, 1, 33, 41, 32, 0, 0},
++        {4, 1, 41, 41, 40, 0, 0},
++        {1, 1, 375, 768, 0, 0, 0},
++        {5, 1, 32, 32, 0, 33, 0},   // gamedata_cs vertical belt, spacing on y
++        {7, 14, 33, 41, 0, 0, 75},  // dragdrop_bag with screen_cell_size="75"
++        {7, 9, 33, 41, 0, 0, 64},   // a second forced size, to pin nothing to 75
+     };
+ 
+     for (const Mode& m : modes)
+@@ -446,7 +545,14 @@ int main()
+         {
+             g_scale_x = m.sx;
+             g_scale_y = m.sy;
+-            Scene s(sh.cols, sh.rows, sh.cw, sh.ch, sh.spx, sh.spy);
++            Scene s(sh.cols, sh.rows, sh.cw, sh.ch, sh.spx, sh.spy, sh.screen);
++
++            if (sh.screen > 0)
++            {
++                // screen_cell_size is the whole geometry: square, exact, scale independent.
++                assert(s.box.m_cellSizeScreen.x == sh.screen);
++                assert(s.box.m_cellSizeScreen.y == sh.screen);
++            }
+ 
+             const int step_x = s.box.m_cellSizeScreen.x + s.box.m_cellSpacingScreen.x;
+             const int step_y = s.box.m_cellSizeScreen.y + s.box.m_cellSpacingScreen.y;
+@@ -478,13 +584,26 @@ int main()
+                         assert(r.y1 - u.y1 == float(step_y));
+                     }
+ 
+-                    // 2. And the item covers exactly one cell, so with no spacing its
+-                    // right edge is the left edge of its neighbour - the reported bug.
+-                    assert(std::fabs((r.x2 - r.x1) - float(s.box.m_cellSizeScreen.x)) < 0.05f);
+-                    assert(std::fabs((r.y2 - r.y1) - float(s.box.m_cellSizeScreen.y)) < 0.05f);
++                    // 2. And the item covers exactly one cell - not approximately.
++                    assert(r.x2 - r.x1 == float(s.box.m_cellSizeScreen.x));
++                    assert(r.y2 - r.y1 == float(s.box.m_cellSizeScreen.y));
++
++                    // 3. The edge shared with the neighbour is one and the same pixel.
++                    if (cx > 0)
++                    {
++                        const Rasterized l = rasterize(s.item_abs(items[size_t(cy * sh.cols + cx - 1)]),
++                                                       items[size_t(cy * sh.cols + cx - 1)].wnd_size);
++                        assert(l.x2 + float(s.box.m_cellSpacingScreen.x) == r.x1);
++                    }
++                    if (cy > 0)
++                    {
++                        const Rasterized u = rasterize(s.item_abs(items[size_t((cy - 1) * sh.cols + cx)]),
++                                                       items[size_t((cy - 1) * sh.cols + cx)].wnd_size);
++                        assert(u.y2 + float(s.box.m_cellSpacingScreen.y) == r.y1);
++                    }
+                 }
+ 
+-            // 3. The grid background lands on the very same pixels as the items.
++            // 4. The grid background lands on the very same pixels as the items.
+             capture.reset();
+             s.box.Draw();
+             const std::vector<Point> grid = capture.of(0);
+@@ -503,7 +622,7 @@ int main()
+                     assert(q.y2 - q.y1 == float(s.box.m_cellSizeScreen.y));
+                 }
+ 
+-            // 4. PickCell resolves every drawn cell to itself, sampled across it.
++            // 5. PickCell resolves every drawn cell to itself, sampled across it.
+             for (int cy = 0; cy < sh.rows; ++cy)
+                 for (int cx = 0; cx < sh.cols; ++cx)
+                 {
+@@ -536,12 +655,12 @@ int main()
+         s.box.put(&suit, 0, 4);
+ 
+         const Rasterized rg = rasterize(s.item_abs(gun), gun.wnd_size);
+-        assert(std::fabs((rg.x2 - rg.x1) - 164.0f) < 0.05f);
+-        assert(std::fabs((rg.y2 - rg.y1) - 82.0f) < 0.05f);
++        assert(rg.x2 - rg.x1 == 164.0f);
++        assert(rg.y2 - rg.y1 == 82.0f);
+ 
+         const Rasterized rs = rasterize(s.item_abs(suit), suit.wnd_size);
+-        assert(std::fabs((rs.x2 - rs.x1) - 410.0f) < 0.05f);
+-        assert(std::fabs((rs.y2 - rs.y1) - 164.0f) < 0.05f);
++        assert(rs.x2 - rs.x1 == 410.0f);
++        assert(rs.y2 - rs.y1 == 164.0f);
+     }
+ 
+     // ---- a scrolled list keeps the same step ----------------------------------------
+@@ -608,7 +727,7 @@ int main()
+ 
+         // And the item is back on the grid.
+         const Rasterized r = rasterize(s.item_abs(pill), pill.wnd_size);
+-        assert(std::fabs((r.x2 - r.x1) - float(s.box.m_cellSizeScreen.x)) < 0.05f);
++        assert(r.x2 - r.x1 == float(s.box.m_cellSizeScreen.x));
+     }
+ 
+     // ---- vertical placement keeps its square-cell shape -----------------------------
+@@ -627,10 +746,11 @@ int main()
+     }
+ 
+     // ---- the behaviour this replaces --------------------------------------------------
+-    // Before the fix an item sat at (cellFromXml + spacing) * k UI units and was
+-    // cellFromXml wide, so the scaled step was fractional. Reproduce it and show that the
+-    // steps between neighbouring icons were not all the same and that edges did not meet -
+-    // otherwise the checks above would pass on a grid that never had the problem.
++    // Before the fix an item sat at (cellFromXml + spacing) * k UI units, was cellFromXml
++    // wide, and was rasterized with a floored top left and a raw bottom right. Reproduce
++    // it and show that the steps between neighbouring icons were not all the same and
++    // that edges did not meet - otherwise the checks above would pass on a grid that
++    // never had the problem.
+     {
+         g_scale_x = 1.875f;
+         g_scale_y = 1.40625f;
+@@ -644,7 +764,7 @@ int main()
+             pos.set(s.box.origin.x + float((s.box.m_cellSpacingRaw.x + s.box.m_cellSizeRaw.x) * cx),
+                     s.box.origin.y);
+             size.set(float(s.box.m_cellSizeRaw.x), float(s.box.m_cellSizeRaw.y));
+-            const Rasterized r = rasterize(pos, size);
++            const Rasterized r = rasterize_legacy(pos, size);
+             if (cx == 1)
+                 first_step = r.x1 - prev_x1;
+             if (cx > 1 && r.x1 - prev_x1 != first_step)
+@@ -705,10 +825,12 @@ with tempfile.TemporaryDirectory(prefix='ixray-cell-grid-') as directory:
+     subprocess.run([str(binary)], check=True,
+                    env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
+ 
+-print('PASS: production UpdateCellMetrics, CellOffsetUI, SetItemGeometry, RefreshItemsPos, '
+-      'ReinitSize, PickCell, TopVisibleCell and Draw; whole pixel cell size including the '
+-      'reported 81.6 case, one constant step for eight list shapes over six scales, item edges '
+-      'meeting exactly, grid background on the same pixels, PickCell over 64 points per cell, '
+-      '2x1 and 5x2 extents, a scrolled list, a scale change, a refused zero scale, vertical '
+-      'placement, the pre-fix '
+-      'varying step reproduced, the belt last pixel; ASan/UBSan')
++print('PASS: production UpdateCellMetrics, SetScreenCellSize, CellOffsetUI, SetItemGeometry, '
++      'RefreshItemsPos, ReinitSize, PickCell, TopVisibleCell, Draw and snap_grid_px; whole '
++      'pixel cell size including the reported 81.6 case; screen_cell_size square and exact '
++      'over five scales, with 1x1=75, 2x1=150x75, 5x2=375x150 and three icons spanning exactly '
++      '225 px across and down; the attribute absent leaves the old derivation (83x77) intact; '
++      'one constant step for ten list shapes over six scales, neighbouring icon edges on the '
++      'same pixel, grid background on the same pixels, PickCell over 64 points per cell, a '
++      'scrolled list, a scale change, a refused zero scale, vertical placement, the pre-fix '
++      'varying step and missed edges reproduced, the belt last pixel; ASan/UBSan')
+diff --git a/tests/inventory-drop/test_drop_cell.py b/tests/inventory-drop/test_drop_cell.py
+index 484d031f5..53fe0c040 100644
+--- a/tests/inventory-drop/test_drop_cell.py
++++ b/tests/inventory-drop/test_drop_cell.py
+@@ -29,9 +29,8 @@ valid_cell = body(drag_drop, 'bool CUICellContainer::ValidCell(')
+ metrics = body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics(')
+ cell_offset = body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI(')
+ 
+-# kCellPixelBias and screen_cell_len live in the anonymous namespace at the top.
+-helper = drag_drop[drag_drop.index('constexpr float kCellPixelBias'):drag_drop.index('IC int screen_cell_len(')]
+-helper += 'IC int screen_cell_len(int ui_len, float scale)' + body(drag_drop, 'IC int screen_cell_len(')
++# screen_cell_len lives in the anonymous namespace at the top of the file.
++helper = 'IC int screen_cell_len(int ui_len, float scale)' + body(drag_drop, 'IC int screen_cell_len(')
+ 
+ code = r'''
+ #include <cassert>
+@@ -79,12 +78,14 @@ QUANTIZE_BODY
+ // production one, so a change to the picking maths shows up here.
+ struct Grid
+ {
++    int m_screenCellSize;
+     Ivector2 m_cellsCapacity, m_cellSizeRaw, m_cellSpacingRaw, m_cellSizeScreen, m_cellSpacingScreen;
+     Fvector2 m_cellSize, m_cellSpacing, m_metricsScale;
+     Fvector2 origin;
+ 
+     Grid()
+     {
++        m_screenCellSize = 0;
+         m_cellsCapacity.set(0, 0);
+         m_cellSizeRaw.set(0, 0);
+         m_cellSpacingRaw.set(0, 0);
+diff --git a/tests/inventory-drop/test_drop_preview.py b/tests/inventory-drop/test_drop_preview.py
+index caa7825f0..192834dc4 100644
+--- a/tests/inventory-drop/test_drop_preview.py
++++ b/tests/inventory-drop/test_drop_preview.py
+@@ -27,7 +27,6 @@ drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
+ # The cell tints and the UV span live in the anonymous namespace at the top of the file.
+ constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
+ assert 'kDropPreviewFree' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
+-assert 'kCellPixelBias' in constants, constants
+ 
+ bodies = {
+     'PREDICT_BODY': body(drag_drop, 'EDropPreview CUIDragDropListEx::PredictDrop('),
+@@ -45,6 +44,7 @@ bodies = {
+     'METRICS_BODY': body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics('),
+     'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
+     'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
++    'SNAP_GRID_BODY': body(drag_drop, 'IC float snap_grid_px('),
+ }
+ 
+ code = r'''
+@@ -164,6 +164,9 @@ CONSTANTS
+ IC int screen_cell_len(int ui_len, float scale)
+ SCREEN_LEN_BODY
+ 
++IC float snap_grid_px(float v)
++SNAP_GRID_BODY
++
+ struct CUICellContainer;
+ struct CUICellItem;
+ 
+@@ -231,6 +234,7 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
+ struct CUICellContainer
+ {
+     CUIDragDropListEx* m_pParentDragDropList = nullptr;
++    int m_screenCellSize = 0;
+     Ivector2 m_cellsCapacity{0, 0};
+     Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
+     Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
 -- 
 2.47.3
 
