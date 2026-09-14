@@ -41,11 +41,6 @@ void CUIStaticItem::SetHeadingPivot(const Fvector2& p, const Fvector2& offset, b
 
 void CUIStaticItem::RenderInternal(const Fvector2& in_pos)
 {
-	Fvector2					pos;
-	UI().ClientToScreenScaled	(pos, in_pos.x, in_pos.y);
-	UI().AlignPixel				(pos.x);
-	UI().AlignPixel				(pos.y);
-
 	Fvector2		ts;
 	UIRender->GetActiveTextureResolution(ts);
 
@@ -58,10 +53,30 @@ void CUIStaticItem::RenderInternal(const Fvector2& in_pos)
 	Fvector2 LTp,RBp;
 	Fvector2 LTt,RBt;
 	//координаты на экране в пикселях
-	LTp.set						(pos);
+	if(uFlags.test(flSnapToScreenPixels))
+	{
+		// Both corners taken from the absolute position and both rounded. The right edge
+		// of one cell and the left edge of the next are then the same value rounded the
+		// same way, so they cannot land a pixel apart.
+		UI().ClientToScreenScaled	(LTp, in_pos.x, in_pos.y);
+		UI().ClientToScreenScaled	(RBp, in_pos.x + vSize.x, in_pos.y + vSize.y);
+		UI().SnapPixel				(LTp.x);
+		UI().SnapPixel				(LTp.y);
+		UI().SnapPixel				(RBp.x);
+		UI().SnapPixel				(RBp.y);
+	}
+	else
+	{
+		Fvector2					pos;
+		UI().ClientToScreenScaled	(pos, in_pos.x, in_pos.y);
+		UI().AlignPixel				(pos.x);
+		UI().AlignPixel				(pos.y);
 
-	UI().ClientToScreenScaled	(RBp, vSize.x, vSize.y);
-	RBp.add						(pos);
+		LTp.set						(pos);
+
+		UI().ClientToScreenScaled	(RBp, vSize.x, vSize.y);
+		RBp.add						(pos);
+	}
 
 	//текстурные координаты
 	LTt.set			( TextureRect.x1/ts.x, TextureRect.y1/ts.y);
