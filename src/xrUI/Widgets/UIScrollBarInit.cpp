@@ -679,8 +679,17 @@ bool CUIScrollBar::InitScrollBar(Fvector2 pos, float length, bool isHorizontal, 
 	CUIXml xmlDoc;
 	if (!LoadScrollBarXml(xmlDoc, profile))
 	{
-		_initialized = false;
-		return false;
+		// A caller can name a profile this scroll_bar.xml does not carry - a window shipped by
+		// an addon whose file defining the profile is not installed, say. Falling back to the
+		// shared profile costs the custom look; giving up would leave the list without a bar.
+		if (0 == xr_strcmp(profile, "default") || !LoadScrollBarXml(xmlDoc, "default"))
+		{
+			_initialized = false;
+			return false;
+		}
+
+		Msg("! [%s]: scroll bar profile [%s] not found, falling back to [default]", __FUNCTION__, profile);
+		profile = "default";
 	}
 
 	const bool result = InitStretchLayout(xmlDoc, profile, pos, length, isHorizontal);
