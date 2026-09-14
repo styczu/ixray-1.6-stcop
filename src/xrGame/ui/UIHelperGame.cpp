@@ -42,7 +42,12 @@ bool CUIXmlInitGame::InitDragDropListEx(CUIXml& xml_doc, LPCSTR path, int index,
 
 	CUIXmlInit::InitAlignment(xml_doc, path, index, pos.x, pos.y, pWnd);
 
-	pWnd->InitDragDropList(pos, size);
+	// Which scroll_bar.xml section the vertical bar is built from. Same attribute name
+	// CUIXmlInit::InitScrollView already uses, and it has to be read here because
+	// InitDragDropList is what creates the bar; its width never changes afterwards.
+	LPCSTR scroll_profile = xml_doc.ReadAttrib(path, index, "scroll_profile", "default");
+
+	pWnd->InitDragDropList(pos, size, scroll_profile);
 
 	Ivector2 w_cell_sz, w_cells, w_cell_sp;
 
