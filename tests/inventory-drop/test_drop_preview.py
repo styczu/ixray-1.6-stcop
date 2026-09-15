@@ -23,16 +23,29 @@ def body(text, signature):
 
 
 drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
+reference_list = (root / 'src/xrGame/ui/UIDragDropReferenceList.cpp').read_text()
 
 # The cell tints and the UV span live in the anonymous namespace at the top of the file.
 constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
 assert 'kDropPreviewFree' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
 
 bodies = {
-    'PREDICT_BODY': body(drag_drop, 'EDropPreview CUIDragDropListEx::PredictDrop('),
+    'PREDICT_BODY': body(drag_drop, 'SDropPrediction CUIDragDropListEx::PredictDrop('),
     'PICK_BODY': body(drag_drop, 'Ivector2 CUICellContainer::PickCell('),
     'VALID_BODY': body(drag_drop, 'bool CUICellContainer::ValidCell('),
     'ROOM_BODY': body(drag_drop, 'bool CUICellContainer::IsRoomFree('),
+    'ROOM_CAPACITY_BODY': body(drag_drop, 'bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size, const Ivector2& capacity'),
+    'FIND_CAPACITY_BODY': body(drag_drop, 'bool CUICellContainer::FindFreeCellInCapacity('),
+    'RESOLVE_BODY': body(drag_drop, 'bool CUICellContainer::ResolveFreeCell('),
+    'FIND_BODY': body(drag_drop, 'Ivector2 CUICellContainer::FindFreeCell('),
+    'GROW_BODY': body(drag_drop, 'void CUICellContainer::Grow('),
+    'BODY_LIST_SET_AUTO': body(drag_drop, 'void CUIDragDropListEx::SetItem(CUICellItem* itm) //auto'),
+    'BODY_LIST_SET_ABS': body(drag_drop, 'bool CUIDragDropListEx::SetItem(CUICellItem* itm, Fvector2 abs_pos)'),
+    'BODY_LIST_SET_CELL': body(drag_drop, 'void CUIDragDropListEx::SetItem(CUICellItem* itm, Ivector2 cell_pos)'),
+    'BODY_LIST_REMOVE': body(drag_drop, 'CUICellItem* CUIDragDropListEx::RemoveItem('),
+    'BODY_ADD_SIMILAR': body(drag_drop, 'bool CUICellContainer::AddSimilar('),
+    'BODY_PLACE_ITEM': body(drag_drop, 'void CUICellContainer::PlaceItemAtPos('),
+    'BODY_CONTAINER_REMOVE': body(drag_drop, 'CUICellItem* CUICellContainer::RemoveItem('),
     'SIMILAR_BODY': body(drag_drop, 'CUICellItem* CUICellContainer::FindSimilar('),
     'CELL_AT_BODY': body(drag_drop, 'CUICell& CUICellContainer::GetCellAt('),
     'ITEM_POS_BODY': body(drag_drop, 'Ivector2 CUICellContainer::GetItemPos('),
@@ -45,6 +58,8 @@ bodies = {
     'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
     'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
     'SNAP_GRID_BODY': body(drag_drop, 'IC float snap_grid_px('),
+    'REF_DROP_BODY': body(reference_list, 'SDropPrediction CUIDragDropReferenceList::PredictDrop('),
+    'REF_SET_ABS_BODY': body(reference_list, 'bool CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)'),
 }
 
 code = r'''
@@ -56,6 +71,7 @@ code = r'''
 #include <algorithm>
 
 #define R_ASSERT(x) assert(x)
+#define R_ASSERT2(x, message) assert(x)
 typedef unsigned int u32;
 typedef unsigned char u8;
 static const float EPS = 0.0000001f;
@@ -94,6 +110,7 @@ template <class T> struct Rect
     };
     Rect() { x1 = y1 = x2 = y2 = T(0); }
     Rect& set(T a, T b, T c, T d) { x1 = a; y1 = b; x2 = c; y2 = d; return *this; }
+    Rect& set(const Rect& o) { x1 = o.x1; y1 = o.y1; x2 = o.x2; y2 = o.y2; return *this; }
     T width() const { return x2 - x1; }
     T height() const { return y2 - y1; }
     bool operator==(const Rect& o) const { return x1 == o.x1 && y1 == o.y1 && x2 == o.x2 && y2 == o.y2; }
@@ -110,6 +127,13 @@ struct xrCriticalSectionGuard { explicit xrCriticalSectionGuard(int&) {} };
 #define IC inline
 
 enum EDropPreview { dpMerge, dpPlace, dpAuto };
+
+struct SDropPrediction
+{
+    EDropPreview result;
+    Irect attempted_cells;
+    Irect final_cells;
+};
 
 // --- render capture -------------------------------------------------------------
 struct Point { int batch; float x, y, z; u32 color; float u, v; };
@@ -169,6 +193,7 @@ SNAP_GRID_BODY
 
 struct CUICellContainer;
 struct CUICellItem;
+struct CUICell;
 
 struct CUIDragItem;
 
@@ -177,7 +202,8 @@ struct CUIDragDropListEx
     static CUIDragItem* m_drag_item;
     CUICellContainer* m_container = nullptr;
     u32 back_color = 0xFFFFFFFF;
-    bool grouping = false, vertical = false, virtual_cells = false, custom_placement = true;
+    bool grouping = false, vertical = false, virtual_cells = false, custom_placement = true, auto_grow = false;
+    int compactions = 0;
     int scroll_pos = 0;
     Frect client_area;
 
@@ -185,14 +211,23 @@ struct CUIDragDropListEx
     bool GetVerticalPlacement() { return vertical; }
     bool GetVirtualCells() { return virtual_cells; }
     bool GetCustomPlacement() { return custom_placement; }
+    bool IsAutoGrow() { return auto_grow; }
     int ScrollPos() { return scroll_pos; }
     void GetClientArea(Frect& r) { r = client_area; }
+    void Compact() { ++compactions; }
+    void Register(CUICellItem*) {}
 
     const Ivector2& CellsCapacity();
-    EDropPreview PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
+    virtual void SetItem(CUICellItem* itm);
+    virtual bool SetItem(CUICellItem* itm, Fvector2 abs_pos);
+    virtual void SetItem(CUICellItem* itm, Ivector2 cell_pos);
+    virtual CUICellItem* RemoveItem(CUICellItem* itm, bool force_root);
+    CUICell& GetCellAt(const Ivector2& pos);
+    virtual SDropPrediction PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip = nullptr);
 };
 
 struct CUIWindow { virtual ~CUIWindow() {} };
+typedef std::vector<CUIWindow*>::iterator WINDOW_LIST_it;
 
 // Only the parts of a cell item the prediction and the drawing touch.
 struct CUICellItem : CUIWindow
@@ -203,10 +238,29 @@ struct CUICellItem : CUIWindow
     bool m_cur_mark = false, m_selected = false, m_select_armament = false, m_select_equipped = false;
     u32 m_drawn_frame = 0;
     int drawn = 0;
+    std::vector<CUICellItem*> children;
     CUICellItem(int w, int h, int k) : kind(k) { grid.set(w, h); }
     const Ivector2& GetGridSize() { return grid; }
     bool EqualTo(CUICellItem* o) { return kind != 0 && kind == o->kind; }
     CUIDragDropListEx* OwnerList() { return owner; }
+    void SetOwnerList(CUIDragDropListEx* list) { owner = list; }
+    void SetWindowName(const char*) {}
+    void OnAfterChild(CUIDragDropListEx*) {}
+    u32 ChildsCount() const { return u32(children.size()); }
+    bool HasChild(CUICellItem* itm) const
+    {
+        return std::find(children.begin(), children.end(), itm) != children.end();
+    }
+    void PushChild(CUICellItem* itm) { children.push_back(itm); }
+    CUICellItem* PopChild(CUICellItem* itm)
+    {
+        assert(!children.empty());
+        std::vector<CUICellItem*>::iterator it = itm ? std::find(children.begin(), children.end(), itm) : children.end() - 1;
+        assert(it != children.end());
+        CUICellItem* result = *it;
+        children.erase(it);
+        return result;
+    }
     void Draw() { ++drawn; }
 };
 
@@ -226,6 +280,8 @@ struct CUICell
     CUICellItem* m_item;
     CUICell() : m_item(nullptr) {}
     bool Empty() { return m_item == nullptr; }
+    void SetItem(CUICellItem* item, bool) { m_item = item; }
+    void Clear() { m_item = nullptr; }
     bool operator==(const CUICell& o) const { return m_item == o.m_item; }
 };
 typedef std::vector<CUICell> UI_CELLS_VEC;
@@ -256,14 +312,28 @@ struct CUICellContainer
     bool ValidCell(const Ivector2& pos) const VALID_BODY
     CUICell& GetCellAt(const Ivector2& pos) CELL_AT_BODY
     Ivector2 PickCell(const Fvector2& abs_pos) PICK_BODY
+    bool IsRoomFree(const Ivector2& pos, const Ivector2& _size, const Ivector2& capacity, const CUICellItem* ignore) ROOM_CAPACITY_BODY
     bool IsRoomFree(const Ivector2& pos, const Ivector2& _size, const CUICellItem* ignore = nullptr) ROOM_BODY
+    bool FindFreeCellInCapacity(const Ivector2& _size, const Ivector2& capacity, Ivector2& out_pos, const CUICellItem* ignore = nullptr) FIND_CAPACITY_BODY
+    bool ResolveFreeCell(const Ivector2& _size, Ivector2& out_pos, Ivector2& out_capacity, const CUICellItem* ignore = nullptr) RESOLVE_BODY
+    Ivector2 FindFreeCell(const Ivector2& _size) FIND_BODY
+    bool AddSimilar(CUICellItem* itm) BODY_ADD_SIMILAR
     CUICellItem* FindSimilar(CUICellItem* itm, CUICellItem* skip = nullptr) SIMILAR_BODY
     Ivector2 GetItemPos(CUICellItem* itm) ITEM_POS_BODY
+    void PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos) BODY_PLACE_ITEM
+    CUICellItem* RemoveItem(CUICellItem* itm, bool force_root) BODY_CONTAINER_REMOVE
+    void SetItemGeometry(CUICellItem*, const Ivector2&) {}
+    void AttachChild(CUICellItem* itm) { m_ChildWndList.push_back(itm); }
+    void DetachChild(CUICellItem* itm)
+    {
+        m_ChildWndList.erase(std::remove(m_ChildWndList.begin(), m_ChildWndList.end(), itm), m_ChildWndList.end());
+    }
     void GetTexUVLT(Fvector2& uv, u32 col, u32 row, u8 select_mode) TEX_UV_BODY
     Ivector2 TopVisibleCell() TOP_CELL_BODY
     u32 GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res) IN_RANGE_BODY
     void Draw() DRAW_BODY
     void DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len) PREVIEW_BODY
+    void Grow() GROW_BODY
 
     // Test scaffolding, not production code.
     void reset(int cols, int rows)
@@ -271,6 +341,16 @@ struct CUICellContainer
         m_cellsCapacity.set(cols, rows);
         m_cells.assign(size_t(cols * rows), CUICell());
         m_ChildWndList.clear();
+    }
+    void SetCellsCapacity(const Ivector2& capacity)
+    {
+        const Ivector2 old_capacity = m_cellsCapacity;
+        const UI_CELLS_VEC old_cells = m_cells;
+        m_cellsCapacity = capacity;
+        m_cells.assign(size_t(capacity.x * capacity.y), CUICell());
+        for (int y = 0; y < std::min(old_capacity.y, capacity.y); ++y)
+            for (int x = 0; x < std::min(old_capacity.x, capacity.x); ++x)
+                m_cells[size_t(capacity.x * y + x)] = old_cells[size_t(old_capacity.x * y + x)];
     }
     void put(CUICellItem* itm, int cx, int cy)
     {
@@ -300,9 +380,41 @@ struct CUICellContainer
 };
 
 const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
+CUICell& CUIDragDropListEx::GetCellAt(const Ivector2& pos) { return m_container->GetCellAt(pos); }
 
-EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip)
+SDropPrediction CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip)
 PREDICT_BODY
+
+void CUIDragDropListEx::SetItem(CUICellItem* itm)
+BODY_LIST_SET_AUTO
+
+bool CUIDragDropListEx::SetItem(CUICellItem* itm, Fvector2 abs_pos)
+BODY_LIST_SET_ABS
+
+void CUIDragDropListEx::SetItem(CUICellItem* itm, Ivector2 cell_pos)
+BODY_LIST_SET_CELL
+
+CUICellItem* CUIDragDropListEx::RemoveItem(CUICellItem* itm, bool force_root)
+BODY_LIST_REMOVE
+
+struct CUIDragDropReferenceList : CUIDragDropListEx
+{
+    bool SetItem(CUICellItem* itm, Fvector2 abs_pos) override;
+    void SetItem(CUICellItem* itm, Ivector2 cell_pos) override { CUIDragDropListEx::SetItem(itm, cell_pos); }
+    SDropPrediction PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip = nullptr) override;
+};
+
+SDropPrediction CUIDragDropReferenceList::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* /*skip*/)
+REF_DROP_BODY
+
+bool CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)
+REF_SET_ABS_BODY
+
+struct ForcedDropList : CUIDragDropListEx
+{
+    SDropPrediction forced;
+    SDropPrediction PredictDrop(CUICellItem*, const Fvector2&, CUICellItem* = nullptr) override { return forced; }
+};
 
 // --- helpers --------------------------------------------------------------------
 
@@ -326,6 +438,25 @@ static void same_pixels(const std::vector<Point>& a, const std::vector<Point>& b
         assert(a[size_t(k)].u == b[size_t(k)].u);
         assert(a[size_t(k)].v == b[size_t(k)].v);
     }
+}
+
+static void assert_footprint(CUICellContainer& box, CUICellItem* itm, const Irect& footprint)
+{
+    int occupied = 0;
+    for (int y = 0; y < box.m_cellsCapacity.y; ++y)
+        for (int x = 0; x < box.m_cellsCapacity.x; ++x)
+        {
+            Ivector2 pos;
+            pos.set(x, y);
+            if (box.GetCellAt(pos).m_item != itm)
+                continue;
+
+            assert(x >= footprint.x1 && x <= footprint.x2);
+            assert(y >= footprint.y1 && y <= footprint.y2);
+            ++occupied;
+        }
+
+    assert(occupied == (footprint.x2 - footprint.x1 + 1) * (footprint.y2 - footprint.y1 + 1));
 }
 
 struct Scene
@@ -372,25 +503,43 @@ int main()
     CUICellContainer& box = bag.box;
 
     CUICellItem medkit(1, 1, 1);
-    Irect cells;
     Irect want;
+    SDropPrediction prediction;
 
     // Empty cell: the item goes exactly where the cursor points.
-    assert(list.PredictDrop(&medkit, box.aim(3, 5), cells) == dpPlace);
-    assert(cells == want.set(3, 5, 3, 5));
+    prediction = list.PredictDrop(&medkit, box.aim(3, 5));
+    assert(prediction.result == dpPlace);
+    assert(prediction.attempted_cells == want.set(3, 5, 3, 5));
+    assert(prediction.final_cells == prediction.attempted_cells);
 
     // Occupied cell: automatic placement takes over, but the cells the cursor points
     // at are still reported so the preview can mark them as blocked.
     CUICellItem bread(1, 1, 2);
     box.put(&bread, 3, 5);
-    assert(list.PredictDrop(&medkit, box.aim(3, 5), cells) == dpAuto);
-    assert(cells == want.set(3, 5, 3, 5));
+    prediction = list.PredictDrop(&medkit, box.aim(3, 5));
+    assert(prediction.result == dpAuto);
+    assert(prediction.attempted_cells == want.set(3, 5, 3, 5));
+    assert(prediction.final_cells == want.set(0, 0, 0, 0));
+
+    // The prediction itself is pure: it has neither grown nor repacked the list.
+    assert((box.m_cellsCapacity == Ivector2{7, 14}));
+    assert(box.GetCellAt(Ivector2{3, 5}).m_item == &bread);
+    assert(list.compactions == 0);
+
+    // The production SetItem(abs_pos) dispatches dpAuto through automatic placement
+    // and fills exactly the complete footprint predicted above.
+    list.SetItem(&medkit, box.aim(3, 5));
+    assert(box.GetItemPos(&medkit) == prediction.final_cells.lt);
+    assert_footprint(box, &medkit, prediction.final_cells);
+    assert(list.RemoveItem(&medkit, true) == &medkit);
 
     // Outside the grid: nothing to point at.
     Fvector2 above;
     above.set(box.origin.x + 20.0f, box.origin.y - 20.0f);
-    assert(list.PredictDrop(&medkit, above, cells) == dpAuto);
-    assert(cells.empty());
+    prediction = list.PredictDrop(&medkit, above);
+    assert(prediction.result == dpAuto);
+    assert(prediction.attempted_cells.empty());
+    assert(prediction.final_cells == want.set(0, 0, 0, 0));
 
     // A 2x1 weapon nudged one cell to the right overlaps the cell it is leaving. The
     // real drop calls RemoveItem first, so the preview has to ignore the dragged item
@@ -398,24 +547,33 @@ int main()
     box.reset(7, 14);
     CUICellItem rifle(2, 1, 3);
     box.put(&rifle, 0, 0);
-    assert(list.PredictDrop(&rifle, box.aim(1, 0), cells, &rifle) == dpPlace);
-    assert(cells == want.set(1, 0, 2, 0));
-    assert(list.PredictDrop(&rifle, box.aim(1, 0), cells, nullptr) == dpAuto);
+    prediction = list.PredictDrop(&rifle, box.aim(1, 0), &rifle);
+    assert(prediction.result == dpPlace);
+    assert(prediction.attempted_cells == want.set(1, 0, 2, 0));
+    assert(prediction.final_cells == prediction.attempted_cells);
+    assert(list.PredictDrop(&rifle, box.aim(1, 0), nullptr).result == dpAuto);
 
     // The footprint is the whole item, not just the cell under the cursor.
     box.reset(7, 14);
     CUICellItem suit(2, 3, 4);
-    assert(list.PredictDrop(&suit, box.aim(1, 2), cells) == dpPlace);
-    assert(cells == want.set(1, 2, 2, 4));
+    prediction = list.PredictDrop(&suit, box.aim(1, 2));
+    assert(prediction.result == dpPlace);
+    assert(prediction.attempted_cells == want.set(1, 2, 2, 4));
+    assert(prediction.final_cells == prediction.attempted_cells);
 
     // A footprint running off the right edge cannot be placed.
-    assert(list.PredictDrop(&suit, box.aim(6, 2), cells) == dpAuto);
+    prediction = list.PredictDrop(&suit, box.aim(6, 2));
+    assert(prediction.result == dpAuto);
+    assert(prediction.attempted_cells == want.set(6, 2, 7, 4));
+    assert(prediction.final_cells == want.set(0, 0, 1, 2));
 
     // Vertical lists swap the footprint, the way PlaceItemAtPos does.
     list.vertical = true;
     box.reset(7, 14);
-    assert(list.PredictDrop(&suit, box.aim(1, 2), cells) == dpPlace);
-    assert(cells == want.set(1, 2, 3, 3));
+    prediction = list.PredictDrop(&suit, box.aim(1, 2));
+    assert(prediction.result == dpPlace);
+    assert(prediction.attempted_cells == want.set(1, 2, 3, 3));
+    assert(prediction.final_cells == prediction.attempted_cells);
     list.vertical = false;
 
     // Grouping wins over position: the item merges into the stack it matches, wherever
@@ -424,24 +582,130 @@ int main()
     list.grouping = true;
     CUICellItem stack(1, 1, 1);
     box.put(&stack, 2, 3);
-    assert(list.PredictDrop(&medkit, box.aim(6, 12), cells) == dpMerge);
-    assert(cells == want.set(2, 3, 2, 3));
+    prediction = list.PredictDrop(&medkit, box.aim(6, 12));
+    assert(prediction.result == dpMerge);
+    assert(prediction.attempted_cells == want.set(2, 3, 2, 3));
+    assert(prediction.final_cells == prediction.attempted_cells);
 
     // A different item still lands under the cursor.
     CUICellItem bolt(1, 1, 9);
-    assert(list.PredictDrop(&bolt, box.aim(6, 12), cells) == dpPlace);
-    assert(cells == want.set(6, 12, 6, 12));
+    prediction = list.PredictDrop(&bolt, box.aim(6, 12));
+    assert(prediction.result == dpPlace);
+    assert(prediction.attempted_cells == want.set(6, 12, 6, 12));
 
     // Dragging the stack itself inside its own list must not match itself.
-    assert(list.PredictDrop(&stack, box.aim(6, 12), cells, &stack) == dpPlace);
-    assert(cells == want.set(6, 12, 6, 12));
+    prediction = list.PredictDrop(&stack, box.aim(6, 12), &stack);
+    assert(prediction.result == dpPlace);
+    assert(prediction.attempted_cells == want.set(6, 12, 6, 12));
 
     // Two identical stacks: the one that is not being dragged is the merge target.
     CUICellItem other(1, 1, 1);
     box.put(&other, 4, 4);
-    assert(list.PredictDrop(&stack, box.aim(6, 12), cells, &stack) == dpMerge);
-    assert(cells == want.set(4, 4, 4, 4));
+    prediction = list.PredictDrop(&stack, box.aim(6, 12), &stack);
+    assert(prediction.result == dpMerge);
+    assert(prediction.attempted_cells == want.set(4, 4, 4, 4));
+    assert(prediction.final_cells == prediction.attempted_cells);
+
+    CUICellItem merge_item(1, 1, 1);
+    const u32 stack_children = stack.ChildsCount();
+    list.SetItem(&merge_item, box.aim(6, 12));
+    assert(stack.ChildsCount() == stack_children + 1);
+    assert(stack.HasChild(&merge_item));
+    assert(merge_item.OwnerList() == &list);
     list.grouping = false;
+
+    // A same-list auto placement sees the exact state after RemoveItem: the dragged
+    // weapon's old cells are the first fit, without changing the live grid in preview.
+    box.reset(3, 1);
+    CUICellItem same_list_rifle(2, 1, 10);
+    CUICellItem end_blocker(1, 1, 11);
+    box.put(&same_list_rifle, 0, 0);
+    box.put(&end_blocker, 2, 0);
+    prediction = list.PredictDrop(&same_list_rifle, box.aim(2, 0), &same_list_rifle);
+    assert(prediction.result == dpAuto);
+    assert(prediction.attempted_cells == want.set(2, 0, 3, 0));
+    assert(prediction.final_cells == want.set(0, 0, 1, 0));
+    assert(box.GetCellAt(Ivector2{0, 0}).m_item == &same_list_rifle);
+    CUICellItem* moved_rifle = list.RemoveItem(&same_list_rifle, true);
+    assert(moved_rifle == &same_list_rifle);
+    list.SetItem(moved_rifle, box.aim(2, 0));
+    assert(box.GetItemPos(moved_rifle) == prediction.final_cells.lt);
+    assert_footprint(box, moved_rifle, prediction.final_cells);
+
+    // A full fixed grid has no trustworthy final target without entering the legacy
+    // Compact fallback. Prediction stays side-effect free and reports no final cells.
+    box.reset(2, 1);
+    CUICellItem fixed_full(2, 1, 19);
+    box.put(&fixed_full, 0, 0);
+    prediction = list.PredictDrop(&medkit, box.aim(0, 0));
+    assert(prediction.result == dpAuto);
+    assert(prediction.attempted_cells == want.set(0, 0, 0, 0));
+    assert(prediction.final_cells.empty());
+    assert(list.compactions == 0);
+
+    // Auto-grow is predicted without mutating capacity, then production SetItem
+    // performs exactly the required growth and fills the predicted footprint.
+    box.reset(2, 1);
+    list.auto_grow = true;
+    CUICellItem full_row(2, 1, 12);
+    CUICellItem crate(2, 2, 13);
+    box.put(&full_row, 0, 0);
+    prediction = list.PredictDrop(&crate, box.aim(0, 0));
+    assert(prediction.result == dpAuto);
+    assert(prediction.final_cells == want.set(0, 1, 1, 2));
+    assert((box.m_cellsCapacity == Ivector2{2, 1}));
+    list.SetItem(&crate, box.aim(0, 0));
+    assert(box.GetItemPos(&crate) == prediction.final_cells.lt);
+    assert_footprint(box, &crate, prediction.final_cells);
+    assert((box.m_cellsCapacity == Ivector2{2, 3}));
+
+    // Vertical placement keeps the complete swapped footprint through growth.
+    box.reset(3, 1);
+    list.vertical = true;
+    CUICellItem vertical_row(1, 3, 14);
+    CUICellItem vertical_item(2, 3, 15);
+    box.put(&vertical_row, 0, 0);
+    prediction = list.PredictDrop(&vertical_item, box.aim(0, 0));
+    assert(prediction.result == dpAuto);
+    assert(prediction.final_cells == want.set(0, 1, 2, 2));
+    assert((box.m_cellsCapacity == Ivector2{3, 1}));
+    list.SetItem(&vertical_item, box.aim(0, 0));
+    assert(box.GetItemPos(&vertical_item) == prediction.final_cells.lt);
+    assert_footprint(box, &vertical_item, prediction.final_cells);
+    assert((box.m_cellsCapacity == Ivector2{3, 3}));
+    list.vertical = false;
+    list.auto_grow = false;
+
+    // Quick slots replace an occupied reference cell and never acquire a second
+    // automatic-placement target.
+    {
+        CUIDragDropReferenceList refs;
+        CUICellContainer ref_box;
+        refs.m_container = &ref_box;
+        ref_box.m_pParentDragDropList = &refs;
+        ref_box.origin.set(0.0f, 0.0f);
+        ref_box.m_cellSizeRaw.set(41, 41);
+        ref_box.m_cellSpacingRaw.set(0, 0);
+        ref_box.UpdateCellMetrics();
+        ref_box.reset(4, 1);
+        CUICellItem old_ref(1, 1, 16);
+        CUICellItem new_ref(1, 1, 17);
+        ref_box.put(&old_ref, 2, 0);
+        prediction = refs.PredictDrop(&new_ref, ref_box.aim(2, 0));
+        assert(prediction.result == dpPlace);
+        assert(prediction.attempted_cells == want.set(2, 0, 2, 0));
+        assert(prediction.final_cells == prediction.attempted_cells);
+        assert(refs.SetItem(&new_ref, ref_box.aim(2, 0)));
+        assert(old_ref.OwnerList() == nullptr);
+        assert(ref_box.GetItemPos(&new_ref) == prediction.final_cells.lt);
+        assert_footprint(ref_box, &new_ref, prediction.final_cells);
+
+        CUICellItem oversized(5, 1, 18);
+        prediction = refs.PredictDrop(&oversized, ref_box.aim(2, 0));
+        assert(prediction.result == dpAuto);
+        assert(prediction.attempted_cells.empty());
+        assert(prediction.final_cells.empty());
+    }
 
     // ---- the highlight lands on the cell it claims --------------------------------
     // The preview is drawn from its own copy of the cell geometry; these checks pin it
@@ -515,11 +779,74 @@ int main()
         s.box.put(&taken, 4, 6);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 2);
+        assert(capture.batches() == 3);
         assert(capture.of(1)[0].color == kDropPreviewBlocked);
+        assert(capture.of(2)[0].color == kDropPreviewFree);
+        Fvector2 attempted_uv, final_uv;
+        s.box.GetTexUVLT(attempted_uv, 4, 6, 0);
+        s.box.GetTexUVLT(final_uv, 0, 0, 0);
+        same_pixels(quad_for(capture.of(0), attempted_uv), capture.of(1));
+        same_pixels(quad_for(capture.of(0), final_uv), capture.of(2));
         assert(kDropPreviewBlocked != kDropPreviewFree);
         // Drawn after the item, so the tint is not hidden under the icon.
         assert(taken.drawn == 1);
+    }
+
+    // Each footprint is clipped independently. A final target outside the current
+    // viewport adds no stray quad; after scrolling to it the green cells are correct.
+    {
+        Scene s(4, 8, 41, 0);
+        s.list.client_area.y2 = s.list.client_area.y1 + 3.0f * s.box.m_cellSize.y;
+        std::vector<CUICellItem> blockers;
+        blockers.reserve(5);
+        for (int row = 0; row < 5; ++row)
+        {
+            blockers.emplace_back(4, 1, 30 + row);
+            s.box.put(&blockers.back(), 0, row);
+        }
+        CUICellItem pill(1, 1, 5);
+        s.run(&pill, 1, 1);
+        assert(capture.batches() == 2);
+        assert(capture.of(1)[0].color == kDropPreviewBlocked);
+
+        s.list.scroll_pos = iFloor(5.0f * s.box.m_cellSize.y) + 1;
+        s.run(&pill, 1, 1);
+        assert(s.box.TopVisibleCell().y == 5);
+        assert(capture.batches() == 2);
+        assert(capture.of(1)[0].color == kDropPreviewFree);
+        Fvector2 final_uv;
+        s.box.GetTexUVLT(final_uv, 0, 5, 0);
+        same_pixels(quad_for(capture.of(0), final_uv), capture.of(1));
+    }
+
+    // If an unusual override resolves dpAuto to the attempted rectangle itself,
+    // retain the existing blocked signal and do not draw a duplicate batch.
+    {
+        ForcedDropList forced_list;
+        CUICellContainer forced_box;
+        forced_list.m_container = &forced_box;
+        forced_box.m_pParentDragDropList = &forced_list;
+        forced_box.m_isInventoryGridDisabled = true;
+        forced_box.m_cellSizeRaw.set(41, 41);
+        forced_box.m_cellSpacingRaw.set(0, 0);
+        forced_box.UpdateCellMetrics();
+        forced_box.origin.set(0.0f, 0.0f);
+        forced_box.reset(3, 3);
+        forced_list.client_area.set(0.0f, 0.0f, 3.0f * forced_box.m_cellSize.x, 3.0f * forced_box.m_cellSize.y);
+        forced_list.forced.result = dpAuto;
+        forced_list.forced.attempted_cells.set(1, 1, 1, 1);
+        forced_list.forced.final_cells.set(1, 1, 1, 1);
+
+        CUICellItem pill(1, 1, 5);
+        CUIDragItem drag;
+        drag.back = &forced_list;
+        drag.parent = &pill;
+        drag.pos = forced_box.aim(1, 1);
+        CUIDragDropListEx::m_drag_item = &drag;
+        capture.reset();
+        forced_box.Draw();
+        assert(capture.batches() == 2);
+        assert(capture.of(1)[0].color == kDropPreviewBlocked);
     }
 
     // ---- lists that must not be highlighted ---------------------------------------
@@ -576,8 +903,10 @@ with tempfile.TemporaryDirectory(prefix='ixray-drop-preview-') as directory:
     subprocess.run([str(binary)], check=True,
                    env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
 
-print('PASS: production PredictDrop and the production Draw/DrawDropPreview pass; free cell, '
-      'blocked cell, off-grid cursor, self-overlap while moving a 2x1, multi-cell footprint, '
-      'vertical swap, grouping merge target and self-match; highlight pixels matched against the '
-      'grid cell for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, '
-      'foreign list, fixed placement, single cell list; ASan/UBSan')
+print('PASS: production PredictDrop, ResolveFreeCell/FindFreeCell, SetItem/RemoveItem/PlaceItemAtPos, '
+      'reference-list PredictDrop/SetItem and production Draw/DrawDropPreview; attempted/final '
+      'footprints for free, blocked and off-grid targets; real same-list remove/drop, multi-cell, '
+      'auto-grow and vertical auto-grow placement; grouping and quick-slot replacement; red attempted plus '
+      'green final rendering, independent scroll clipping and duplicate suppression; highlight pixels '
+      'matched for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, foreign '
+      'list, fixed placement or single-cell list; ASan/UBSan')

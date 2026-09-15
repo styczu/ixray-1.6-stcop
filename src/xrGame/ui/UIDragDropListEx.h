@@ -35,6 +35,13 @@ enum EDropPreview
 	dpAuto,
 };
 
+struct SDropPrediction
+{
+	EDropPreview	result;
+	Irect			attempted_cells;
+	Irect			final_cells;
+};
+
 class CUIDragDropListEx :public CUIWindow, public CUIWndCallback
 {
 private:
@@ -131,7 +138,7 @@ public:
 			virtual void	SetItem				(CUICellItem* itm); //auto
 			virtual bool	SetItem				(CUICellItem* itm, Fvector2 abs_pos);  // start at cursor pos
 			virtual void	SetItem				(CUICellItem* itm, Ivector2 cell_pos); // start at cell
-	virtual EDropPreview	PredictDrop			(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
+	virtual SDropPrediction	PredictDrop		(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip = nullptr);
 					bool	CanSetItem			(CUICellItem* itm);
 			
 			u32				ItemsCount			();
@@ -231,8 +238,11 @@ protected:
 				Ivector2		TopVisibleCell		();
 				Ivector2		GetItemPos			(CUICellItem* itm);
 				Ivector2		FindFreeCell		(const Ivector2& size);
+				bool			FindFreeCellInCapacity(const Ivector2& size, const Ivector2& capacity, Ivector2& out_pos, const CUICellItem* ignore = nullptr);
+				bool			ResolveFreeCell		(const Ivector2& size, Ivector2& out_pos, Ivector2& out_capacity, const CUICellItem* ignore = nullptr);
 				bool			HasFreeSpace		(const Ivector2& size);
 				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const CUICellItem* ignore = nullptr);
+				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const Ivector2& capacity, const CUICellItem* ignore);
 				
 				bool			AddSimilar			(CUICellItem* itm);
 				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);
