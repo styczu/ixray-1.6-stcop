@@ -66,7 +66,13 @@ kolejnym nałożeniu trzech wcześniejszych pakietów przechodzą check, apply, 
 rozpoznanie poprawki i komplet testów. Wynikowe `src/` i `tests/inventory-drop/` są
 równoważne gałęzi źródłowej.
 
-CI: nie uruchomiono — commit nie został jeszcze wypchnięty.
+CI po wypchnięciu 15 września 2026: **zielone**. Dla commita źródłowego
+`44cd856ff914d736dfdb8a4a0812d3b1c1bb0a83` przeszły
+[Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875498) i
+[Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875437).
+Dla integracyjnego stanu `build/tmz` `e955faff29a6439ba211c5a34b157b3efea4bc23`
+przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875243)
+i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875178).
 
 Test w grze: **nie wykonano**.
 
