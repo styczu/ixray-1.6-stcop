@@ -1419,11 +1419,19 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
 								 {0.0f,0.0f},{1.0f,1.0f},{0.0f,1.0f}};
 	const float texUSpan = m_isInventoryGridDisabled ? kInventoryCellUSpanGridDisabled : 0.25f;
+	// The normal slice of ui_grid_alt is fully transparent by design. Use its
+	// visible neutral slice as the mask, then tint it with the preview color.
+	const u8 previewSelectMode = m_isInventoryGridDisabled ? 1 : 0;
 	const Fvector2 uvs[6] =		{{0.0f,0.0f},{texUSpan,0.0f},{texUSpan,1.0f},
 								 {0.0f,0.0f},{texUSpan,1.0f},{0.0f,1.0f}};
 
 	auto draw_cells = [&](const Irect& cells, u32 color)
 	{
+		// The visible ui_grid_alt mask has alpha 102/255. Compensate it so the
+		// resulting opacity matches the 96/255 preview alpha used with ui_grid.
+		if (m_isInventoryGridDisabled)
+			color = subst_alpha(color, 240);
+
 		Irect shown;
 		shown.x1 = _max(cells.x1, tgt_cells.x1);
 		shown.y1 = _max(cells.y1, tgt_cells.y1);
@@ -1443,7 +1451,7 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 				rect_offset.set		( (draw_lt.x + (f_len.x+sp_len.x)*(x-tgt_cells.x1)), (draw_lt.y + (f_len.y+sp_len.y)*(y-tgt_cells.y1)) );
 
 				Fvector2			tp;
-				GetTexUVLT			(tp, x, y, 0);
+				GetTexUVLT			(tp, x, y, previewSelectMode);
 
 				for ( u32 k = 0; k < 6; ++k )
 				{

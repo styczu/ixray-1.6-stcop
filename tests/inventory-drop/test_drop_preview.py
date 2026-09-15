@@ -4,6 +4,7 @@ the highlight is painted on exactly the same pixels as the grid cell underneath.
 from pathlib import Path
 import os
 import re
+import struct
 import subprocess
 import tempfile
 
@@ -28,6 +29,27 @@ reference_list = (root / 'src/xrGame/ui/UIDragDropReferenceList.cpp').read_text(
 # The cell tints and the UV span live in the anonymous namespace at the top of the file.
 constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
 assert 'kDropPreviewFree' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
+
+# ui_grid_alt hides the normal inventory grid by making its first 64-pixel strip
+# fully transparent. The preview must therefore use the next, visible neutral strip
+# as a mask. Pin that asset contract here as well as the production UV selection.
+grid_alt = (root / 'gamedata/textures/ui/ui_grid_alt.dds').read_bytes()
+assert grid_alt[:4] == b'DDS ' and grid_alt[84:88] == b'DXT5'
+grid_height, grid_width = struct.unpack_from('<II', grid_alt, 12)
+assert (grid_width, grid_height) == (256, 64)
+blocks_per_row = (grid_width + 3) // 4
+
+
+def dxt5_alpha_endpoints(x1, x2):
+    for block_y in range((grid_height + 3) // 4):
+        for block_x in range(x1 // 4, x2 // 4):
+            offset = 128 + (block_y * blocks_per_row + block_x) * 16
+            yield grid_alt[offset], grid_alt[offset + 1]
+
+
+assert all(a0 == 0 and a1 == 0 for a0, a1 in dxt5_alpha_endpoints(0, 64))
+assert all(a0 == 102 and a1 == 102 for a0, a1 in dxt5_alpha_endpoints(64, 128))
+assert round(240 * 102 / 255) == 96
 
 bodies = {
     'PREDICT_BODY': body(drag_drop, 'SDropPrediction CUIDragDropListEx::PredictDrop('),
@@ -76,6 +98,7 @@ typedef unsigned int u32;
 typedef unsigned char u8;
 static const float EPS = 0.0000001f;
 constexpr u32 color_rgba(u32 r, u32 g, u32 b, u32 a) { return ((a & 0xffu) << 24) | ((b & 0xffu) << 16) | ((g & 0xffu) << 8) | (r & 0xffu); }
+constexpr u32 subst_alpha(u32 rgba, u32 a) { return (rgba & 0x00ffffffu) | color_rgba(0, 0, 0, a); }
 
 struct Fvector2
 {
@@ -428,15 +451,13 @@ static std::vector<Point> quad_for(const std::vector<Point>& pts, const Fvector2
     return std::vector<Point>();
 }
 
-static void same_pixels(const std::vector<Point>& a, const std::vector<Point>& b)
+static void same_geometry(const std::vector<Point>& a, const std::vector<Point>& b)
 {
     assert(a.size() == 6 && b.size() == 6);
     for (int k = 0; k < 6; ++k)
     {
         assert(a[size_t(k)].x == b[size_t(k)].x);
         assert(a[size_t(k)].y == b[size_t(k)].y);
-        assert(a[size_t(k)].u == b[size_t(k)].u);
-        assert(a[size_t(k)].v == b[size_t(k)].v);
     }
 }
 
@@ -716,12 +737,29 @@ int main()
         s.run(&pill, 4, 6);
 
         assert(capture.batches() == 2);
-        Fvector2 tp;
-        s.box.GetTexUVLT(tp, 4, 6, 0);
-        const std::vector<Point> grid_quad = quad_for(capture.of(0), tp);
-        const std::vector<Point> preview = capture.of(1);
+        Fvector2 grid_uv, preview_uv;
+        s.box.GetTexUVLT(grid_uv, 4, 6, 0);
+        s.box.GetTexUVLT(preview_uv, 4, 6, 1);
+        const std::vector<Point> grid_quad = quad_for(capture.of(0), grid_uv);
+        const std::vector<Point> preview = quad_for(capture.of(1), preview_uv);
         assert(!grid_quad.empty());
-        same_pixels(grid_quad, preview);
+        same_geometry(grid_quad, preview);
+        assert(grid_uv.x < 0.25f && preview_uv.x >= 0.25f && preview_uv.x < 0.5f);
+        assert(preview[0].color == subst_alpha(kDropPreviewFree, 240));
+    }
+
+    // With the ordinary grid texture its normal slice is visible, so preview keeps
+    // using slice zero and the original alpha.
+    {
+        Scene s(7, 14, 41, 0);
+        s.box.m_isInventoryGridDisabled = false;
+        CUICellItem pill(1, 1, 5);
+        s.run(&pill, 4, 6);
+
+        assert(capture.batches() == 2);
+        const std::vector<Point> preview = capture.of(1);
+        assert(preview.size() == 6);
+        assert(preview[0].u == 0.0f && preview[0].v == 0.0f);
         assert(preview[0].color == kDropPreviewFree);
     }
 
@@ -736,9 +774,10 @@ int main()
 
         assert(s.box.TopVisibleCell().y == 3);
         assert(capture.batches() == 2);
-        Fvector2 tp;
-        s.box.GetTexUVLT(tp, 4, 6, 0);
-        same_pixels(quad_for(capture.of(0), tp), capture.of(1));
+        Fvector2 grid_uv, preview_uv;
+        s.box.GetTexUVLT(grid_uv, 4, 6, 0);
+        s.box.GetTexUVLT(preview_uv, 4, 6, 1);
+        same_geometry(quad_for(capture.of(0), grid_uv), quad_for(capture.of(1), preview_uv));
     }
 
     // Spaced list, like the belt: cell pitch is not the cell size.
@@ -749,9 +788,10 @@ int main()
         s.run(&pill, 3, 0);
 
         assert(capture.batches() == 2);
-        Fvector2 tp;
-        s.box.GetTexUVLT(tp, u32(cell.x), u32(cell.y), 0);
-        same_pixels(quad_for(capture.of(0), tp), capture.of(1));
+        Fvector2 grid_uv, preview_uv;
+        s.box.GetTexUVLT(grid_uv, u32(cell.x), u32(cell.y), 0);
+        s.box.GetTexUVLT(preview_uv, u32(cell.x), u32(cell.y), 1);
+        same_geometry(quad_for(capture.of(0), grid_uv), quad_for(capture.of(1), preview_uv));
     }
 
     // A 2x1 item highlights both of its cells, each on top of its own grid cell.
@@ -765,9 +805,10 @@ int main()
         assert(preview.size() == 12);
         for (int i = 0; i < 2; ++i)
         {
-            Fvector2 tp;
-            s.box.GetTexUVLT(tp, u32(2 + i), 8, 0);
-            same_pixels(quad_for(capture.of(0), tp), quad_for(preview, tp));
+            Fvector2 grid_uv, preview_uv;
+            s.box.GetTexUVLT(grid_uv, u32(2 + i), 8, 0);
+            s.box.GetTexUVLT(preview_uv, u32(2 + i), 8, 1);
+            same_geometry(quad_for(capture.of(0), grid_uv), quad_for(preview, preview_uv));
         }
     }
 
@@ -780,13 +821,15 @@ int main()
         s.run(&pill, 4, 6);
 
         assert(capture.batches() == 3);
-        assert(capture.of(1)[0].color == kDropPreviewBlocked);
-        assert(capture.of(2)[0].color == kDropPreviewFree);
-        Fvector2 attempted_uv, final_uv;
-        s.box.GetTexUVLT(attempted_uv, 4, 6, 0);
-        s.box.GetTexUVLT(final_uv, 0, 0, 0);
-        same_pixels(quad_for(capture.of(0), attempted_uv), capture.of(1));
-        same_pixels(quad_for(capture.of(0), final_uv), capture.of(2));
+        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewBlocked, 240));
+        assert(capture.of(2)[0].color == subst_alpha(kDropPreviewFree, 240));
+        Fvector2 attempted_grid_uv, attempted_preview_uv, final_grid_uv, final_preview_uv;
+        s.box.GetTexUVLT(attempted_grid_uv, 4, 6, 0);
+        s.box.GetTexUVLT(attempted_preview_uv, 4, 6, 1);
+        s.box.GetTexUVLT(final_grid_uv, 0, 0, 0);
+        s.box.GetTexUVLT(final_preview_uv, 0, 0, 1);
+        same_geometry(quad_for(capture.of(0), attempted_grid_uv), quad_for(capture.of(1), attempted_preview_uv));
+        same_geometry(quad_for(capture.of(0), final_grid_uv), quad_for(capture.of(2), final_preview_uv));
         assert(kDropPreviewBlocked != kDropPreviewFree);
         // Drawn after the item, so the tint is not hidden under the icon.
         assert(taken.drawn == 1);
@@ -807,16 +850,17 @@ int main()
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 1, 1);
         assert(capture.batches() == 2);
-        assert(capture.of(1)[0].color == kDropPreviewBlocked);
+        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewBlocked, 240));
 
         s.list.scroll_pos = iFloor(5.0f * s.box.m_cellSize.y) + 1;
         s.run(&pill, 1, 1);
         assert(s.box.TopVisibleCell().y == 5);
         assert(capture.batches() == 2);
-        assert(capture.of(1)[0].color == kDropPreviewFree);
-        Fvector2 final_uv;
-        s.box.GetTexUVLT(final_uv, 0, 5, 0);
-        same_pixels(quad_for(capture.of(0), final_uv), capture.of(1));
+        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewFree, 240));
+        Fvector2 final_grid_uv, final_preview_uv;
+        s.box.GetTexUVLT(final_grid_uv, 0, 5, 0);
+        s.box.GetTexUVLT(final_preview_uv, 0, 5, 1);
+        same_geometry(quad_for(capture.of(0), final_grid_uv), quad_for(capture.of(1), final_preview_uv));
     }
 
     // If an unusual override resolves dpAuto to the attempted rectangle itself,
@@ -846,7 +890,7 @@ int main()
         capture.reset();
         forced_box.Draw();
         assert(capture.batches() == 2);
-        assert(capture.of(1)[0].color == kDropPreviewBlocked);
+        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewBlocked, 240));
     }
 
     // ---- lists that must not be highlighted ---------------------------------------
@@ -908,5 +952,6 @@ print('PASS: production PredictDrop, ResolveFreeCell/FindFreeCell, SetItem/Remov
       'footprints for free, blocked and off-grid targets; real same-list remove/drop, multi-cell, '
       'auto-grow and vertical auto-grow placement; grouping and quick-slot replacement; red attempted plus '
       'green final rendering, independent scroll clipping and duplicate suppression; highlight pixels '
-      'matched for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, foreign '
+      'matched for plain, scrolled, spaced and 2x1 cases; visible compensated ui_grid_alt mask and ordinary '
+      'grid UVs; no highlight for virtual cells, foreign '
       'list, fixed placement or single-cell list; ASan/UBSan')
