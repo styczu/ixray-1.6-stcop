@@ -477,6 +477,7 @@ void	CActor::net_Import_Physic_proceed	( )
 bool CActor::net_Spawn(CSE_Abstract* DC)
 {
 	ResetCameraFocus();
+    m_environmental_exposure.Reset();
 	m_holder_id				= ALife::_OBJECT_ID(-1);
 	m_snd_noise			= 0.0f;
 
