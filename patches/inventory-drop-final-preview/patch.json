@@ -1,0 +1,19 @@
+{
+  "name": "inventory-drop-final-preview",
+  "branch": "feature/inventory-drop-final-preview",
+  "original_commits": [
+    "44cd856ff914d736dfdb8a4a0812d3b1c1bb0a83"
+  ],
+  "original_parent": "02915a7da253990a6c8e4eade2c348c4bfb0b75d",
+  "integrated_commits": [
+    "a2e993db171451880f5d24ad44e60edcbe809143"
+  ],
+  "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "patch": "0001-fix-inventory-drop-final-preview.patch",
+  "sha256": "fbb86160f2e6966632efc225d79826cea464450210b30fe0232d898379b19735",
+  "dependencies": [
+    "inventory-cell-grid"
+  ],
+  "ui_changes": false,
+  "format": "git format-patch --stdout --full-index --no-signature; git am --keep-cr --3way"
+}
