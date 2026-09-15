@@ -24,8 +24,9 @@ Gałęzie, wdrażanie, mechanika dodatków i konwencje są opisane w
   refaktoryzuj przy okazji — pakiety poprawek muszą dać się nałożyć na inną wersję.
 - **Gałąź źródłowa `fix/*` / `feature/*` niesie kod poprawki i testy, a `patches/<nazwa>/`
   na `build/tmz` to przenośne artefakty pakietów** generowane z tej gałęzi. `.gitignore`
-  wyłącza `patches/` z upstreamowej reguły `patch*/`, więc `git status` i zwykłe
-  `git add` działają; `patch_tmp/` i podobne dalej są ignorowane.
+  wyłącza sam katalog `patches/` z upstreamowej reguły `patch*/`, więc `git status`
+  i zwykłe `git add` działają. Pozostałe reguły obowiązują dalej, także wewnątrz
+  `patches/` (`*.log`, `patch_tmp/`).
 - Testy w `tests/` uruchamia się wprost (`python3 tests/<rodzina>/<test>.py`); **żadne
   CI ich nie odpala**. Wymagają `g++` z ASan/UBSan.
 

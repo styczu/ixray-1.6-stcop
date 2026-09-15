@@ -59,7 +59,6 @@ temp/
 gamedata*_origin/
 patch*/
 !patches/
-!patches/**
 
 # Generated files
 imgui.ini
