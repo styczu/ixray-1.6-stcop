@@ -6,6 +6,7 @@
 #include "../xrEngine/IGame_Actor.h"
 #include "../Include/xrRender/KinematicsAnimated.h"
 #include "Actor_Flags.h"
+#include "EnvironmentalExposure.h"
 #include "actor_defs.h"
 #include "fire_disp_controller.h"
 #include "entity_alive.h"
@@ -240,6 +241,8 @@ public:
 	virtual void		UpdateArtefactsOnBeltAndOutfit();
 	void				UpdateConditionArtefacts();
 	void				HitArtefactsCondition(SHit& hit);
+            float GetEquipmentProtection(ALife::EHitType hit_type);
+            Protection::ExposureReading GetEnvironmentalExposure(ALife::EHitType hit_type) const;
 			float		HitArtefactsOnBelt		(float hit_power, ALife::EHitType hit_type);
 			float		GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type);
 
@@ -256,6 +259,8 @@ protected:
 	s8						m_block_sprint_counter;
 
 	bool IsWaunded = false;
+
+    Protection::ExposureHistory m_environmental_exposure;
 
 	// media
 	SndShockEffector*		m_sndShockEffector;
