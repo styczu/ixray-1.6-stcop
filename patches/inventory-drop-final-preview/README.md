@@ -86,8 +86,13 @@ Dla integracyjnego stanu `build/tmz` `e955faff29a6439ba211c5a34b157b3efea4bc23`
 przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875243)
 i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875178).
 
-CI drugiego commita, naprawiającego widoczność przy `DisableInventoryGrid`: jeszcze nie
-uruchomiono — wynik zostanie wpisany po wypchnięciu przebudowanego pakietu.
+CI poprawionej wersji z 16 września 2026: **zielone**. Dla commita źródłowego
+`783e1439d00782f68359fec0cda90bdd2133574f` przeszły
+[Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030532778) i
+[Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030532770).
+Dla integracyjnego stanu `build/tmz` `58b8903236b997a5b9193903cfa588a11828ef8a`
+przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030533545)
+i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030533528).
 
 Test w grze: pierwsza wersja została sprawdzona i ujawniła całkowicie niewidoczny
 preview przy `DisableInventoryGrid`; po opisanej wyżej poprawce **nie wykonano**.
