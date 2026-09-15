@@ -75,7 +75,9 @@ komórki - i tak znacznie mniej niż pełny offset chwytu sprzed poprawki.
 
 Patch nakłada się na czysty upstream
 `6c793faee008d83f86cec2429d39d7aa39b5bc66` i po nałożeniu drzewo jest identyczne
-z gałęzią źródłową. Dołączony test przechodzi w świeżo zapatchowanym checkoucie:
+z gałęzią źródłową `fix/inventory-drop-cell` (commit `36e469d8f`). Ostatnio
+sprawdzone 15 września 2026 przy odbudowie łańcucha gałęzi inventory, razem
+z oboma pakietami zależnymi. Dołączony test przechodzi w świeżo zapatchowanym checkoucie:
 kompiluje produkcyjne ciała `quantize_grab_offset`, `PickCell` i `ValidCell`
 i sprawdza 7938 pozycji kursora dla przedmiotu 1x1 przy trzech różnych chwytach,
 osobno chwyty 2x1 i 1x2, odtwarza zachowanie sprzed poprawki, a także przypadki
@@ -83,11 +85,16 @@ brzegowe - kursor tuż poza ikoną, offset większy od przedmiotu, zerowy rozmia
 komórki. Test wymaga Pythona 3 i g++ z ASan/UBSan. LeakSanitizer jest domyślnie
 wyłączony, żeby test działał w środowisku z ograniczonym ptrace.
 
-Kompilacja na Windowsie przeszła. Na commicie `eae6a01c3` zielone są oba
-workflow: `Build engine` w RelWithDebInfo oraz `Non-Unity build` w Debug,
-RelWithDebInfo i Release.
+Kompilacja na Windowsie przeszła. Na commicie `eae6a01c3` (ta poprawka razem
+z `inventory-drop-preview` i pakietami) zielone są oba workflow: `Build engine`
+w RelWithDebInfo oraz `Non-Unity build` w Debug, RelWithDebInfo i Release.
 
-**Nie wykonano próby w grze.** Po kompilacji sprawdź w ekwipunku:
+**Próba w grze dotyczy buildów integracyjnych, nie samego pakietu.** Ekwipunek z tym
+kodem sprawdzono w grze przy 2560x1440. Były to buildy z tym kodem i zmianami panelu:
+m.in. `7fcb532af` (dawna gałąź `feature/inventory-cell-grid`), a 15 września 2026
+`236edf3a7` z `build/tmz`, na którym ekwipunek wyglądał poprawnie. Nie ma zapisu, które
+z punktów poniżej przejrzano. Buildu z samego pakietu nałożonego na czysty upstream
+nie uruchamiano w grze. Po kompilacji sprawdź w ekwipunku:
 przedmiot 1x1 chwycony za środek ma trafić w komórkę pod kursorem,
 a broń 2x1 chwycona za prawą połowę ma trafić tak, żeby chwycona połowa była pod
 kursorem. Warto przejść plecak, pas, szybkie sloty i handel.
@@ -105,6 +112,10 @@ python3 "$IXRAY/tests/inventory-drop/test_drop_cell.py"
 
 Pierwsze polecenie tylko sprawdza zgodność. Drugie nakłada patch jako commit;
 rozpoznaje też poprawkę już obecną. Potem skompiluj silnik dla swojej wersji.
+
+Obecność poprawki nie jest rozpoznawana po nałożeniu `inventory-cell-grid`. Tamten
+pakiet przepisuje linie tego patcha, więc `apply.py` zgłosi wtedy, że patch nie pasuje
+(kod 1). O stanie takiego repozytorium mówi `apply.py` pakietu `inventory-cell-grid`.
 
 `patch.json` zawiera wersje i sumę SHA-256 eksportu. Przy aktualizacji IX-Ray
 najpierw sprawdź patch na nowym checkoucie; zgodność z nowszym kodem nie jest

@@ -69,7 +69,7 @@ Claude-Session: https://claude.ai/code/session_01RxySzhoKaG8quQJnGaYkjH
  create mode 100644 tests/inventory-drop/test_drop_preview.py
 
 diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
-index 67e4dbf57..ce24bd14d 100644
+index 67e4dbf57535604edbc27509b60c8473bd4b92e6..ce24bd14d56030667ff5586f7d0afbe3363d54d0 100644
 --- a/src/xrGame/ui/UIDragDropListEx.cpp
 +++ b/src/xrGame/ui/UIDragDropListEx.cpp
 @@ -13,6 +13,11 @@ namespace
@@ -280,7 +280,7 @@ index 67e4dbf57..ce24bd14d 100644
  {
  	UI_CELLS_VEC_IT itb = m_cells.begin();
 diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
-index abd4cb3b4..19ef024f8 100644
+index abd4cb3b41d383f859a298ca57c34fd17dcbb07e..19ef024f80b0d707929e494bd43deba946993bf1 100644
 --- a/src/xrGame/ui/UIDragDropListEx.h
 +++ b/src/xrGame/ui/UIDragDropListEx.h
 @@ -26,6 +26,15 @@ struct CUICell{
@@ -329,7 +329,7 @@ index abd4cb3b4..19ef024f8 100644
  				void			PlaceItemAtPos		(CUICellItem* itm, Ivector2& cell_pos);
  				CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
 diff --git a/src/xrGame/ui/UIDragDropReferenceList.cpp b/src/xrGame/ui/UIDragDropReferenceList.cpp
-index ef2e8ec19..f2b9aa130 100644
+index ef2e8ec192c69bb3e170f6c0acf7e37ac05ca4d5..f2b9aa1302e4831c3001dee069f99ab317a2bf29 100644
 --- a/src/xrGame/ui/UIDragDropReferenceList.cpp
 +++ b/src/xrGame/ui/UIDragDropReferenceList.cpp
 @@ -38,6 +38,26 @@ void CUIDragDropReferenceList::SetItem(CUICellItem* itm)
@@ -360,7 +360,7 @@ index ef2e8ec19..f2b9aa130 100644
  {
  	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
 diff --git a/src/xrGame/ui/UIDragDropReferenceList.h b/src/xrGame/ui/UIDragDropReferenceList.h
-index d853cd3cf..b1ce1f117 100644
+index d853cd3cfa60d649d7bf79ac40bc2892ad32ca6f..b1ce1f1170e8afdf53a8cd62d8683da17ddfb666 100644
 --- a/src/xrGame/ui/UIDragDropReferenceList.h
 +++ b/src/xrGame/ui/UIDragDropReferenceList.h
 @@ -17,6 +17,7 @@ public:
@@ -373,7 +373,7 @@ index d853cd3cf..b1ce1f117 100644
  	void Initialize();
 diff --git a/tests/inventory-drop/test_drop_preview.py b/tests/inventory-drop/test_drop_preview.py
 new file mode 100644
-index 000000000..47b87ce53
+index 0000000000000000000000000000000000000000..47b87ce53307841c44d735bc6753bc5f0b737c22
 --- /dev/null
 +++ b/tests/inventory-drop/test_drop_preview.py
 @@ -0,0 +1,552 @@
@@ -929,6 +929,3 @@ index 000000000..47b87ce53
 +      'vertical swap, grouping merge target and self-match; highlight pixels matched against the '
 +      'grid cell for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, '
 +      'foreign list, fixed placement, single cell list; ASan/UBSan')
--- 
-2.47.3
-

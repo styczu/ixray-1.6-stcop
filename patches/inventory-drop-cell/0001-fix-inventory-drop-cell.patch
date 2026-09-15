@@ -58,7 +58,7 @@ Claude-Session: https://claude.ai/code/session_01RxySzhoKaG8quQJnGaYkjH
  create mode 100644 tests/inventory-drop/test_drop_cell.py
 
 diff --git a/src/xrGame/ui/UICellItem.cpp b/src/xrGame/ui/UICellItem.cpp
-index a879a8da1..4a49faa1d 100644
+index a879a8da18bb900a1c80676c433bd1b98a3e2222..4a49faa1ddaae17c809d67f4c810cfc2c1a641b9 100644
 --- a/src/xrGame/ui/UICellItem.cpp
 +++ b/src/xrGame/ui/UICellItem.cpp
 @@ -12,6 +12,38 @@
@@ -135,7 +135,7 @@ index a879a8da1..4a49faa1d 100644
  }
  
 diff --git a/src/xrGame/ui/UICellItem.h b/src/xrGame/ui/UICellItem.h
-index 49afa87e1..4a75101eb 100644
+index 49afa87e1c6d1f4073d1e7a910b814eb49b89057..4a75101eb06d99cc88b51250e8d07339e91ec95e 100644
 --- a/src/xrGame/ui/UICellItem.h
 +++ b/src/xrGame/ui/UICellItem.h
 @@ -101,7 +101,8 @@ class CUIDragItem: public CUIWindow, public pureRender, public pureFrame
@@ -150,7 +150,7 @@ index 49afa87e1..4a75101eb 100644
  public:
 diff --git a/tests/inventory-drop/test_drop_cell.py b/tests/inventory-drop/test_drop_cell.py
 new file mode 100644
-index 000000000..99065b3f3
+index 0000000000000000000000000000000000000000..99065b3f361b397ba0cd6209cac8e3b124d3554f
 --- /dev/null
 +++ b/tests/inventory-drop/test_drop_cell.py
 @@ -0,0 +1,248 @@
@@ -402,6 +402,3 @@ index 000000000..99065b3f3
 +print('PASS: production quantize_grab_offset + PickCell; 7938 cursor positions for a 1x1 item '
 +      'over three grab points, separate 2x1 and 1x2 grabs, pre-fix offset reproduced, clamp on '
 +      'drifted and oversized grabs, zero cell size; ASan/UBSan')
--- 
-2.47.3
-

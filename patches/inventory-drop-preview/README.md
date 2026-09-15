@@ -56,7 +56,9 @@ przypadek to ostatni piksel ostatniej komórki pasa, opisany w README pakietu
 
 Patch nakłada się na czysty upstream
 `6c793faee008d83f86cec2429d39d7aa39b5bc66` z nałożonym `inventory-drop-cell`,
-a po nałożeniu drzewo jest identyczne z gałęzią źródłową. Sprawdzono też, że bez
+a po nałożeniu drzewo jest identyczne z gałęzią źródłową `feature/inventory-drop-preview`
+(commit `15e6b828d`). Ostatnio sprawdzone 15 września 2026 przy odbudowie łańcucha
+gałęzi inventory. Sprawdzono też, że bez
 zależności `apply.py` odmawia, a na repozytorium z już nałożoną poprawką zgłasza
 jej obecność. Dołączony test przechodzi w świeżo zapatchowanym checkoucie:
 kompiluje produkcyjne `PredictDrop`, `PickCell`, `ValidCell`, `IsRoomFree`,
@@ -79,8 +81,12 @@ RelWithDebInfo i Release. Ta druga konfiguracja ma tu znaczenie: `FindSimilar`,
 które ten patch zmienia, ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją
 wyłącznie `Non-Unity build` w Debug.
 
-**Nie wykonano próby w grze, więc wygląd podświetlenia nie był oglądany na
-ekranie.** Po kompilacji sprawdź, czy podświetlane komórki
+**Próba w grze dotyczy buildów integracyjnych, nie samego pakietu.** Ekwipunek z tym
+kodem sprawdzono w grze przy 2560x1440. Były to buildy z tym kodem i zmianami panelu:
+m.in. `7fcb532af` (dawna gałąź `feature/inventory-cell-grid`), a 15 września 2026
+`236edf3a7` z `build/tmz`, na którym ekwipunek wyglądał poprawnie. Nie ma zapisu, które
+z punktów poniżej przejrzano. Buildu z samych pakietów nałożonych na czysty upstream
+nie uruchamiano w grze. Po kompilacji sprawdź, czy podświetlane komórki
 zgadzają się z tym, gdzie przedmiot ląduje, i czy kolory są czytelne na twoim
 `ui_grid` - jeśli nie, zmień `kDropPreviewFree` i `kDropPreviewBlocked` na górze
 `src/xrGame/ui/UIDragDropListEx.cpp`. Przejdź plecak, pas, szybkie sloty, handel,
@@ -99,6 +105,10 @@ python3 "$IXRAY/tests/inventory-drop/test_drop_preview.py"
 
 Pierwsze polecenie tylko sprawdza zgodność, w tym obecność zależności. Drugie
 nakłada patch jako commit; rozpoznaje też poprawkę już obecną.
+
+Obecność poprawki nie jest rozpoznawana po nałożeniu `inventory-cell-grid`. Tamten
+pakiet przepisuje linie `inventory-drop-cell`, więc sprawdzenie zależności odmówi
+(kod 2). O stanie takiego repozytorium mówi `apply.py` pakietu `inventory-cell-grid`.
 
 `patch.json` zawiera wersje, zależności i sumę SHA-256 eksportu. Przy
 aktualizacji IX-Ray najpierw sprawdź patch na nowym checkoucie; zgodność

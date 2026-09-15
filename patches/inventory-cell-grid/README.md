@@ -10,6 +10,14 @@ Dodatkowo nowy atrybut XML `screen_cell_size` pozwala podać rozmiar kwadratowej
 wprost w pikselach ekranu, niezależnie od proporcji, w których `cell_width`/`cell_height`
 dają prostokąt (33x41 przy skali 2.5/1.875 to 83x77 px).
 
+Na tym opierają się dwie poprawki paska przewijania list. Pasek pokazuje się tylko wtedy,
+gdy ma niepusty zakres, bo zaokrąglenie komórki stawiało martwy pasek przy szybkich
+slotach i pasie. Lista może też wskazać profil paska atrybutem `scroll_profile`,
+a nieistniejący profil wraca do `default`, zamiast wywalać grę.
+
+Patch to cztery commity w jednym pliku (`git am` nakłada je po kolei). **Nie zmienia
+`gamedata`**: wartości atrybutów dla ekwipunku dowozi dodatek `ixray-hd-icons`.
+
 **Wymaga wcześniejszego nałożenia `inventory-drop-cell` i `inventory-drop-preview`.**
 Ten patch zmienia rozmiar komórki, którym tamte dwa się posługują: `quantize_grab_offset`
 zaokrągla nim chwyt, a podgląd nim rysuje. Nałożony samodzielnie zostawiłby je czytające
@@ -89,10 +97,11 @@ m_cellSize.y = screen_cell_size / skala_y
 nie zmienia — rozmiar dalej wychodzi z nich przez `round(wartość * skala)`, więc wszystkie
 istniejące layouty działają jak dotąd.
 
-Ustawione na `75` dla sześciu ciągłych siatek w `gamedata/configs/ui/actor_menu_16.xml`:
-`dragdrop_bag`, `dragdrop_actor_trade`, `dragdrop_actor_trade_bag`,
-`dragdrop_partner_trade`, `dragdrop_partner_bag`, `dragdrop_deadbody_bag`. Kosz, pas,
-szybkie sloty i sloty wyposażenia zostają bez atrybutu, na dotychczasowym zachowaniu.
+Patch nie ustawia atrybutu nigdzie w `gamedata`. Wartość `75` dla sześciu ciągłych siatek
+daje dodatek `ixray-hd-icons` w swoim `configs/ui/actor_menu_16.xml`: `dragdrop_bag`,
+`dragdrop_actor_trade`, `dragdrop_actor_trade_bag`, `dragdrop_partner_trade`,
+`dragdrop_partner_bag`, `dragdrop_deadbody_bag`. Kosz, pas, szybkie sloty i sloty
+wyposażenia zostają tam bez atrybutu, na dotychczasowym zachowaniu.
 
 ### Obie krawędzie ikony na pełnym pikselu
 
@@ -114,6 +123,42 @@ samo zaokrąglenie (`snap_grid_px`), żeby tło dalej leżało na tych samych pi
 Zaokrąglanie do najbliższego piksela samo pochłania błąd `float` na granicy całkowitej —
 tam, gdzie zaokrąglanie w dół zamieniało 1e-4 w cały piksel. Dlatego `kCellPixelBias`
 z pierwszej wersji tego pakietu **został usunięty**; nie ma już czego korygować.
+
+### Pasek przewijania tylko z niepustym zakresem
+
+Po przejściu komórki na pełne piksele przy szybkich slotach i przy pasie pojawiał się
+pionowy pasek, choć to jeden rząd. Winny jest round-trip jednostek: `cell_height="41"`
+przy skali pionowej 1.875 to 77 px, a z powrotem 77/1.875 = 41.0667 jednostki. Kontener
+listy jednorzędowej wychodzi więc o ułamek wyższy niż okno `height="41"`, a
+`CUIDragDropListEx::ReinitScroll` pokazywał pasek już przy `dh > 0`.
+
+Zakres paska to jednak `iFloor(dh)`, a pozycja przewinięcia jest całkowita, więc dla
+`0 < dh < 1` pasek miał zakres `(0, 0)` i nie mógł przesunąć niczego. Teraz o widoczności
+decyduje ten sam zakres, który i tak trafia do `SetRange`. Wartości zakresu są identyczne
+jak dotąd, zmienia się tylko widoczność i tylko dla `0 < dh < 1`. Prawdziwe przepełnienie to
+co najmniej jeden rząd, a artefakt zaokrąglenia nie przekracza 0.5/skala jednostki.
+`always_show_scroll="1"` (plecak, handel, zwłoki) wygrywa jak dotąd.
+
+### Profil paska: `scroll_profile`
+
+`CUIXmlInitGame::InitDragDropListEx` czyta opcjonalny atrybut `scroll_profile` i przekazuje
+go przez `InitDragDropList` do `CUIScrollBar::InitScrollBar`, którego czwarty parametr
+listy dotąd zawsze wypełniały wartością `"default"`. To ta sama nazwa atrybutu, której używa
+`CUIXmlInit::InitScrollView`. Bez atrybutu lista dostaje `"default"`, czyli wszystko po
+staremu. Dodatek `ixray-hd-icons` wskazuje tak profil `<inventory>` z paskiem szerokości 6
+w swoim `scroll_bar{,_16}.xml`.
+
+### Brakujący profil wraca do `default`
+
+`CUIScrollBar::InitScrollBar` (`src/xrUI/Widgets/UIScrollBar.cpp`) nie sprawdzał, czy profil
+istnieje. Przy brakującym czytał wysokość zero, a zaraz potem `CUIXmlInit::Init3tButton`
+kończył się `R_ASSERT4` na brakującym `profil:up_arrow`. Ten assert znika wyłącznie w configu
+Shipping, więc w buildach z CI gra wywala się przy otwieraniu okna. Łatwo w to trafić:
+wystarczy, że `actor_menu*.xml` wskazuje profil, a użyty `scroll_bar.xml` go nie ma —
+na przykład gdy inny dodatek podmienia `scroll_bar.xml` własną kopią. Teraz brak węzła profilu
+daje wpis `! [...]: scroll bar profile [...] not found, falling back to [default]` i cały
+pasek (szerokość, strzałki, tło, suwak) buduje się z `default`. Dla istniejących profili nie
+zmienia się nic.
 
 ## Świadome konsekwencje
 
@@ -137,22 +182,23 @@ wyposażenia, a te i tak mają `virtual_cells`: przedmiot jest centrowany i nie 
 z którym miałby się stykać. Test pilnuje, żeby to zachowanie nie zmieniło się przypadkiem.
 
 **Siatka może urosnąć o parę pikseli względem `width=` z XML.** Zaokrąglenie w górę dokłada
-do pół piksela na komórkę. W `actor_menu_16.xml` plecak ma 7 komórek po 33 (231 jednostek)
+do pół piksela na komórkę. W `actor_menu_16.xml` z `gamedata` plecak ma 7 komórek po 33 (231 jednostek)
 w oknie `width="247"`, więc zapas jest duży; pas ma już dziś 241 przy `width="240"`,
 a szybkie sloty 228 przy `227`. `GetClientArea` obcina nożycami, więc w najgorszym razie
 ostatnia kolumna traci kilka pikseli po prawej.
 
 **`screen_cell_size` jest fizyczny, więc w jednostkach bazowych rośnie przy niższej
-rozdzielczości — i to trzeba mieć na uwadze przy doborze wartości.** Przy `75`
-i oknie plecaka `width="247" height="574"`:
+rozdzielczości — i to trzeba mieć na uwadze przy doborze wartości.** Konfiguracja
+z `ixray-hd-icons`: `75`, osiem kolumn, okno plecaka `width="247" height="574"` i pasek
+szerokości 6, czyli 241 jednostek obszaru klienta w poziomie:
 
-| rozdzielczość | skala | komórka w jedn. bazowych | siatka 7x14 | mieści się? |
+| rozdzielczość | skala | komórka w jedn. bazowych | siatka 8x14 | mieści się? |
 |---|---|---|---|---|
-| 2560x1440 | 2.5 / 1.875 | 30.0 x 40.0 | 210 x 560 | tak, z zapasem |
-| 1920x1080 | 1.875 / 1.40625 | 40.0 x 53.3 | 280 x 746 | **nie** — 7. kolumna obcięta, plecak przewija |
+| 2560x1440 | 2.5 / 1.875 | 30.0 x 40.0 | 240 x 560 | tak, na styk (1 jednostka zapasu) |
+| 1920x1080 | 1.875 / 1.40625 | 40.0 x 53.3 | 320 x 746 | **nie** — mieści się 6 kolumn, 7. i 8. obcięte, plecak przewija |
 
-Czyli `75` jest dobrane pod 1440p. Na 1080p ta sama wartość wyjdzie poza okno w poziomie
-(nożyce utną ostatnią kolumnę) i doda przewijanie w pionie. Jeżeli ma działać na wielu
+Czyli `75` przy ośmiu kolumnach jest dobrane pod 1440p. Na 1080p ta sama wartość wyjdzie
+poza okno w poziomie (nożyce utną ostatnie kolumny) i doda przewijanie w pionie. Jeżeli ma działać na wielu
 rozdzielczościach, wartość trzeba dobrać do najmniejszej z nich albo rozszerzyć okna
 w XML. Listy bez atrybutu nie mają tego problemu, bo skalują się razem z oknem.
 
@@ -178,37 +224,51 @@ i `DosimeterUI`, czyli ekraniki urządzeń w świecie.
 
 ## Czego patch nie zmienia
 
-Wyglądu i skali ekwipunku poza zaokrągleniem: `cell_width`/`cell_height` z XML znaczą to
+Wyglądu i skali ekwipunku poza zaokrągleniem i znikającym martwym paskiem przewijania,
+dopóki XML nie użyje `screen_cell_size` ani `scroll_profile`: `cell_width`/`cell_height` z XML znaczą to
 samo co dotąd, wejście `SetCellSize` dalej bierze `Ivector2`, nie ma nowych opcji ani zmian
 w `gamedata`. Nie zmienia się też rozmiar ikony wynikający z `inv_scale` — `ScaleIcon`
 trafia wyłącznie do prostokąta tekstury, co opisuje README pakietu `inventory-drop-cell`.
 
 Po stronie gry: `UIDragDropListEx.{h,cpp}`, `UICellItem.cpp`,
-`UIDragDropReferenceList.{h,cpp}`, `UIHelperGame.cpp` i sześć węzłów
-w `gamedata/configs/ui/actor_menu_16.xml`. Po stronie `xrUI`: `ui_base.{h,cpp}`
-(`SnapPixel`) oraz `UIStaticItem.{h,cpp}` (flaga i gałąź w `RenderInternal`) — obie
-zmiany są opcjonalne i nieaktywne, dopóki ktoś nie włączy flagi. Test
-`tests/inventory-drop/test_cell_grid.py`; dwa istniejące testy zmieniają się razem
-z typami i modelem rasteryzacji, które sprawdzają.
+`UIDragDropReferenceList.{h,cpp}` i `UIHelperGame.cpp` (odczyt `screen_cell_size`
+i `scroll_profile`). Po stronie `xrUI`: `ui_base.{h,cpp}` (`SnapPixel`),
+`UIStaticItem.{h,cpp}` (flaga i gałąź w `RenderInternal`) — obie zmiany są opcjonalne
+i nieaktywne, dopóki ktoś nie włączy flagi — oraz `Widgets/UIScrollBar.cpp` (powrót do
+profilu `default`). Żadnych plików w `gamedata`. Test `tests/inventory-drop/test_cell_grid.py`;
+dwa istniejące testy zmieniają się razem z typami i modelem rasteryzacji, które sprawdzają.
+
+## Gałąź źródłowa
+
+Patch to eksport commitów `feature/inventory-drop-preview..feature/inventory-cell-grid`
+z pominięciem commitu z pakietami na czubku. Dokładne SHA są w `patch.json`
+(`original_commits`), a te same zmiany w `build/tmz` w `integrated_commits`. Tamte
+dwa commity niosły jeszcze dodanie i cofnięcie `screen_cell_size` w `gamedata`, więc
+ich patch-id różni się od odpowiedników na gałęzi źródłowej.
 
 ## Sprawdzone
 
-Patch nakłada się na czysty upstream `6c793faee008d83f86cec2429d39d7aa39b5bc66`
-z nałożonymi `inventory-drop-cell` i `inventory-drop-preview`, a po nałożeniu wszystkie
-dotknięte pliki są identyczne z gałęzią źródłową. Sprawdzono też, że bez pierwszej
-zależności `apply.py` odmawia, że bez drugiej odmawia tak samo, i że na repozytorium
-z już nałożoną poprawką zgłasza jej obecność zamiast nakładać ją drugi raz.
+Stan z 15 września 2026, z odbudowy łańcucha gałęzi inventory. Patch (4 commity) nakłada
+się na czysty upstream `6c793faee008d83f86cec2429d39d7aa39b5bc66` z nałożonymi
+`inventory-drop-cell` i `inventory-drop-preview`. Po nałożeniu całe drzewo jest identyczne
+z gałęzią źródłową, a pliki dotknięte przez rodzinę inventory także z `build/tmz`.
+Sprawdzono też, że `apply.py` odmawia bez obu zależności i bez drugiej z nich, a na
+repozytorium z już nałożoną poprawką zgłasza jej obecność zamiast nakładać ją drugi raz.
+Wszystkie trzy testy `tests/inventory-drop/` przechodzą po każdym z trzech nałożeń i na
+każdym commicie gałęzi źródłowej.
 
 Dołączony test przechodzi w świeżo zapatchowanym checkoucie. Kompiluje produkcyjne
-`screen_cell_len`, `UpdateCellMetrics`, `CellOffsetUI`, `SetItemGeometry`,
-`RefreshItemsPos`, `ReinitSize`, `PickCell`, `ValidCell`, `GetCellAt`, `TopVisibleCell`,
-`GetTexUVLT`, `GetCellsInRange`, `Draw` i `DrawDropPreview`, i sprawdza:
+`screen_cell_len`, `snap_grid_px`, `UpdateCellMetrics`, `SetScreenCellSize`, `CellOffsetUI`,
+`SetItemGeometry`, `RefreshItemsPos`, `ReinitSize`, `ReinitScroll`, `PickCell`, `ValidCell`,
+`GetCellAt`, `TopVisibleCell`, `GetTexUVLT`, `GetCellsInRange`, `Draw` i `DrawDropPreview`,
+i sprawdza:
 
 - rozmiar efektywny jest całkowity i równy `round(wartość * skala)`, osobno na każdej osi,
   wraz ze zgłoszonym przypadkiem 81.6 -> 82 i z komórką, która nie może zejść do zera;
-- krok między lewymi krawędziami sąsiednich ikon jest **stały** — dla ośmiu kształtów list
-  z shipowanego XML (plecak 4:3 i 16:9, pas, szybkie sloty, kosz, pionowy pas Clear Sky)
-  przy sześciu skalach, w tym 1366x768, 1920x1080, 2560x1440 i 3440x1440;
+- krok między lewymi krawędziami sąsiednich ikon jest **stały** — dla dziesięciu kształtów
+  list (z shipowanego XML: plecak 4:3 i 16:9, pas, szybkie sloty, kosz, pionowy pas Clear Sky;
+  do tego dwie listy z wymuszonym `screen_cell_size`) przy sześciu skalach, w tym 1366x768,
+  1920x1080, 2560x1440 i 3440x1440;
 - prawa krawędź ikony pokrywa się z lewą krawędzią sąsiada;
 - tło siatki z `Draw` ląduje na tych samych pikselach co ikona, także na liście przewiniętej;
 - `PickCell` trafia w narysowaną komórkę, 64 punkty na komórkę, na całej liście;
@@ -227,6 +287,10 @@ Dołączony test przechodzi w świeżo zapatchowanym checkoucie. Kompiluje produ
   a ustawienie i wyzerowanie atrybutu wraca dokładnie do tego;
 - lista `vertical_placement` zachowuje sztuczkę kwadratowych komórek;
 - ostatni piksel pasa wskazuje ostatnią komórkę, a nie nieistniejącą;
+- `ReinitScroll`: szybkie sloty i pas nie stawiają paska mimo dodatniego `dh`, plecak przy
+  1080p dalej dostaje zakres 172 i przewija się, a `always_show_scroll` wygrywa przy
+  `dh <= 0`; bez poprawki w silniku pierwsza z tych asercji pada;
+- osiem kolumn po 75 px mieści się w obszarze klienta, który zostawia pasek szerokości 6;
 - **zachowanie sprzed poprawki jest odtworzone**: przy tej samej skali stara geometria daje
   różne kroki między ikonami i niestykające się krawędzie. Bez tego sprawdzenia testy
   przechodziłyby też na siatce, która problemu nigdy nie miała.
@@ -239,14 +303,20 @@ Sprawdzono też mutacjami, że test nie jest pusty: zamiana `snap_grid_px` z pow
 zaokrąglanie w dół, zignorowanie `screen_cell_size` i odwrócenie dzielenia przez skalę
 w `CellOffsetUI` — każda z nich wywala test.
 
+Powrotu do profilu `default` w `UIScrollBar.cpp` **nie pokrywa żaden test** — wymagałby
+`CUIXml` i widgetów strzałek.
+
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-Kompilacja na Windowsie przeszła. Na commicie `652e728cc` zielone są oba workflow:
-`Build engine` w Release i RelWithDebInfo oraz `Non-Unity build` w Debug, RelWithDebInfo
-i Release. Ta ostatnia konfiguracja ma tu znaczenie: `FindSimilar` w zmienianym
-`UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją wyłącznie
-`Non-Unity build` w Debug. Pierwsza wersja pakietu, bez `screen_cell_size` i bez
-snapowania obu krawędzi, przeszła wcześniej tak samo na `ce9a92e87`.
+Kompilacja na Windowsie przeszła na samym łańcuchu źródłowym, bez zmian panelu, fontów
+i CI. Na `02915a7da` (ostatni commit kodu gałęzi `feature/inventory-cell-grid`, wypchnięty
+do CI jako tymczasowa `rebuild/inventory-cell-grid`) zielone są oba workflow: `Build engine`
+w RelWithDebInfo (run `34948207427`) oraz `Non-Unity build` w Debug, RelWithDebInfo
+i Release (run `34948207403`). Workflow upstreamu na czystym `default` nie buduje
+`Build engine` w Release. W Release silnik z tym kodem zbudował się na `7fcb532af`, w dawnej
+gałęzi z konfiguracją CI z `build/tmz`. Konfiguracja Debug ma tu znaczenie: `FindSimilar`
+w zmienianym `UIDragDropListEx.cpp` ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją wyłącznie
+`Non-Unity build` w Debug.
 
 `Build engine` wymagał ponowienia: pierwsze podejście padło w konfiguracji CMake, zanim
 doszło do kompilacji, na braku nagłówków Discord GameSDK. `cmake/github.cmake` pobiera je
@@ -257,8 +327,19 @@ z jego plików — a ponowienie przeszło. Jeśli trafisz na to samo, skasuj cac
 
 Pierwszą wersję sprawdzono w grze i to ona wykazała oba problemy, które ten pakiet teraz
 rozwiązuje: komórki 83x77 zamiast kwadratowych i szczeliny jednego piksela między pełnymi
-ikonami. **Obecnej wersji nie sprawdzono w grze.** Sprawdź na kilku rozdzielczościach,
-w tym takiej, przy której skala daje ułamek:
+ikonami.
+
+**Obecny kod sprawdzono w grze w buildach integracyjnych, nie jako sam pakiet.** Build
+z `7fcb532af` (dawna gałąź `feature/inventory-cell-grid`, ten sam kod plus zmiany panelu)
+sprawdzono przy 2560x1440 z dodatkiem `ixray-hd-icons`: osiem kolumn, cieńszy pasek,
+brak martwych pasków. 15 września 2026 na `236edf3a7` z `build/tmz` ekwipunek wyglądał
+poprawnie. Nie sprawdzono:
+- innych rozdzielczości i proporcji;
+- `vid_restart`;
+- zachowania przy brakującym profilu paska, czyli powrotu do `default`;
+- buildu z samych pakietów nałożonych na czysty upstream.
+
+Sprawdź na kilku rozdzielczościach, w tym takiej, przy której skala daje ułamek:
 
 - plecak zapełniony po brzegi — żadnej szczeliny ani nachodzenia między ikonami;
 - komórki są kwadratowe: trzy pełne ikony 1x1 obok siebie zajmują dokładnie 3 x 75 px;
@@ -269,7 +350,11 @@ w tym takiej, przy której skala daje ułamek:
 - podgląd upuszczania podświetla te same piksele, co komórka pod spodem;
 - `vid_restart` przy otwartym ekwipunku — siatka ma się przeliczyć, nie rozjechać;
 - proporcje 4:3, 16:9 i 21:9, bo `ui_core::get_xml_name` podstawia inny XML dla każdej;
-- handel, przeszukanie zwłok, sloty wyposażenia i kosz.
+- handel, przeszukanie zwłok, sloty wyposażenia i kosz;
+- przy szybkich slotach i pasie nie ma paska przewijania, a plecak, handel i zwłoki go mają;
+- lista wskazująca przez `scroll_profile` profil, którego nie ma w `scroll_bar.xml`: okno
+  ma się otworzyć z paskiem w wyglądzie `default`, a w logu ma być wpis
+  `scroll bar profile [...] not found`.
 
 ## Użycie
 
