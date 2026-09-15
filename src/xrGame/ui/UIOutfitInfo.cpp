@@ -1,5 +1,7 @@
 #include "StdAfx.h"
 #include "UIOutfitInfo.h"
+#include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/UIXmlInit.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/Widgets/UIDoubleProgressBar.h"
@@ -54,32 +56,82 @@ CUIOutfitImmunity::~CUIOutfitImmunity()
 
 bool CUIOutfitImmunity::InitFromXml( CUIXml& xml_doc, LPCSTR base_str, u32 hit_type )
 {
+    m_zone_protection = Protection::IsZoneType((ALife::EHitType)hit_type);
+    return InitRow( xml_doc, base_str, immunity_names[hit_type], immunity_st_names[hit_type] );
+}
+
+bool CUIOutfitImmunity::InitFromNode( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_name, LPCSTR st_name )
+{
+    m_zone_protection = false; // nowe wiersze prezentujemy procentowo
+    return InitRow( xml_doc, base_str, node_name, st_name );
+}
+
+bool CUIOutfitImmunity::InitRow( CUIXml& xml_doc, LPCSTR base_str, LPCSTR node_name, LPCSTR st_name )
+{
 	CUIXmlInit::InitWindow( xml_doc, base_str, 0, this );
 
 	string256 buf;
-	
-	xr_strconcat(buf, base_str, ":", immunity_names[hit_type] );
+
+	xr_strcpy( m_node_name, node_name );
+
+	xr_strconcat(buf, base_str, ":", node_name );
 	if (!CUIXmlInit::InitWindow( xml_doc, buf, 0, this, false ))
 		return false;
 
 	CUIXmlInit::InitStatic( xml_doc, buf, 0, &m_name );
-	m_name.TextItemControl()->SetTextST( immunity_st_names[hit_type] );
+	m_name.TextItemControl()->SetTextST( st_name );
 
-	xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":progress_immunity" );
+	xr_strconcat(buf, base_str, ":", node_name, ":progress_immunity" );
 	m_progress.InitFromXml( xml_doc, buf );
-	
-	xr_strconcat(buf, base_str, ":", immunity_names[hit_type], ":static_value" );
+
+	xr_strconcat(buf, base_str, ":", node_name, ":static_value" );
 	m_value = UIHelper::CreateTextWnd(xml_doc, buf, this);
 
 	m_magnitude = xml_doc.ReadAttribFlt( buf, 0, "magnitude", 1.0f );
 
 	LPCSTR unit_str = xml_doc.ReadAttrib(buf, 0, "unit_str", "");
 	m_unit_str._set(g_pStringTable->translate(unit_str));
+
+	// Uklad w jednej linii (ikona | etykieta | pasek | wartosc) bierzemy
+	// wprost z XML; pionowe wysrodkowanie zapewnia vert_align="c" na wezlach.
 	return true;
+}
+
+void CUIOutfitImmunity::SetValueText( LPCSTR text )
+{
+	if ( m_value )
+		m_value->SetText( text );
+}
+
+// Wpisuje klase pancerza z prefiksem "kl." (np. "kl. 6a"); brak klasy -> "-".
+static void SetArmorClassText( CUIOutfitImmunity* row, LPCSTR cls )
+{
+	if ( !row )
+		return;
+	if ( cls )
+	{
+		string64 buf;
+		xr_sprintf( buf, "%s %s", g_pStringTable->translate( "ui_uip_armor_class_prefix" ).c_str(), cls );
+		row->SetValueText( buf );
+	}
+	else
+		row->SetValueText( g_pStringTable->translate( "ui_armor_tt_none" ).c_str() );
 }
 
 void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
 {
+    if (m_zone_protection)
+    {
+        float currentFill = cur, comparisonFill = comp;
+        clamp(currentFill, 0.0f, 1.0f);
+        clamp(comparisonFill, 0.0f, 1.0f);
+        m_progress.SetTwoPos(currentFill * 100.0f, comparisonFill * 100.0f);
+        string64 text;
+        ConditionUi::FormatProtectionPointsPlain(text, cur);
+        m_value->SetText(text);
+        return;
+    }
+
 	cur *= m_magnitude;
 	comp *= m_magnitude;
 	m_progress.SetTwoPos(cur, comp);
@@ -113,6 +165,8 @@ CUIOutfitInfo::~CUIOutfitInfo()
 	{
 		xr_delete( m_items[i] );
 	}
+	xr_delete( m_impact_absorption );
+	xr_delete( m_stamina_impact );
 }
 
 void CUIOutfitInfo::InitFromXml( CUIXml& xml_doc )
@@ -155,6 +209,32 @@ void CUIOutfitInfo::InitFromXml( CUIXml& xml_doc )
 			xr_delete(m_items[i]);
 		}
 	}
+
+	// Dodatkowe wiersze spoza tablicy hit-typow (jesli sa w XML).
+	m_impact_absorption = new CUIOutfitImmunity();
+	if (m_impact_absorption->InitFromNode(xml_doc, base_str, "impact_absorption", "ui_uip_impact_absorption"))
+	{
+		AttachChild(m_impact_absorption);
+		m_impact_absorption->SetWndPos(pos);
+		pos.y += m_impact_absorption->GetWndSize().y;
+	}
+	else
+	{
+		xr_delete(m_impact_absorption);
+	}
+
+	m_stamina_impact = new CUIOutfitImmunity();
+	if (m_stamina_impact->InitFromNode(xml_doc, base_str, "stamina_impact", "ui_uip_stamina_impact"))
+	{
+		AttachChild(m_stamina_impact);
+		m_stamina_impact->SetWndPos(pos);
+		pos.y += m_stamina_impact->GetWndSize().y;
+	}
+	else
+	{
+		xr_delete(m_stamina_impact);
+	}
+
 	pos.x = GetWndSize().x;
 	SetWndSize( pos );
 }
@@ -177,14 +257,14 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		ALife::EHitType hit_type = (ALife::EHitType)i;
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
-		float cur = cur_outfit->GetDefHitTypeProtection( hit_type );
-		cur /= max_power; // = 0..1
+		float cur = Protection::EquipmentContribution(cur_outfit->GetDefHitTypeProtection( hit_type ), hit_type);
+		cur = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(cur, max_power) : cur / max_power;
 		float slot = cur;
 		
 		if ( slot_outfit )
 		{
-			slot = slot_outfit->GetDefHitTypeProtection( hit_type );
-			slot /= max_power; //  = 0..1
+			slot = Protection::EquipmentContribution(slot_outfit->GetDefHitTypeProtection( hit_type ), hit_type);
+			slot = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(slot, max_power) : slot / max_power;
 		}
 		m_items[i]->SetProgressValue( cur, slot );
 	}
@@ -216,6 +296,32 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		cur /= max_power;
 		slot /= max_power;
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
+
+		// Zamiast liczby: nazwa klasy pancerza z najwyzszego progu przebicia
+		// tego elementu (kombinezonu), ta sama klasyfikacja co panel postaci.
+		SetArmorClassText( m_items[ALife::eHitTypeFireWound],
+			Protection::ArmorClassName( cur_outfit->GetMaxBoneArmor() ) );
+	}
+
+	if ( m_impact_absorption )
+	{
+		float cur  = 1.0f - cur_outfit->GetHitFractionActor();
+		float slot = slot_outfit ? 1.0f - slot_outfit->GetHitFractionActor() : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_impact_absorption->SetProgressValue( cur, slot );
+	}
+
+	if ( m_stamina_impact )
+	{
+		// Komfort ruchu: goła postać ma mnoznik 0.5, kombinezon m_fPowerLoss
+		// (wyzej = wiekszy drenaz kondycji). 0.5 -> 100%, 1.0 -> 0%.
+		float cur  = ( 1.0f - cur_outfit->m_fPowerLoss ) * 2.0f;
+		float slot = slot_outfit ? ( 1.0f - slot_outfit->m_fPowerLoss ) * 2.0f : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_stamina_impact->Show( true );
+		m_stamina_impact->SetProgressValue( cur, slot );
 	}
 }
 
@@ -238,14 +344,14 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		ALife::EHitType hit_type = (ALife::EHitType)i;
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
-		float cur = cur_helmet->GetDefHitTypeProtection( hit_type );
-		cur /= max_power; // = 0..1
+		float cur = Protection::EquipmentContribution(cur_helmet->GetDefHitTypeProtection( hit_type ), hit_type);
+		cur = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(cur, max_power) : cur / max_power;
 		float slot = cur;
 		
 		if ( slot_helmet )
 		{
-			slot = slot_helmet->GetDefHitTypeProtection( hit_type );
-			slot /= max_power; //  = 0..1
+			slot = Protection::EquipmentContribution(slot_helmet->GetDefHitTypeProtection( hit_type ), hit_type);
+			slot = Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(slot, max_power) : slot / max_power;
 		}
 		m_items[i]->SetProgressValue( cur, slot );
 	}
@@ -258,8 +364,24 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 
 		float cur = cur_helmet->GetBoneArmor( spine_bone )*cur_helmet->GetCondition();
 		float slot = (slot_helmet)? slot_helmet->GetBoneArmor( spine_bone )*slot_helmet->GetCondition() : cur;
-		
+
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
+
+		// Nazwa klasy pancerza z najwyzszego progu przebicia helmu (maski).
+		SetArmorClassText( m_items[ALife::eHitTypeFireWound],
+			Protection::ArmorClassName( cur_helmet->GetMaxBoneArmor() ) );
 	}
 
+	if ( m_impact_absorption )
+	{
+		float cur  = 1.0f - cur_helmet->GetHitFractionActor();
+		float slot = slot_helmet ? 1.0f - slot_helmet->GetHitFractionActor() : cur;
+		clamp( cur, 0.0f, 1.0f );
+		clamp( slot, 0.0f, 1.0f );
+		m_impact_absorption->SetProgressValue( cur, slot );
+	}
+
+	// Komfort ruchu nie dotyczy helmu - jego power_loss nie wplywa na kondycje.
+	if ( m_stamina_impact )
+		m_stamina_impact->Show( false );
 }
