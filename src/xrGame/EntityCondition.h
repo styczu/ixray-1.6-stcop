@@ -160,6 +160,10 @@ public:
 
 	IC float				GetBoostRadiationImmunity() const {return m_fBoostRadiationImmunity;};
 
+    // Read-only UI access to the exact fields used by ConditionHit.
+    float GetEnvironmentalProtectionBoost(ALife::EHitType hit_type) const;
+    float GetEnvironmentalHitMultiplier(ALife::EHitType hit_type) const;
+
 	typedef					xr_map<EBoostParams, SBooster> BOOSTER_MAP;
 public:
 	PLAYER_ADDICTION_BASE(Satiety);
@@ -292,5 +296,9 @@ public:
 	IC float&						hit_bone_scale		()			{return		(m_fHitBoneScale);		}
 	IC float&						wound_bone_scale	()			{return		(m_fWoundBoneScale);	}
 	IC SConditionChangeV&			change_v			()			{return		(m_change_v);			}
+
+	// Przyspieszenie zablizniania ran z kombinezonu i artefaktow. Pole jest
+	// chronione, a panel stanu postaci musi je pokazac w podpowiedzi krwawienia.
+	IC float						GetBoostBleedingRestore	() const	{return		(m_fBoostBleedingRestore);}
 
 };
