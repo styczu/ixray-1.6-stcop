@@ -10,6 +10,10 @@
 #include "pch_script.h"
 #include "UIInvUpgradeProperty.h"
 #include "UIInvUpgradeInfo.h"
+#include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
+#include "../Actor.h"
+#include "../ActorCondition.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/xrUIXmlParser.h"
@@ -84,6 +88,13 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 		return false;
 	}
 
+    const bool health = xr_strcmp(m_property_id.c_str(), "prop_restore_health") == 0;
+    const bool regeneration = ConditionUi::RegenerationUnitsEnabled() &&
+        (health || xr_strcmp(m_property_id.c_str(), "prop_power") == 0);
+    float regenerationValue = 0.0f;
+    const ALife::EHitType protectionType = protection_type();
+    const bool protection = Protection::IsZoneType(protectionType);
+    float protectionValue = 0.0f;
 	int prop_count = 0;
 	string2048 buf; buf[0] = 0;
 	ItemUpgrades_type::const_iterator ib_upg = item_upgrades.begin();
@@ -97,6 +108,20 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 			if (upgr->get_property_name(i)._get() == m_property_id._get())
 			{
 				const char* upgr_section = upgr->section();
+                if (protection)
+                {
+                    float value;
+                    if (!read_value_from_section(upgr_section, Protection::ConfigKey(protectionType), value))
+                        continue;
+                    protectionValue += value;
+                }
+                if (regeneration)
+                {
+                    float value;
+                    if (!read_value_from_section(upgr_section, health ? "health_restore_speed" : "power_restore_speed", value))
+                        continue;
+                    regenerationValue += value;
+                }
 				if (prop_count > 0)
 				{
 					xr_strcat(buf, sizeof(buf), ", ");
@@ -108,6 +133,27 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	}
 	if (prop_count > 0)
 	{
+        if (protection)
+        {
+            CActor* actor = Level().CurrentViewEntity() ? Level().CurrentViewEntity()->cast_actor() : nullptr;
+            if (!actor)
+                return false;
+            string64 points;
+            ConditionUi::FormatProtectionPoints(points, Protection::DisplayRatio(
+                Protection::EquipmentContribution(protectionValue, protectionType),
+                actor->conditions().GetZoneMaxPower(protectionType)));
+            xr_strconcat(m_text, g_pStringTable->translate(Protection::Caption(protectionType)).c_str(), ": ", points);
+            m_ui_text->SetText(m_text);
+            return true;
+        }
+        if (regeneration)
+        {
+            string64 rate;
+            ConditionUi::FormatRegenerationRate(rate, regenerationValue);
+            xr_strconcat(m_text, g_pStringTable->translate(health ? "ui_uip_item_reg_health" : "ui_uip_item_reg_power").c_str(), ": ", rate);
+            m_ui_text->SetText(m_text);
+            return true;
+        }
 		return show_result(buf);
 	}
 	return false;
@@ -258,7 +304,8 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades)
 		if (Property->compute_value(item_upgrades))
 		{
 			VisibleProperties.push_back(Property);
-			RequiredColumnWidth = std::max(RequiredColumnWidth, Property->GetRequiredWidth());
+			if (!Property->is_full_width_row())
+				RequiredColumnWidth = std::max(RequiredColumnWidth, Property->GetRequiredWidth());
 		}
 	}
 	m_iNumUpgr = (int)VisibleProperties.size();
@@ -269,18 +316,23 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades)
 	SetWidth(ColumnWidth * 2.0f);
 	m_fsec_col_pos = ColumnWidth;
 
-	for (u32 Index = 0; Index < VisibleProperties.size(); Index += 2)
+	for (u32 Index = 0; Index < VisibleProperties.size();)
 	{
-		const bool HasRight = Index + 1 < VisibleProperties.size();
-		UIProperty* Left = VisibleProperties[Index];
-		Left->FitToWidth(HasRight ? ColumnWidth : GetWidth(), !CanExpand);
+		UIProperty* Left = VisibleProperties[Index++];
+		// Wiersz ochrony albo regeneracji idzie sam na cala szerokosc z zawijaniem;
+		// zwykla wlasciwosc przed nim zostaje bez pary i tez bierze cala szerokosc.
+		const bool FullRow = Left->is_full_width_row();
+		UIProperty* Right = nullptr;
+		if (!FullRow && Index < VisibleProperties.size() && !VisibleProperties[Index]->is_full_width_row())
+			Right = VisibleProperties[Index++];
+
+		Left->FitToWidth(Right ? ColumnWidth : GetWidth(), FullRow || !CanExpand);
 		Left->SetWndPos(Fvector2().set(0.0f, Height));
 		Left->Show(true);
 		float RowHeight = Left->GetHeight();
 
-		if (HasRight)
+		if (Right)
 		{
-			UIProperty* Right = VisibleProperties[Index + 1];
 			Right->FitToWidth(ColumnWidth, !CanExpand);
 			Right->SetWndPos(Fvector2().set(ColumnWidth, Height));
 			Right->Show(true);
@@ -307,4 +359,26 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade)
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
 	set_info(item.upgardes());
+}
+
+bool UIProperty::is_regeneration() const
+{
+    return ConditionUi::RegenerationUnitsEnabled() &&
+        (xr_strcmp(m_property_id.c_str(), "prop_restore_health") == 0 ||
+         xr_strcmp(m_property_id.c_str(), "prop_power") == 0);
+}
+
+ALife::EHitType UIProperty::protection_type() const
+{
+    if (xr_strcmp(m_property_id.c_str(), "prop_thermo") == 0) return ALife::eHitTypeBurn;
+    if (xr_strcmp(m_property_id.c_str(), "prop_electro") == 0) return ALife::eHitTypeShock;
+    if (xr_strcmp(m_property_id.c_str(), "prop_chem") == 0) return ALife::eHitTypeChemicalBurn;
+    if (xr_strcmp(m_property_id.c_str(), "prop_radio") == 0) return ALife::eHitTypeRadiation;
+    if (xr_strcmp(m_property_id.c_str(), "prop_psy") == 0) return ALife::eHitTypeTelepatic;
+    return ALife::eHitTypeMax;
+}
+
+bool UIProperty::is_protection() const
+{
+    return Protection::IsZoneType(protection_type());
 }
