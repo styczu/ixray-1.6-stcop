@@ -30,6 +30,10 @@ public:
 			void	SetDefaultValuesPlain(float magnitude, const shared_str& unit);
 			bool	GetLegacyMode		() { return m_legacy_mode; }
 			void	SetAfValue			( float val ) { m_af_value = val;}
+			// Ochrona srodowiskowa w punktach wspolnej skali (ui-param-bars) zamiast procentu.
+			void	SetZoneProtection	( bool zone ) { m_zone_protection = zone; }
+			// Nadpisuje sam tekst wartosci (np. nazwa klasy pancerza zamiast liczby).
+			void	SetValueText		( const char* text );
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -41,6 +45,7 @@ protected:
 	CUIStatic*				m_text_legacy; // 100%
 	float					m_magnitude;
 	float					m_af_value = 0.0f;
+	bool					m_zone_protection = false;
 	shared_str				m_unit_str;
 
 	InitResult	InitPlain(CUIXml& xml, const char* section);
@@ -73,5 +78,10 @@ protected:
 	CUIStatic*			m_Prop_line;
 	CUIOutfitImmunity*	m_items[max_count];
 	CUIScrollView*		m_listWnd;
+	// Dodatkowe wiersze spoza tablicy hit-typow.
+	CUIOutfitImmunity*	m_impact_absorption = nullptr; // (1 - hit_fraction_actor)
+	CUIOutfitImmunity*	m_stamina_impact = nullptr;    // (1 - power_loss)
+
+	void				ShowInList			( CUIOutfitImmunity* item, bool visible );
 
 }; // class CUIOutfitInfo
