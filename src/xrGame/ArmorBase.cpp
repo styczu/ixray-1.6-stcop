@@ -431,6 +431,35 @@ float CArmorBase::GetBoneArmor(u16 element)
 	return m_boneProtection->getBoneArmor(element);
 }
 
+// Maksimum progu przebicia po kosciach krytych przez warstwe.
+// Wartosc ujemna w danych to znacznik "ta warstwa nie kryje tej kosci",
+// wiec takie kosci sa pomijane, a brak jakiejkolwiek krytej kosci daje -1.
+// Wpis "default" jest swiadomie pominiety: w danych gry nie wystepuje,
+// a jego zerowa wartosc domyslna udawalaby oslone tam, gdzie jej nie ma.
+float CArmorBase::GetMaxBoneArmor() const
+{
+	if (m_boneProtection == nullptr)
+		return -1.0f;
+
+	float best = -1.0f;
+	for (SBoneProtections::storage_type::const_iterator it = m_boneProtection->m_bones_koeff.begin();
+		 it != m_boneProtection->m_bones_koeff.end(); ++it)
+	{
+		if (it->second.armor > best)
+			best = it->second.armor;
+	}
+
+	if (best < 0.0f)
+		return -1.0f;
+
+	return best * GetCondition();
+}
+
+float CArmorBase::GetHitFractionActor() const
+{
+	return (m_boneProtection != nullptr) ? m_boneProtection->m_fHitFrac : 1.0f;
+}
+
 void CArmorBase::OverrideHitTypeProtection(ALife::EHitType hit_type, float value)
 {
 	m_HitTypeProtection[hit_type] = value;
