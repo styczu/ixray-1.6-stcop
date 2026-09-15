@@ -31,6 +31,11 @@ public:
 	virtual float			GetDefHitTypeProtection	(ALife::EHitType hit_type);
 	virtual float			GetHitTypeProtection	(ALife::EHitType hit_type, u16 element);
 	virtual float			GetBoneArmor			(u16 element);
+	// Najwyzszy prog przebicia sposrod kosci krytych przez warstwe (kombinezon albo helm),
+	// przemnozony przez stan przedmiotu. -1 gdy zadna kosc nie jest kryta.
+	float					GetMaxBoneArmor			() const;
+	float					GetHitFractionActor		() const;
+	const SBoneProtections*	GetBoneProtections		() const { return m_boneProtection; }
 	virtual void			AddBonesProtection		(const char* bones_section);
 	virtual bool			net_Spawn				(CSE_Abstract* DC);
 	virtual void			net_Export				(NET_Packet& P);
