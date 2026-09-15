@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "../xrCore/FormatParsers/XML/Expression.h"
 #include "Actor.h"
+#include "ProtectionValues.h"
 #include "CustomOutfit.h"
 #include "EntityCondition.h"
 #include "Inventory.h"
@@ -9,6 +10,7 @@
 #include "PDA.h"
 #include "Level.h"
 #include "actor_mp_client.h"
+#include "ui/UIActorStateInfo.h"
 
 inline CActor* GetActor()
 {
@@ -17,6 +19,23 @@ inline CActor* GetActor()
 
     return smart_cast<CActor*>(Level().CurrentViewEntity());
 }
+
+// Same environmental effective threshold as the tooltip and C++ panel path.
+#define DECLARE_EQUIPMENT_PROTECTION_RATIO(name, hitType) \
+float GetEquipment##name##ProtectionRatio() \
+{ \
+    CActor* actor = GetActor(); \
+    return actor ? Protection::DisplayRatio(actor->GetEquipmentProtection(ALife::hitType), \
+        actor->conditions().GetZoneMaxPower(ALife::hitType)) : 0.0f; \
+}
+
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Burn, eHitTypeBurn);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Shock, eHitTypeShock);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(ChemicalBurn, eHitTypeChemicalBurn);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Radiation, eHitTypeRadiation);
+DECLARE_EQUIPMENT_PROTECTION_RATIO(Telepatic, eHitTypeTelepatic);
+
+#undef DECLARE_EQUIPMENT_PROTECTION_RATIO
 
 #define DECLARE_OUTFIT_PROTECTION_DELEGATE(protectionType) \
 float GetOutfit##protectionType##Protection() \
@@ -141,9 +160,113 @@ float GetPlayerArmor()
 }
 float GetHealthRegeneration()    { return GetActor() == nullptr ? 0.f : GetActor()->conditions().GetHealthBoost();	}
 
+// ============================================================================
+// Pancerz balistyczny
+// ----------------------------------------------------------------------------
+// W single playerze prog przebicia jest wartoscia binarna: pocisk o AP powyzej
+// progu przechodzi bez zadnej redukcji (galaz redukujaca w HitThroughArmor jest
+// zamknieta w !IsGameTypeSingle()), a ponizej progu zostaje zatrzymany i mnozony
+// przez hit_fraction_actor. Dlatego panel pokazuje te dwie rzeczy osobno:
+// klase pancerza (prog) i pochlanianie przy zatrzymaniu (balistyke).
+//
+// Wartosc -1 oznacza "brak oslony" i jest przekazywana dalej celowo - statyk
+// z atrybutem no_value zamieni ja na kreske.
+
+float GetActorHelmetArmorMax()
+{
+    CActor* pActor = GetActor();
+    if (pActor == nullptr)
+        return -1.0f;
+
+    CHelmet* pHelmet = pActor->GetHelmet();
+    return (pHelmet != nullptr) ? pHelmet->GetMaxBoneArmor() : -1.0f;
+}
+
+float GetActorOutfitArmorMax()
+{
+    CActor* pActor = GetActor();
+    if (pActor == nullptr)
+        return -1.0f;
+
+    CCustomOutfit* pOutfit = pActor->GetOutfit();
+    return (pOutfit != nullptr) ? pOutfit->GetMaxBoneArmor() : -1.0f;
+}
+
+// Prog przebicia dla sekcji sylwetki. Liczony po grupach kosci z tabeli
+// w UIActorStateInfo.cpp, a nie przez GetMaxBoneArmor: to drugie bierze
+// maksimum po WSZYSTKICH kosciach warstwy, wiec obojczyk (0.99 w body_armor_6a)
+// przykrywal soba tulow (0.98) i barki (0.33). Sekcje dziela sie tak samo,
+// jak dwie czesci tooltipa.
+float GetActorArmorHead()
+{
+    return ActorArmor::SectionValue(GetActor(), 0);
+}
+
+float GetActorArmorBody()
+{
+    return ActorArmor::SectionValue(GetActor(), 1);
+}
+
+// Lepsza z dwoch sekcji - to ona trafia na pasek klasy pancerza.
+float GetActorArmorClass()
+{
+    const float fHead = GetActorArmorHead();
+    const float fBody = GetActorArmorBody();
+    return (fHead > fBody) ? fHead : fBody;
+}
+
+// Ulamek mocy pocisku pochlaniany przy zatrzymaniu, 0..1.
+// Liczony wylacznie z kombinezonu: wszystkie helmy w danych gry maja
+// hit_fraction_actor = 1, czyli zatrzymany strzal w glowe zabiera pelna moc.
+float GetActorOutfitBallistic()
+{
+    CActor* pActor = GetActor();
+    if (pActor == nullptr)
+        return -1.0f;
+
+    CCustomOutfit* pOutfit = pActor->GetOutfit();
+    if (pOutfit == nullptr)
+        return -1.0f;
+
+    return 1.0f - pOutfit->GetHitFractionActor();
+}
+
+// ============================================================================
+// Regeneracja
+// ----------------------------------------------------------------------------
+// Legacy expression variables return resource units per game second.
+// The regeneration panel uses GetRegenerationSources directly for one atomic
+// number/bar/hint update; these delegates retain compatibility with other XML.
+
+float GetPlayerHealthRestoreSpeed()
+{
+    CActor* pActor = GetActor();
+    return (pActor == nullptr) ? 0.0f : pActor->GetRestoreSpeed(ALife::eHealthRestoreSpeed);
+}
+
+float GetMaxHealthRestoreSpeed()
+{
+    CActor* pActor = GetActor();
+    return (pActor == nullptr) ? 1.0f : pActor->conditions().GetMaxHealthRestoreSpeed();
+}
+
+// fltPlayerRestoreSpeed jest juz podzielone przez maksimum. To jest surowe
+// tempo, do wyswietlenia jako liczba.
+float GetPlayerPowerRestoreSpeedRaw()
+{
+    CActor* pActor = GetActor();
+    return (pActor == nullptr) ? 0.0f : pActor->GetRestoreSpeed(ALife::ePowerRestoreSpeed);
+}
+
 void RegisterExpressionDelegates ()
 {
     //Actor outfit protections
+    g_uiExpressionMgr->RegisterVariable("fltActorBurnProtectionRatio", GetEquipmentBurnProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorShockProtectionRatio", GetEquipmentShockProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorChemicalBurnProtectionRatio", GetEquipmentChemicalBurnProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorRadiationProtectionRatio", GetEquipmentRadiationProtectionRatio);
+    g_uiExpressionMgr->RegisterVariable("fltActorTelepaticProtectionRatio", GetEquipmentTelepaticProtectionRatio);
+
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitBurnProtection",				GetOutfiteHitTypeBurnProtection);
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitShockProtection",			GetOutfiteHitTypeShockProtection);
     g_uiExpressionMgr->RegisterVariable("fltActorOutfitChemicalBurnProtection",		GetOutfiteHitTypeChemicalBurnProtection);
@@ -205,4 +328,17 @@ void RegisterExpressionDelegates ()
 	g_uiExpressionMgr->RegisterVariable("fltPlayerBleedingSpeed",		    		GetPlayerBleedingSpeed);
 	g_uiExpressionMgr->RegisterVariable("fltPlayerArmor",							GetPlayerArmor);
 	g_uiExpressionMgr->RegisterVariable("fltPlayerHealthRegeneration",				GetHealthRegeneration);
+
+    //Pancerz balistyczny
+    g_uiExpressionMgr->RegisterVariable("fltActorArmorClass",                       GetActorArmorClass);
+    g_uiExpressionMgr->RegisterVariable("fltActorArmorHead",                        GetActorArmorHead);
+    g_uiExpressionMgr->RegisterVariable("fltActorArmorBody",                        GetActorArmorBody);
+    g_uiExpressionMgr->RegisterVariable("fltActorHelmetArmor",                      GetActorHelmetArmorMax);
+    g_uiExpressionMgr->RegisterVariable("fltActorOutfitArmor",                      GetActorOutfitArmorMax);
+    g_uiExpressionMgr->RegisterVariable("fltActorOutfitBallistic",                  GetActorOutfitBallistic);
+
+    //Regeneracja
+    g_uiExpressionMgr->RegisterVariable("fltPlayerHealthRestoreSpeed",              GetPlayerHealthRestoreSpeed);
+    g_uiExpressionMgr->RegisterVariable("fltMaxHealthRestoreSpeed",                 GetMaxHealthRestoreSpeed);
+    g_uiExpressionMgr->RegisterVariable("fltPlayerPowerRestoreSpeedRaw",            GetPlayerPowerRestoreSpeedRaw);
 }
