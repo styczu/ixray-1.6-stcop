@@ -74,3 +74,6 @@ cmake-build*/
 linux/sal.h
 *.TMP
 util/wrap_config.json
+
+# Local scratch output from Claude sessions
+Claude outputs/

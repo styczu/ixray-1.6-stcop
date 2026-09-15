@@ -1,6 +1,8 @@
 // ActorCondition.h: класс состояния игрока
 #pragma once
 #include "EntityCondition.h"
+#include "ConditionUiValues.h"
+#include "EnvironmentalDamage.h"
 #include "actor_defs.h"
 #include "../xrScripts/script_export_space.h"
 
@@ -29,6 +31,8 @@ private:
 private:
 	CActor*											m_object;
 	CActorDeathEffector*							m_death_effector;
+	ConditionUi::RadiationRate m_radiation_change_rate;
+	Protection::DamageHistory m_environmental_damage;
 	void				UpdateTutorialThresholds	();
 			void 		UpdateSatiety				();
 			void 		UpdateThirst				();
@@ -45,6 +49,13 @@ public:
 	virtual void		UpdateCondition				();
 			void		UpdateBoosters				();
 
+    Protection::DamageReading GetEnvironmentalDamage(ALife::EHitType type) const;
+    Protection::DamageRate    GetEnvironmentalDamageRate(ALife::EHitType type) const;
+
+    ConditionUi::RegenerationSources GetRegenerationSources(bool health) const;
+    float PowerRestoreEffect(float nominal) const;
+
+	float GetRadiationChangeRate() const { return m_radiation_change_rate.Get(); }
 	float				GetBoosterValueByType		(EBoostParams type) const;
 
 	void 				BoostParameters				(const SBooster& B);
@@ -84,6 +95,13 @@ public:
 	
 	float	GetZoneMaxPower							(ALife::EInfluenceType type) const;
 	float	GetZoneMaxPower							(ALife::EHitType hit_type) const;
+
+	// Koszt kondycji dla tooltipa: sprint (ulamek na sekunde GRY - UI mnozy przez
+	// real_time_factor) i podskok (jednorazowy). Uwzglednia obciazenie/przeciazenie
+	// i power_loss kombinezonu (goly = x0.5), jak ConditionWalk/Jump.
+	float	GetSprintPowerCostPerGameSec			() const;
+	float	GetJumpPowerCost						() const;
+	bool	IsOverloaded							() const; // waga > udzwig (MaxCarryWeight)
 
 	bool	DisableSprint							(SHit* pHDS);
 	bool	PlayHitSound							(SHit* pHDS);

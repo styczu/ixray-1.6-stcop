@@ -43,6 +43,10 @@ public:
 
 	bool read_value_from_section(LPCSTR section, LPCSTR param, float& result);
 	bool compute_value(ItemUpgrades_type const& item_upgrades);
+    bool is_regeneration() const;
+    ALife::EHitType protection_type() const;
+    bool is_protection() const;
+    void fit_full_width_row(float width);
 	bool show_result(LPCSTR values);
 
 	virtual CUIWindow* ui_cast_window() { return this; }
@@ -72,13 +76,13 @@ public:
 	virtual	~UIInvUpgPropertiesWnd();
 	void init_from_xml(LPCSTR xml_name);
 
-	void set_upgrade_info(Upgrade_type& upgrade);
+	void set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration = true);
 	void set_item_info(CInventoryItem& item);
 	void UpdateStatsPos(float& h, Fvector2& pos, UIProperty* pWnd, int& counter) const;
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 protected:
-	void set_info(ItemUpgrades_type const& item_upgrades);
+	void set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration = true);
 
 }; // class UIInvUpgPropertiesWnd

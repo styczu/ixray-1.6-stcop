@@ -61,6 +61,7 @@ private:
 	};
 	ui_actor_state_item*	m_state[stt_count];
 	UIHint*					m_hint_wnd;
+    UIHint* m_environment_hint_wnd = nullptr;
 
 public:
 							ui_actor_state_wnd	() = default;
@@ -83,7 +84,13 @@ private:
 
 			// Podpowiedzi, ktore musza pokazac wyliczona liczbe (skazenie, krwawienie).
 			// System wyrazen nie sklada napisow, wiec tekst powstaje w C++.
+            void            UpdateBleedingInfo(CActor* actor);
 			void			UpdateRateHints			(CActor* actor);
+            void UpdateProtectionHints(CActor* actor);
+            // Ochrona bojowa: rozszarpanie/uderzenie/wybuch (prog absolutny) i
+            // balistyka (absorpcja pancerza + mnoznik trudnosci). Liczba, pasek,
+            // trojkat i podpowiedz - wszystko w C++, bez wyrazen XML.
+            void UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet);
 
 };
 
@@ -93,6 +100,10 @@ class ui_actor_state_item : public UIHintWindow
 
 protected:
 	CUIStatic*				m_static;
+	CUIStatic*				m_value = nullptr;
+    CUIStatic* m_overflow = nullptr;
+    CUIStatic* m_overflow_fill = nullptr;
+    CUIProgressBar* m_environmental_exposure = nullptr;
 	CUIStatic*				m_static2;
 	CUIStatic*				m_static3;
 	CUIProgressShape*		m_sensor;
@@ -102,10 +113,17 @@ protected:
 
 public:
 	CUIProgressBar*			m_progress;
+    bool m_regeneration = false;
+    bool m_bleeding = false;
+    void set_bleeding(float intensity);
+    void set_protection_overflow(float ratio);
+    void set_environmental_exposure(ALife::EHitType type, float sourceRatio, float protectionRatio, float opacity);
+    void set_regeneration(float percentPerSecond, float maximum);
 					ui_actor_state_item		();
 	virtual			~ui_actor_state_item	();
 			void	init_from_xml			( CUIXml& xml, LPCSTR path );
 	
+			void	set_value_text			( LPCSTR text );
 			bool	set_text				( float value ); // 0..1
 			bool	set_text_str			( LPCSTR text ); // dowolny napis w tym samym statyku
 			bool	set_progress			( float value ); // 0..1

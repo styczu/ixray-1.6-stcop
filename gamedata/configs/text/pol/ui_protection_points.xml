@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<string_table>
+    <string id="ui_uip_unit_protection"><text>pkt</text></string>
+    <string id="ui_uip_protection_total"><text>Próg ochrony</text></string>
+    <string id="ui_uip_protection_outfit"><text>Kombinezon</text></string>
+    <string id="ui_uip_protection_helmet"><text>Hełm</text></string>
+    <string id="ui_uip_protection_artefacts"><text>Artefakty na pasie</text></string>
+    <string id="ui_uip_protection_description"><text>Punkty oznaczają siłę pochłanianego trafienia, nie procent redukcji obrażeń. Pełny pasek to 100 pkt; wynik może być wyższy. Cienki pasek pokazuje szczyt siły źródła przed ochroną z ostatnich 0,75 s. Skutek ostatniego trafienia po ochronie i modyfikatorach jest widoczny przez 3 s; nie obejmuje regeneracji.</text></string>
+    <string id="ui_uip_protection_source"><text>Siła oddziaływania</text></string>
+    <string id="ui_uip_damage_health">
+        <text>Ostatnie trafienie: obrażenia zdrowia</text>
+    </string>
+    <string id="ui_uip_damage_psy">
+        <text>Ostatnie trafienie: obrażenia psioniczne</text>
+    </string>
+    <string id="ui_uip_damage_radiation">
+        <text>Ostatnie trafienie: dawka radiacji</text>
+    </string>
+    <string id="ui_uip_protection_active"><text>ODDZIAŁYWANIE</text></string>
+    <string id="ui_uip_protection_effective"><text>Efektywny próg</text></string>
+    <string id="ui_uip_protection_temporary"><text>Efekt czasowy</text></string>
+    <string id="ui_uip_protection_artifact_effect"><text>Wpływ artefaktów</text></string>
+    <string id="ui_uip_protection_after_threshold"><text>Po przekroczeniu progu</text></string>
+    <string id="ui_uip_protection_received"><text>Otrzymywane oddziaływanie</text></string>
+    <string id="ui_uip_protection_no_threshold"><text>Brak</text></string>
+    <string id="ui_uip_protection_effective_light_burn"><text>Próg dla light_burn</text></string>
+    <string id="ui_uip_protection_damage"><text>Otrzymywane obrażenia</text></string>
+    <string id="ui_uip_protection_received_dose"><text>Otrzymana dawka</text></string>
+</string_table>

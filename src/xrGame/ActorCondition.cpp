@@ -232,9 +232,16 @@ void CActorCondition::UpdateCondition()
 	}
 
 	if (GodMode())
+	{
+		m_radiation_change_rate.Reset();
 		return;
+	}
 
-	if (!object().g_Alive())	return;
+	if (!object().g_Alive())
+	{
+		m_radiation_change_rate.Reset();
+		return;
+	}
 	if (!object().Local() && m_object != Level().CurrentViewEntity())		return;	
 	
 	float base_weight			= object().MaxCarryWeight();
@@ -308,7 +315,17 @@ void CActorCondition::UpdateCondition()
 
 	UpdateSleepiness();
 
+	const float radiation_before = GetRadiation();
 	inherited::UpdateCondition();
+
+	// Measure the net result after all pending hits/equipment/medicine and
+	// the 0..1 clamp, rather than reconstructing an incomplete source list.
+	const float time_factor = ConditionUi::RealTimeFactor(IsGameTypeSingle(),
+		Level().GetGameTimeFactor(), Device.time_factor());
+	if (time_factor > 0.0f)
+		m_radiation_change_rate.Add(GetRadiation() - radiation_before, m_fDeltaTime / time_factor);
+	else
+		m_radiation_change_rate.Reset();
 
 	if( IsGameTypeSingle() )
 		UpdateTutorialThresholds();
@@ -541,8 +558,31 @@ void CActorCondition::UpdateSleepiness()
 
 CWound* CActorCondition::ConditionHit(SHit* pHDS)
 {
-	if (GodMode()) return nullptr;
-	return inherited::ConditionHit(pHDS);
+    if (GodMode())
+    {
+        m_environmental_damage.Record(pHDS->hit_type, 0.0f, 0.0f, 0.0f, Device.dwTimeGlobal);
+        return nullptr;
+    }
+    // Observe the deltas assigned by the actual hit calculation, after outfit,
+    // helmet, actor immunities and boosters. Earlier regeneration/other hits
+    // already in the accumulators cancel out; do not recalculate mitigation.
+    const float healthBefore = m_fDeltaHealth;
+    const float psyBefore = m_fDeltaPsyHealth;
+    const float radiationBefore = m_fDeltaRadiation;
+    CWound* wound = inherited::ConditionHit(pHDS);
+    m_environmental_damage.Record(pHDS->hit_type, healthBefore - m_fDeltaHealth,
+        psyBefore - m_fDeltaPsyHealth, m_fDeltaRadiation - radiationBefore, Device.dwTimeGlobal);
+    return wound;
+}
+
+Protection::DamageReading CActorCondition::GetEnvironmentalDamage(ALife::EHitType type) const
+{
+    return m_environmental_damage.Get(type, Device.dwTimeGlobal);
+}
+
+Protection::DamageRate CActorCondition::GetEnvironmentalDamageRate(ALife::EHitType type) const
+{
+    return m_environmental_damage.GetRate(type, Device.dwTimeGlobal);
 }
 
 void CActorCondition::PowerHit(float power, bool apply_outfit)
@@ -559,11 +599,46 @@ void CActorCondition::ConditionJump(float weight)
 }
 
 void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
-{	
+{
 	float power			=	m_fWalkPower;
 	power				+=	m_fWalkWeightPower*weight*(weight>1.f?m_fOverweightWalkK:1.f);
 	power				*=	m_fDeltaTime*(accel?(sprint?m_fSprintK:m_fAccelK):1.f);
 	m_fPower			-=	HitPowerEffect(power);
+}
+
+// --- Koszt kondycji dla tooltipa (te same wzory co ConditionWalk/Jump) ---
+namespace
+{
+	float ActorLoadRatio(const CActor& a)
+	{
+		const float base = a.MaxCarryWeight();
+		return base > 0.0f ? a.inventory().TotalWeight() / base : 0.0f;
+	}
+	float ActorPowerLoss(const CActor& a)
+	{
+		CCustomOutfit* o = a.GetOutfit();
+		return o ? o->m_fPowerLoss : 0.5f; // jak HitPowerEffect: goly = x0.5
+	}
+}
+
+bool CActorCondition::IsOverloaded() const
+{
+	return ActorLoadRatio( object() ) > 1.0f;
+}
+
+float CActorCondition::GetSprintPowerCostPerGameSec() const
+{
+	const float w = ActorLoadRatio( object() );
+	float power = m_fWalkPower + m_fWalkWeightPower * w * (w > 1.f ? m_fOverweightWalkK : 1.f);
+	power *= m_fSprintK; // bez m_fDeltaTime => na sekunde gry
+	return power * ActorPowerLoss( object() );
+}
+
+float CActorCondition::GetJumpPowerCost() const
+{
+	const float w = ActorLoadRatio( object() );
+	float power = m_fJumpPower + m_fJumpWeightPower * w * (w > 1.f ? m_fOverweightJumpK : 1.f);
+	return power * ActorPowerLoss( object() ); // jednorazowo, bez czasu
 }
 
 void CActorCondition::ConditionStand(float weight)
@@ -651,6 +726,8 @@ void CActorCondition::save(NET_Packet &output_packet)
 
 void CActorCondition::load(IReader &input_packet)
 {
+	m_radiation_change_rate.Reset();
+	m_environmental_damage.Reset();
 	inherited::load		(input_packet);
 	load_data			(Alcohol.Current, input_packet);
 	load_data			(m_condition_flags, input_packet);
@@ -684,6 +761,8 @@ void CActorCondition::load(IReader &input_packet)
 
 void CActorCondition::reinit()
 {
+	m_radiation_change_rate.Reset();
+	m_environmental_damage.Reset();
 	inherited::reinit();
 	m_bLimping = false;
 	Satiety.Current = 1.0f;
@@ -1208,4 +1287,76 @@ float CActorCondition::GetHealthBoost()
 	}
 
 	return total;
+}
+
+
+// Match UpdateSatiety's gates, including multiplayer's unscaled source.
+float CActorCondition::PowerRestoreEffect(float nominal) const
+{
+    if (psActorFlags.test(AF_GODMODE))
+        return 0.0f;
+    if (!IsGameTypeSingleCompatible())
+        return nominal;
+    return CanBeHarmed() && !psActorFlags.test(AF_DISABLE_CONDITION_TEST)
+        ? nominal * Satiety.Current : 0.0f;
+}
+
+ConditionUi::RegenerationSources CActorCondition::GetRegenerationSources(bool health) const
+{
+    ConditionUi::RegenerationSources result;
+    if (!object().g_Alive() || GodMode() ||
+        (!object().Local() && m_object != Level().CurrentViewEntity()))
+        return result;
+
+    // These are the same source coefficients and conditions as UpdateHealth,
+    // UpdateSatiety/Thirst/Sleepiness and ConditionStand. No resource clamp,
+    // bleeding/radiation damage, movement costs or outfit power_loss here.
+    const bool bodyEnabled = CanBeHarmed() && !psActorFlags.test(AF_DISABLE_CONDITION_TEST);
+    if (health)
+    {
+        result.natural = m_change_v.m_fV_HealthRestore;
+        result.temporary = m_fBoostHpRestore;
+        if (bodyEnabled && IsGameTypeSingleCompatible() && !psActorFlags.test(AF_GODMODE))
+        {
+            const float k = (Satiety.Current - Satiety.Critical) /
+                (Satiety.Current >= Satiety.Critical ? 1 - Satiety.Critical : Satiety.Critical);
+            result.natural += Satiety.HealthBoost * k;
+        }
+    }
+    else
+    {
+        result.natural = PowerRestoreEffect(Satiety.PowerBoost);
+        result.temporary = PowerRestoreEffect(m_fBoostPowerRestore);
+        if (object().Holder() == nullptr && !(object().mstate_real & mcAnyMove))
+            result.rest = -m_fStandPower;
+    }
+
+    if (bodyEnabled && EngineExternal()[EEngineExternalGame::EnableThirst] &&
+        !psActorFlags.test(AF_GODMODE))
+    {
+        const float k = (Thirst.Current - Thirst.Critical) /
+            (Thirst.Current >= Thirst.Critical ? 1 - Thirst.Critical : Thirst.Critical);
+        result.natural += health ? Thirst.HealthBoost * k : Thirst.PowerBoost * Thirst.Current;
+    }
+    if (bodyEnabled && EngineExternal()[EEngineExternalGame::EnableSleepiness])
+    {
+        const float k = ((1.f - Sleepiness.Current) - Sleepiness.Critical) /
+            (Sleepiness.Current < Sleepiness.Critical ? 1 - Sleepiness.Critical : Sleepiness.Critical);
+        result.natural += health ? Sleepiness.HealthBoost * k : Sleepiness.PowerBoost * (1.f - Sleepiness.Current);
+    }
+
+    // UpdateArtefactsOnBeltAndOutfit applies each source independently. Helmets
+    // are not part of that path; negative health modifiers respect ChangeHealth.
+    const auto addEquipment = [&](float& category, float value)
+    {
+        if (!health || CanBeHarmed() || value > 0.0f)
+            category += value;
+    };
+    for (const PIItem item : object().inventory().m_belt)
+        if (CArtefact* artefact = item->cast_artefact())
+            addEquipment(result.artefacts, (health ? artefact->m_fHealthRestoreSpeed : artefact->m_fPowerRestoreSpeed)
+                * artefact->GetCondition());
+    if (CCustomOutfit* outfit = object().GetOutfit())
+        addEquipment(result.equipment, health ? outfit->m_fHealthRestoreSpeed : outfit->m_fPowerRestoreSpeed);
+    return result;
 }

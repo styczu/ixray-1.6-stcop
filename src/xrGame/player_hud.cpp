@@ -62,6 +62,12 @@ bool player_hud_motion_container::has_motion(const shared_str& name)
 
 void player_hud_motion_container::load(IKinematicsAnimated* model, const shared_str& sect, IKinematicsAnimated* item_model)
 {
+	// Motion IDs belong to the hands model used for this load.
+	m_anims.clear();
+	m_item_anims.clear();
+	m_names.clear();
+	m_banned_bone_parts.clear();
+
 	CInifile::Sect& _sect = pSettings->r_section(sect);
 
 	for (const auto& data : _sect.Data)
@@ -1361,6 +1367,9 @@ void player_hud::load(const shared_str& player_hud_sect)
 		}
 	}
 
+	// Refresh hidden items too, before attachment callbacks can play animations.
+	reload_motions();
+
 	if(!b_reload) {
 		m_model->PlayCycle("hand_idle_doun");
 	}
@@ -1492,10 +1501,11 @@ void player_hud::render_hud()
 
 u32 player_hud::motion_length(const shared_str& anim_name, const shared_str& hud_name, const CMotionDef*& md)
 {
+	md = nullptr;
 	float speed						= CalcMotionSpeed(anim_name);
 	attachable_hud_item* pi			= create_hud_item(hud_name);
 	player_hud_motion*	pm			= pi->m_hand_motions.find_motion(anim_name);
-	if(!pm)
+	if (!pm || pm->m_animations.empty())
 		return						100; // ms TEMPORARY
 	R_ASSERT2						(pm, 
 		make_string<const char*>("hudItem model [%s] has no motion with alias [%s]", hud_name.c_str(), anim_name.c_str() )
@@ -1505,9 +1515,14 @@ u32 player_hud::motion_length(const shared_str& anim_name, const shared_str& hud
 
 u32 player_hud::motion_length(const MotionID& M, const CMotionDef*& md, float speed)
 {
-	md = m_model->LL_GetMotionDef(M);
-	VERIFY(md);
-	if (md != nullptr && md->flags & esmStopAtEnd)
+	md = m_model ? m_model->LL_GetMotionDef(M) : nullptr;
+	if (!md)
+	{
+		Msg("! HUD motion unavailable: section [%s], slot [%u], index [%u]",
+			m_sect_name.c_str(), unsigned(M.slot), unsigned(M.idx));
+		return 0;
+	}
+	if (md->flags & esmStopAtEnd)
 	{
 		CMotion* motion = m_model->LL_GetRootMotion(M);
 		return iFloor(0.5f + 1000.f * motion->GetLength() / (md->Dequantize(md->speed) * speed));
@@ -1616,6 +1631,14 @@ void player_hud::update(const Fmatrix& cam_trans)
 
 u32 player_hud::anim_play(u16 part, const MotionID& M, BOOL bMixIn, const CMotionDef*& md, float speed)
 {
+	md = m_model ? m_model->LL_GetMotionDef(M) : nullptr;
+	if (!md)
+	{
+		Msg("! Cannot play HUD motion: section [%s], slot [%u], index [%u]",
+			m_sect_name.c_str(), unsigned(M.slot), unsigned(M.idx));
+		return 0;
+	}
+
 	///partitions info
 	// 0==default (root_bone)
 	// 1==left_hand (left hand bone hierarchy)
@@ -1733,6 +1756,15 @@ void player_hud::UpdateWeaponOffset(u32 delta)
 	if (attachable_hud_item* item = attached_item(1))
 	{
 		item->UpdateInertion(delta, actor);
+	}
+}
+
+void player_hud::reload_motions()
+{
+	for (attachable_hud_item* item : m_pool)
+	{
+		item->m_hand_motions.load(m_model, item->m_sect_name,
+			item->m_model->dcast_PKinematicsAnimated());
 	}
 }
 

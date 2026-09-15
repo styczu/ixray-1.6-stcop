@@ -7,6 +7,8 @@
 
 #include "stdafx.h"
 #include "UIActorStateInfo.h"
+#include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrUI/Widgets/UIProgressShape.h"
 #include "../../xrUI/Widgets/UIScrollView.h"
@@ -34,8 +36,50 @@
 #include "../Artefact.h"
 #include "../BoneProtections.h"
 #include "../../xrEngine/bone.h"
+#include "../../xrEngine/device.h"
 #include "../../Include/xrRender/Kinematics.h"
 #include "../../xrEngine/string_table.h"
+
+// Nazwa klasy pancerza dla progu przebicia. Tabela siedzi w danych:
+//   [ui_armor_classes]  thresholds = 0.00, 0.21, ...   names = 0, 0a, 1, ...
+// Progi rosnaco. Brak sekcji / wartosc ponizej pierwszego progu = nullptr.
+// Wyprowadzone z anonimowej przestrzeni, bo korzysta z tego rowniez tooltip
+// przedmiotu (klasa pancerza kombinezonu/helmu) - deklaracja w ProtectionValues.h.
+LPCSTR Protection::ArmorClassName(float value)
+{
+	static bool						s_loaded = false;
+	static xr_vector<float>			s_thresholds;
+	static xr_vector<shared_str>	s_names;
+
+	if (!s_loaded)
+	{
+		s_loaded = true;
+		if (pSettings->section_exist("ui_armor_classes") &&
+			pSettings->line_exist("ui_armor_classes", "thresholds") &&
+			pSettings->line_exist("ui_armor_classes", "names"))
+		{
+			LPCSTR t = pSettings->r_string("ui_armor_classes", "thresholds");
+			LPCSTR n = pSettings->r_string("ui_armor_classes", "names");
+			string64 buf;
+			const int t_count = _GetItemCount(t);
+			for (int i = 0; i < t_count; ++i)
+				s_thresholds.push_back((float)atof(_GetItem(t, i, buf)));
+
+			const int n_count = _GetItemCount(n);
+			for (int i = 0; i < n_count; ++i)
+				s_names.push_back(_GetItem(n, i, buf));
+		}
+	}
+
+	LPCSTR result = nullptr;
+	const u32 count = _min((u32)s_thresholds.size(), (u32)s_names.size());
+	for (u32 i = 0; i < count; ++i)
+	{
+		if (value + EPS_L >= s_thresholds[i])
+			result = s_names[i].c_str();
+	}
+	return result;
+}
 
 namespace
 {
@@ -71,46 +115,7 @@ namespace
 
 	static const u32 kArmorGroupCount = sizeof(kArmorGroups) / sizeof(kArmorGroups[0]);
 
-	// Nazwa klasy pancerza dla progu przebicia. Tabela siedzi w danych:
-	//   [ui_armor_classes]
-	//   thresholds = 0.00, 0.21, 0.33, ...
-	//   names      = 0, 0a, 1, ...
-	// Progi musza byc rosnaco. Brak sekcji = tooltip pokazuje same liczby.
-	LPCSTR ArmorClassName(float value)
-	{
-		static bool						s_loaded = false;
-		static xr_vector<float>			s_thresholds;
-		static xr_vector<shared_str>	s_names;
-
-		if (!s_loaded)
-		{
-			s_loaded = true;
-			if (pSettings->section_exist("ui_armor_classes") &&
-				pSettings->line_exist("ui_armor_classes", "thresholds") &&
-				pSettings->line_exist("ui_armor_classes", "names"))
-			{
-				LPCSTR t = pSettings->r_string("ui_armor_classes", "thresholds");
-				LPCSTR n = pSettings->r_string("ui_armor_classes", "names");
-				string64 buf;
-				const int t_count = _GetItemCount(t);
-				for (int i = 0; i < t_count; ++i)
-					s_thresholds.push_back((float)atof(_GetItem(t, i, buf)));
-
-				const int n_count = _GetItemCount(n);
-				for (int i = 0; i < n_count; ++i)
-					s_names.push_back(_GetItem(n, i, buf));
-			}
-		}
-
-		LPCSTR result = nullptr;
-		const u32 count = _min((u32)s_thresholds.size(), (u32)s_names.size());
-		for (u32 i = 0; i < count; ++i)
-		{
-			if (value + EPS_L >= s_thresholds[i])
-				result = s_names[i].c_str();
-		}
-		return result;
-	}
+	// ArmorClassName wyprowadzono do Protection:: (definicja nad ta przestrzenia).
 
 	// Najwyzszy efektywny prog przebicia w grupie. -1 = zadna kosc grupy
 	// nie jest kryta przez zadna warstwe.
@@ -161,6 +166,7 @@ namespace
 	static LPCSTR kColTitle = "%c[255,224,230,234]";
 	static LPCSTR kColSep   = "%c[255,96,104,108]";
 	static LPCSTR kColLabel = "%c[255,176,182,186]";
+	static LPCSTR kColComponent = "%c[255,154,160,164]";
 	static LPCSTR kColValue = "%c[255,232,178,84]";
 	static LPCSTR kColUnit  = "%c[255,132,140,144]";
 	static LPCSTR kColClass = "%c[255,200,208,212]";
@@ -191,6 +197,7 @@ namespace
 ui_actor_state_wnd::~ui_actor_state_wnd()
 {
 	delete_data( m_hint_wnd );
+    delete_data(m_environment_hint_wnd);
 }
 
 void ui_actor_state_wnd::init_from_xml( CUIXml& xml, LPCSTR path )
@@ -202,6 +209,8 @@ void ui_actor_state_wnd::init_from_xml( CUIXml& xml, LPCSTR path )
 	xml.SetLocalRoot( new_root );
 
 	m_hint_wnd = UIHelper::CreateHint( xml, "hint_wnd" );
+    if (xml.NavigateToNode("environment_hint_wnd"))
+        m_environment_hint_wnd = UIHelper::CreateHint(xml, "environment_hint_wnd");
 
 	for ( int i = 0; i < stt_count; ++i )
 	{
@@ -210,6 +219,9 @@ void ui_actor_state_wnd::init_from_xml( CUIXml& xml, LPCSTR path )
 		AttachChild( m_state[i] );
 		m_state[i]->set_hint_wnd( m_hint_wnd );
 	}
+    if (m_environment_hint_wnd)
+        for (const auto state : {stt_fire, stt_shock, stt_acid, stt_radia, stt_psi})
+            m_state[state]->set_hint_wnd(m_environment_hint_wnd);
 	if (xml.NavigateToNode("stamina_state"))
 		m_state[stt_stamina]->init_from_xml( xml, "stamina_state" );
 	m_state[stt_health]->init_from_xml( xml, "health_state");
@@ -329,105 +341,34 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 	m_state[stt_shock]->set_progress(0.0f);
 	m_state[stt_power]->set_progress(0.0f);
 
-	float fwou_value = 0.0f;
-	float burn_value = 0.0f;
-	float radi_value = 0.0f;
-	float cmbn_value = 0.0f;
-	float tele_value = 0.0f;
-	float woun_value = 0.0f;
-	float shoc_value = 0.0f;
-
-	const auto& cur_booster_influences = actor->conditions().GetCurBoosterInfluences();
-	CEntityCondition::BOOSTER_MAP::const_iterator it;
-	it = cur_booster_influences.find(eBoostRadiationProtection);
-	if (it != cur_booster_influences.end())
-		radi_value += it->second.fBoostValue;
-
-	it = cur_booster_influences.find(eBoostChemicalBurnProtection);
-	if (it != cur_booster_influences.end())
-		cmbn_value += it->second.fBoostValue;
-
-	it = cur_booster_influences.find(eBoostTelepaticProtection);
-	if (it != cur_booster_influences.end())
-		tele_value += it->second.fBoostValue;
-
-	if(outfit)
-	{
-		burn_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeBurn);
-		radi_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeRadiation);
-		cmbn_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeChemicalBurn);
-		tele_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeTelepatic);
-		woun_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeWound);
-		shoc_value += outfit->GetDefHitTypeProtection(ALife::eHitTypeShock);
-
-		IKinematics* ikv = PKinematics(actor->Visual());
-		VERIFY(ikv);
-		u16 spine_bone = ikv->LL_BoneID("bip01_spine");
-
-		value = outfit->GetBoneArmor(spine_bone);
-
-		fwou_value += value * outfit->GetCondition();
-		if(!outfit->bIsHelmetAvaliable)
-		{
-			u16 spine_bone_ = ikv->LL_BoneID("bip01_head");
-			fwou_value += outfit->GetBoneArmor(spine_bone_)*outfit->GetCondition();
-		}
-	}
-
-	if(helmet)
-	{
-		burn_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeBurn);
-		radi_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeRadiation);
-		cmbn_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeChemicalBurn);
-		tele_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeTelepatic);
-		woun_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeWound);
-		shoc_value += helmet->GetDefHitTypeProtection(ALife::eHitTypeShock);
-
-		IKinematics* ikv = PKinematics(actor->Visual());
-		VERIFY(ikv);
-		u16 spine_bone = ikv->LL_BoneID("bip01_head");
-		fwou_value += helmet->GetBoneArmor(spine_bone)*helmet->GetCondition();
-	}
-	const auto getProtection = [&](float& valueRef, ALife::EHitType hitType) -> float
-		{
-			valueRef += actor->GetProtection_ArtefactsOnBelt(hitType);
-			return actor->conditions().GetZoneMaxPower(hitType);
-		};
+	// Rozszarpanie/uderzenie/wybuch i balistyka licza sie w UpdateCombatProtection
+	// (ponizej). Dawna sciezka fwou_value/woun_value z pancerza kosci usunieta -
+	// byla niewidoczna (pasek wiersza szedl z wyrazenia XML).
 
 	// fire burn protection progress bar
 	{
-		const float max_power = getProtection(burn_value, ALife::eHitTypeBurn);
-		update_round_states(stt_fire, burn_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeBurn);
+		update_round_states(stt_fire, actor->GetEquipmentProtection(ALife::eHitTypeBurn), max_power);
 	}
 	// radiation protection progress bar
 	{
-		const float max_power = getProtection(radi_value, ALife::eHitTypeRadiation);
-		update_round_states(stt_radia, radi_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeRadiation);
+		update_round_states(stt_radia, actor->GetEquipmentProtection(ALife::eHitTypeRadiation), max_power);
 	}
 	// chemical burn protection progress bar
 	{
-		const float max_power = getProtection(cmbn_value, ALife::eHitTypeChemicalBurn);
-		update_round_states(stt_acid, cmbn_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeChemicalBurn);
+		update_round_states(stt_acid, actor->GetEquipmentProtection(ALife::eHitTypeChemicalBurn), max_power);
 	}
 	// telepathic protection progress bar
 	{
-		const float max_power = getProtection(tele_value, ALife::eHitTypeTelepatic);
-		update_round_states(stt_psi, tele_value, max_power);
-	}
-	// wound protection progress bar
-	{
-		const float max_power = getProtection(woun_value, ALife::eHitTypeWound);
-		update_round_states(stt_wound, woun_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeTelepatic);
+		update_round_states(stt_psi, actor->GetEquipmentProtection(ALife::eHitTypeTelepatic), max_power);
 	}
 	// shock protection progress bar
 	{
-		const float max_power = getProtection(shoc_value, ALife::eHitTypeShock);
-		update_round_states(stt_shock, shoc_value, max_power);
-	}
-	//fire wound protection progress bar
-	{
-		const float max_power = getProtection(fwou_value, ALife::eHitTypeFireWound);
-		update_round_states(stt_fire_wound, fwou_value, max_power);
+		const float max_power = actor->conditions().GetZoneMaxPower(ALife::eHitTypeShock);
+		update_round_states(stt_shock, actor->GetEquipmentProtection(ALife::eHitTypeShock), max_power);
 	}
 	//power restore speed progress bar
 	{
@@ -442,7 +383,9 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 // -----------------------------------------------------------------------------------
 
 	UpdateArmorInfo( actor, outfit, helmet );
+	UpdateCombatProtection( actor, outfit, helmet );
 	UpdateRateHints( actor );
+	UpdateProtectionHints( actor );
 
 	UpdateHitZone();
 }
@@ -524,7 +467,7 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 		}
 		else
 		{
-			LPCSTR cls = ArmorClassName(a);
+			LPCSTR cls = Protection::ArmorClassName(a);
 			xr_sprintf(line, sizeof(line), "%s%-8s %s%3d  %s%s %s%s",
 				kColLabel, s_label.c_str(), kColValue, iFloor(a * 100.0f + 0.5f),
 				kColUnit, s_class.c_str(), kColClass, cls ? cls : dash);
@@ -557,15 +500,436 @@ namespace ActorArmor
 // Podpowiedzi wierszy, ktore musza pokazac wyliczona liczbe. System wyrazen
 // nie sklada napisow (UI_ADD dziala tylko na int i float), wiec tekst
 // powstaje tutaj - tak samo jak tooltip pancerza.
+// BleedingSpeed is the engine's aggregate intensity (average wound size),
+// not a sum over bones. Scale it by 100 without changing damage or healing.
+void ui_actor_state_wnd::UpdateBleedingInfo(CActor* actor)
+{
+    auto& condition = actor->conditions();
+    const float bleeding = condition.BleedingSpeed();
+    const float intensity = ConditionUi::BleedingIntensity(bleeding);
+    const float timeFactor = ConditionUi::CurrentTimeFactor();
+    const float drain = condition.CanBeHarmed() && !GodMode()
+        ? ConditionUi::PercentPerSecond(bleeding * condition.change_v().m_fV_Bleeding, timeFactor) : 0.0f;
+    // GetRestoreSpeed includes natural healing, belt artefacts (with condition)
+    // and the worn outfit; temporary medicine is maintained separately.
+    // This is healing strength per wound component, not d(intensity)/dt.
+    const float reduction = ConditionUi::PercentPerSecond(
+        actor->GetRestoreSpeed(ALife::eBleedingRestoreSpeed) + condition.GetBoostBleedingRestore(), timeFactor);
+
+    xr_string hint = g_pStringTable->translate("ui_uip_tt_bleed").c_str();
+    const auto line = [&](LPCSTR label, float value, bool fixed, LPCSTR suffix, LPCSTR color)
+    {
+        string32 number;
+        if (fixed)
+            FormatRate(number, value, 2);
+        else
+            ConditionUi::FormatNumber(number, value, ConditionUi::DecimalSeparator(), false);
+        hint += kBreak;
+        hint += kColLabel;
+        hint += g_pStringTable->translate(label).c_str();
+        hint += " ";
+        hint += color;
+        hint += number;
+        if (suffix)
+            hint += g_pStringTable->translate(suffix).c_str();
+    };
+    line("ui_uip_tt_bleed_level", intensity, true, nullptr, kColTitle);
+    line("ui_uip_tt_bleed_drain", drain, false, "ui_uip_unit_hp_percent_s",
+        drain > 0.0f ? "%c[255,210,80,65]" : kColTitle);
+    line("ui_uip_tt_bleed_heal", reduction, false, "ui_uip_unit_bleed_s",
+        reduction > 0.0f ? "%c[255,110,190,115]" : kColTitle);
+    hint += kBreak;
+    hint += kColSep;
+    hint += g_pStringTable->translate("ui_armor_tt_sep").c_str();
+    hint += kBreak;
+    hint += kColLabel;
+    hint += g_pStringTable->translate("ui_uip_tt_bleed_description").c_str();
+    m_state[stt_bleeding]->set_hint_text(hint.c_str());
+    m_state[stt_bleeding]->set_bleeding(intensity);
+}
+
+void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
+{
+    const shared_str gate = g_pStringTable->translate("ui_uip_protection_effective");
+    if (xr_strcmp(gate.c_str(), "ui_uip_protection_effective") == 0)
+        return;
+    CCustomOutfit* outfit = actor->GetOutfit();
+    CHelmet* helmet = actor->GetHelmet();
+    const auto update = [&](EStateType state, ALife::EHitType type)
+    {
+        if (!m_state[state])
+            return;
+        const float maximum = actor->conditions().GetZoneMaxPower(type);
+        const float outfitThreshold = outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(type), type) : 0.0f;
+        // HitOutfitEffect applies every equipped helmet, regardless of outfit UI flags.
+        const float helmetThreshold = helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(type), type) : 0.0f;
+        const float flatBoost = actor->conditions().GetEnvironmentalProtectionBoost(type);
+        const float artifactMultiplier = actor->HitArtefactsOnBelt(1.0f, type);
+        const auto effective = Protection::EffectiveThreshold(outfitThreshold, helmetThreshold, flatBoost, artifactMultiplier);
+        const auto exposure = actor->GetEnvironmentalExposure(type);
+        // The source layer and panel share the same raw-hit scale as the effective threshold.
+        m_state[state]->set_environmental_exposure(type, Protection::DisplayRatio(exposure.power, maximum),
+            Protection::DisplayRatio(actor->GetEquipmentProtection(type), maximum), exposure.opacity);
+        xr_string hint = kColTitle;
+        hint += g_pStringTable->translate(Protection::Caption(type)).c_str();
+        const auto separator = [&]()
+        {
+            hint += kBreak;
+            hint += kColSep;
+            hint += ". . . . . . . . . . . . . .";
+            hint += kBreak;
+        };
+        const auto line = [&](LPCSTR key, LPCSTR value, bool component)
+        {
+            hint += kBreak;
+            hint += component ? kColComponent : kColLabel;
+            if (component)
+                hint += "  ";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": ";
+            if (!component)
+                hint += kColTitle;
+            hint += value;
+        };
+        const auto pointsLine = [&](LPCSTR key, float power, bool indent = false)
+        {
+            string64 value;
+            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(power, maximum), false, true);
+            line(key, value, indent);
+        };
+        const auto thresholdLine = [&](LPCSTR key, const Protection::ThresholdReading& threshold)
+        {
+            if (threshold.attainable)
+                pointsLine(key, threshold.power);
+            else
+                line(key, g_pStringTable->translate("ui_uip_protection_no_threshold").c_str(), false);
+        };
+        const auto percentLine = [&](LPCSTR key, float percent, bool indent)
+        {
+            string32 number;
+            string64 value;
+            ConditionUi::FormatDetailNumber(number, percent, ConditionUi::DecimalSeparator(), false);
+            xr_strconcat(value, number, "%");
+            line(key, value, indent);
+        };
+        const auto valueLine = [&](LPCSTR key, float amount, LPCSTR unitKey)
+        {
+            string32 number;
+            string64 value;
+            ConditionUi::FormatDetailNumber(number, amount, ConditionUi::DecimalSeparator(), false);
+            xr_strconcat(value, number, " ", g_pStringTable->translate(unitKey).c_str());
+            line(key, value, false);
+        };
+
+        separator();
+        thresholdLine("ui_uip_protection_effective", effective);
+        // The legacy burn/light_burn protection copies may diverge after upgrades.
+        // Keep the measured thermal channel intact and expose a second threshold only when needed.
+        if (type == ALife::eHitTypeBurn)
+        {
+            const auto lightType = ALife::eHitTypeLightBurn;
+            const float lightOutfit = outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(lightType), lightType) : 0.0f;
+            const float lightHelmet = helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(lightType), lightType) : 0.0f;
+            const auto light = Protection::EffectiveThreshold(lightOutfit, lightHelmet, 0.0f, actor->HitArtefactsOnBelt(1.0f, lightType));
+            if (light.attainable != effective.attainable || light.power != effective.power)
+                thresholdLine("ui_uip_protection_effective_light_burn", light);
+        }
+        hint += kBreak;
+        pointsLine("ui_uip_protection_total", outfitThreshold + helmetThreshold);
+        if (outfitThreshold > 0.0f)
+            pointsLine("ui_uip_protection_outfit", outfitThreshold, true);
+        if (helmetThreshold > 0.0f)
+            pointsLine("ui_uip_protection_helmet", helmetThreshold, true);
+        if (flatBoost > 0.0f)
+            pointsLine("ui_uip_protection_temporary", flatBoost, true);
+
+        if (artifactMultiplier != 1.0f)
+        {
+            hint += kBreak;
+            percentLine("ui_uip_protection_artifact_effect", (1.0f - artifactMultiplier) * 100.0f, false);
+            for (const PIItem item : actor->inventory().m_belt)
+            {
+                CArtefact* artefact = item->cast_artefact();
+                if (artefact && artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() != 0.0f)
+                {
+                    hint += kBreak;
+                    hint += kColComponent;
+                    hint += "  ";
+                    hint += artefact->NameItem();
+                }
+            }
+        }
+
+        // Same 750 ms peak as the source bar: do not flash zero between pulses.
+        if (exposure.power > 0.0f)
+        {
+            hint += kBreak;
+            separator();
+            pointsLine("ui_uip_protection_source", exposure.power);
+            const auto damage = actor->conditions().GetEnvironmentalDamage(type);
+            if (type == ALife::eHitTypeRadiation)
+                valueLine("ui_uip_protection_received_dose", damage.radiation * ConditionUi::RadiationScale, "ui_uip_unit_rad");
+            else
+                percentLine("ui_uip_protection_damage", (type == ALife::eHitTypeTelepatic ? damage.psy : damage.health) * 100.0f, false);
+        }
+        m_state[state]->set_hint_text(hint.c_str());
+    };
+    update(stt_fire, ALife::eHitTypeBurn);
+    update(stt_shock, ALife::eHitTypeShock);
+    update(stt_acid, ALife::eHitTypeChemicalBurn);
+    update(stt_radia, ALife::eHitTypeRadiation);
+    update(stt_psi, ALife::eHitTypeTelepatic);
+}
+
+// Ochrona bojowa - tylko parametry OCHRONNE (bez odczytu obrazen/sily zrodla).
+// Mechaniczne (rozszarpanie/uderzenie/wybuch): prog absolutny odejmowany od
+// trafienia (kombinezon+helm, kazdy *condition) plus nieliniowa redukcja
+// artefaktow na pasie; "Efektywny prog" = prog / (1 - f). Skala pkt = wartosc
+// x100, pelny pasek przy 1.00, trojkat powyzej. Balistyka: absorpcja pancerza
+// (1 - hit_fraction_actor) plus dodatkowa redukcja z mnoznika trudnosci; osobno
+// scenariusz zatrzymania i przebicia pancerza; skala w %.
+void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet)
+{
+    // Panel (liczba/pasek/trojkat) liczy sie zawsze; bogaty tooltip wymaga
+    // przetlumaczonych kluczy z dodatku (jak UpdateProtectionHints).
+    const shared_str gate = g_pStringTable->translate("ui_uip_prot_threshold");
+    const bool richTooltips = xr_strcmp(gate.c_str(), "ui_uip_prot_threshold") != 0;
+
+    const bool showHelmet = helmet && (!outfit || outfit->bIsHelmetAvaliable);
+    LPCSTR dotted = ". . . . . . . . . . . . . .";
+    // Trzymamy shared_str, nie .c_str() z tymczasowego obiektu (patrz UpdateArmorInfo).
+    const shared_str s_unit_pct = g_pStringTable->translate("ui_uip_unit_percent");
+    LPCSTR unitPct = s_unit_pct.c_str();
+
+    // Nieliniowy mnoznik redukcji artefaktow na pasie dla typu niestrefowego
+    // (jak CActor::HitArtefactsOnBelt): dodatni = redukcja, ujemny = malus.
+    auto artefactFactor = [&](ALife::EHitType type) -> float
+    {
+        float sum = actor->GetProtection_ArtefactsOnBelt(type);
+        if (sum == 0.0f)
+            return 0.0f;
+        clamp(sum, -0.99f, 0.99f);
+        return (sum > 0.0f)
+            ? 1.5f * (float)pow(0.9f, (4.0f / sum))
+            : -1.5f * (float)pow(0.9f, (4.0f / (-1.0f * sum)));
+    };
+
+    // ---- rozszarpanie / uderzenie / wybuch (prog absolutny, skala pkt) ----
+    auto mechanical = [&](EStateType state, ALife::EHitType type, LPCSTR titleKey, LPCSTR effectKey)
+    {
+        ui_actor_state_item* item = m_state[state];
+        if (!item)
+            return;
+
+        const float outfitProt = outfit ? outfit->GetDefHitTypeProtection(type) : 0.0f;
+        const float helmetProt = showHelmet ? helmet->GetDefHitTypeProtection(type) : 0.0f;
+        const float threshold  = outfitProt + helmetProt;             // Prog ochrony
+        const float f          = artefactFactor(type);
+        const float effective  = (f < 0.999f) ? threshold / (1.0f - f) : threshold; // Efektywny prog
+
+        string64 num;
+        ConditionUi::FormatProtectionPointsPlain(num, effective);     // x100, calkowite, bez jednostki
+        item->set_value_text(num);
+        if (item->m_progress)
+        {
+            float fill = effective;
+            clamp(fill, 0.0f, 1.0f);
+            item->m_progress->SetProgressPosImmediate(fill);
+        }
+        item->set_protection_overflow(effective);                     // trojkat gdy >100 pkt
+
+        if (!richTooltips)
+            return;
+
+        xr_string hint = kColTitle;
+        hint += g_pStringTable->translate(titleKey).c_str();
+        hint += kBreak;
+        hint += kColSep;
+        hint += dotted;
+
+        auto ptsLine = [&](LPCSTR key, float ratio, LPCSTR labelCol, LPCSTR valueCol, bool indent)
+        {
+            string64 v;
+            ConditionUi::FormatProtectionPoints(v, ratio, false, true);     // "X pkt"
+            hint += kBreak;
+            hint += labelCol;
+            if (indent)
+                hint += "  ";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": ";
+            hint += valueCol;
+            hint += v;
+        };
+
+        ptsLine("ui_uip_prot_effective_threshold", effective, kColLabel, kColTitle, false);
+        ptsLine("ui_uip_prot_threshold", threshold, kColLabel, kColTitle, false);
+        if (outfit && outfitProt > 0.0f)
+            ptsLine("ui_uip_protection_outfit", outfitProt, kColComponent, kColComponent, true);
+        if (showHelmet && helmetProt > 0.0f)
+            ptsLine("ui_uip_protection_helmet", helmetProt, kColComponent, kColComponent, true);
+
+        // Wplyw artefaktow - tylko gdy jakis artefakt na pasie dotyczy tego typu.
+        if (f != 0.0f)
+        {
+            string64 pct;
+            ConditionUi::FormatDetailNumber(pct, f * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+            hint += kBreak;
+            hint += kColLabel;
+            hint += g_pStringTable->translate("ui_uip_prot_artefact_influence").c_str();
+            hint += ": ";
+            hint += kColTitle;
+            hint += pct;
+            hint += unitPct;
+
+            for (const PIItem beltItem : actor->inventory().m_belt)
+            {
+                CArtefact* af = beltItem ? beltItem->cast_artefact() : nullptr;
+                if (!af)
+                    continue;
+                const float imm = af->m_ArtefactHitImmunities.AffectHit(1.0f, type); // surowe *_immunity
+                if (imm == 0.0f)
+                    continue;
+                string64 iv;
+                ConditionUi::FormatDetailNumber(iv, imm * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+                hint += kBreak;
+                hint += kColComponent;
+                hint += "  ";
+                hint += beltItem->NameShort();
+                hint += ": ";
+                hint += kColComponent;
+                hint += iv;
+                hint += unitPct;
+            }
+        }
+
+        // Skutek trafienia - statyczny opis typu (nie liczba obrazen).
+        hint += kBreak;
+        hint += kColSep;
+        hint += dotted;
+        hint += kBreak;
+        hint += kColLabel;
+        hint += g_pStringTable->translate("ui_uip_prot_hit_effect").c_str();
+        hint += " ";
+        hint += kColTitle;
+        hint += g_pStringTable->translate(effectKey).c_str();
+
+        item->set_hint_text(hint.c_str());
+    };
+
+    mechanical(stt_wound, ALife::eHitTypeWound,     "ui_uip_prot_wound_title",  "ui_uip_prot_effect_wound");
+    mechanical(stt_main,  ALife::eHitTypeStrike,    "ui_uip_prot_strike_title", "ui_uip_prot_effect_strike");
+    mechanical(stt_sleep, ALife::eHitTypeExplosion, "ui_uip_prot_explo_title",  "ui_uip_prot_effect_explo");
+
+    // ---- balistyka (absorpcja pancerza + mnoznik trudnosci, skala %) ----
+    {
+        ui_actor_state_item* item = m_state[stt_fire_wound];
+        if (item)
+        {
+            // Mnoznik OBRAZEN z poziomu trudnosci (actor_immunities_<diff>).
+            // Efekty czasowe (m_fBoost*Immunity) sa zerowe w bazowej grze i tu pominiete.
+            const float mult = actor->conditions().GetHitImmunity(ALife::eHitTypeFireWound);
+            if (!outfit)
+            {
+                item->set_value_text("-");
+                if (item->m_progress)
+                    item->m_progress->SetProgressPosImmediate(0.0f);
+            }
+            else
+            {
+                const float hitFraction = outfit->GetHitFractionActor(); // czesc przechodzaca
+                const float effStopped  = 1.0f - hitFraction * mult;     // Efektywna ochrona (zatrzymany)
+                string64 num;
+                ConditionUi::FormatProtectionPointsPlain(num, effStopped);
+                xr_strcat(num, unitPct);
+                item->set_value_text(num);
+                if (item->m_progress)
+                {
+                    float fill = effStopped;
+                    clamp(fill, 0.0f, 1.0f);
+                    item->m_progress->SetProgressPosImmediate(fill);
+                }
+            }
+            item->set_protection_overflow(0.0f); // balistyka nie przekracza 100%
+
+            if (richTooltips && outfit)
+            {
+                const float hitFraction = outfit->GetHitFractionActor();
+                const float absorb      = 1.0f - hitFraction;          // Absorpcja pancerza
+                const float redStopped  = hitFraction * (1.0f - mult); // Dodatkowa redukcja (trudnosc)
+                const float effStopped  = absorb + redStopped;         // Efektywna ochrona
+                const float redPen      = 1.0f - mult;                 // przy przebiciu (absorpcja=0)
+
+                xr_string hint = kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_ballistic_title").c_str();
+                hint += kBreak;
+                hint += kColSep;
+                hint += dotted;
+
+                auto pctLine = [&](LPCSTR key, float frac, LPCSTR labelCol, LPCSTR valueCol, bool indent)
+                {
+                    string64 v;
+                    ConditionUi::FormatDetailNumber(v, frac * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+                    hint += kBreak;
+                    hint += labelCol;
+                    if (indent)
+                        hint += "  ";
+                    hint += g_pStringTable->translate(key).c_str();
+                    hint += ": ";
+                    hint += valueCol;
+                    hint += v;
+                    hint += unitPct;
+                };
+
+                // Po zatrzymaniu pocisku
+                pctLine("ui_uip_prot_effective", effStopped, kColLabel, kColTitle, false);
+                pctLine("ui_uip_prot_armor_absorption", absorb, kColComponent, kColComponent, true);
+                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColComponent, kColComponent, true);
+                hint += kBreak;
+                hint += kColLabel;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
+                hint += " ";
+                hint += kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding_no").c_str();
+
+                // Przy przebiciu pancerza (hit_fraction pominiete)
+                hint += kBreak;
+                hint += kColSep;
+                hint += dotted;
+                hint += kBreak;
+                hint += kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_penetration_header").c_str();
+                pctLine("ui_uip_prot_effective", redPen, kColLabel, kColTitle, false);
+                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColComponent, kColComponent, true);
+                hint += kBreak;
+                hint += kColLabel;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
+                hint += " ";
+                hint += kColTitle;
+                hint += g_pStringTable->translate("ui_uip_prot_bleeding_possible").c_str();
+
+                item->set_hint_text(hint.c_str());
+            }
+        }
+    }
+}
+
 void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 {
 	auto& cv = actor->conditions().change_v();
 
+	// UpdateConditionTime uzywa w SP zegara swiata, a ten bazuje na czasie Device.
+	// Przeliczamy wskazniki na sekunde rzeczywistej, niepauzowanej gry.
+	// Odczyt biezacego mnoznika obsluguje tez jego zmiane podczas rozgrywki;
+	// normal_time_factor jest wartoscia odniesienia, nie aktualnym mnoznikiem.
+	// W MP UpdateConditionTime korzysta bezposrednio z zegara serwera.
+	const float real_time_factor = IsGameTypeSingle()
+		? Level().GetGameTimeFactor() * Device.time_factor() : 1.0f;
+
 	// Dopisuje linie "podpis liczba jednostka". unit_key = nullptr -> bez jednostki.
-	auto add_line = [](xr_string& hint, LPCSTR label_key, float value, int decimals, LPCSTR unit_key)
+	auto add_line = [real_time_factor](xr_string& hint, LPCSTR label_key, float value, int decimals, LPCSTR unit_key)
 	{
 		string32 num;
-		FormatRate(num, value, decimals);
+		FormatRate(num, value * real_time_factor, decimals);
 
 		hint += kBreak;
 		hint += g_pStringTable->translate(label_key).c_str();
@@ -578,14 +942,94 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		}
 	};
 
+	// Kondycja: koszt sprintu (%/s realnej sekundy) i podskoku (% za skok),
+	// czerwone przy przeciazeniu. Wzory w CActorCondition (te same co ruch).
+	if (m_state[stt_stamina] != nullptr)
+	{
+		const bool overloaded = actor->conditions().IsOverloaded();
+		LPCSTR costColor = overloaded ? "%c[255,210,80,65]" : kColValue;
+
+		xr_string hint = kColTitle;
+		hint += g_pStringTable->translate("ui_uip_tt_stamina").c_str();
+
+		auto cost_line = [&hint, costColor](LPCSTR label, float value, LPCSTR unit)
+		{
+			string32 num;
+			FormatRate(num, value, 1);
+			hint += kBreak; hint += kColLabel;
+			hint += g_pStringTable->translate(label).c_str();
+			hint += " "; hint += costColor; hint += num;
+			hint += " "; hint += g_pStringTable->translate(unit).c_str();
+		};
+		cost_line("ui_uip_cost_sprint",
+			actor->conditions().GetSprintPowerCostPerGameSec() * real_time_factor * 100.0f,
+			"ui_uip_unit_percent_s");
+		cost_line("ui_uip_cost_jump",
+			actor->conditions().GetJumpPowerCost() * 100.0f,
+			"ui_uip_unit_percent");
+		m_state[stt_stamina]->set_hint_text(hint.c_str());
+	}
+
 	// Skazenie: ubytek zdrowia to radiation_health_v * poziom skazenia,
 	// w ulamku zdrowia na sekunde (EntityCondition.cpp, UpdateRadiation).
 	if (m_state[stt_radiation] != nullptr)
 	{
-		const float drain = cv.m_fV_RadiationHealth * actor->conditions().GetRadiation();
+		const float radiation = actor->conditions().GetRadiation();
+		const float drain = actor->conditions().CanBeHarmed() && !GodMode()
+			? cv.m_fV_RadiationHealth * radiation : 0.0f;
 
 		xr_string hint = g_pStringTable->translate("ui_uip_tt_rad").c_str();
-		add_line(hint, "ui_uip_tt_rad_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
+		if (ConditionUi::RadiationUnitsEnabled())
+		{
+			auto add_radiation_line = [&hint](LPCSTR label, float value, bool sign, LPCSTR unit, LPCSTR color)
+			{
+				string32 number;
+				ConditionUi::FormatNumber(number, value, ConditionUi::DecimalSeparator(), sign);
+				hint += kBreak;
+				hint += "%c[255,176,182,186]";
+				hint += g_pStringTable->translate(label).c_str();
+				hint += " ";
+				hint += color;
+				hint += number;
+				const shared_str suffix = g_pStringTable->translate(unit);
+				if (suffix.c_str()[0] != '%')
+					hint += " ";
+				hint += suffix.c_str();
+			};
+
+			float change = actor->conditions().GetRadiationChangeRate() * ConditionUi::RadiationScale;
+			// At a resource boundary there is no outward change to display.
+			if ((radiation <= 0.0f && change < 0.0f) || (radiation >= 1.0f && change > 0.0f))
+				change = 0.0f;
+			LPCSTR change_color = change < 0.0f ? "%c[255,110,190,115]"
+				: (change > 0.0f ? "%c[255,210,80,65]" : "%c[255,224,230,234]");
+			add_radiation_line("ui_uip_tt_rad_level", radiation * ConditionUi::RadiationScale, false,
+				"ui_uip_unit_kbq", "%c[255,224,230,234]");
+			add_radiation_line("ui_uip_tt_rad_change", change, true, "ui_uip_unit_kbq_s", change_color);
+			add_radiation_line("ui_uip_tt_rad_drain", drain * real_time_factor * 100.0f, false,
+				"ui_uip_unit_hp_percent_s", drain > 0.0f ? "%c[255,210,80,65]" : "%c[255,224,230,234]");
+
+			string32 number;
+			string64 value_text;
+			ConditionUi::FormatNumber(number, radiation * ConditionUi::RadiationScale,
+				ConditionUi::DecimalSeparator(), false, 0);
+			xr_strconcat(value_text, number, " ", g_pStringTable->translate("ui_uip_unit_kbq").c_str());
+			m_state[stt_radiation]->set_value_text(value_text);
+		}
+		else
+			add_line(hint, "ui_uip_tt_rad_drain", drain * 100.0f, 3, "ui_uip_unit_hp_s");
+        // Optional description follows the live statistics; old string tables
+        // without this key keep their original tooltip layout.
+        const shared_str description = g_pStringTable->translate("ui_uip_tt_rad_description");
+        if (description.size() && xr_strcmp(description.c_str(), "ui_uip_tt_rad_description") != 0)
+        {
+            hint += kBreak;
+            hint += kColSep;
+            hint += g_pStringTable->translate("ui_armor_tt_sep").c_str();
+            hint += kBreak;
+            hint += kColLabel;
+            hint += description.c_str();
+        }
 		m_state[stt_radiation]->set_hint_text(hint.c_str());
 	}
 
@@ -593,7 +1037,9 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 	// tempem wound_incarnation_v + bleeding_restore_speed z kombinezonu
 	// i artefaktow (UpdateHealth -> ChangeBleeding). Stad obie liczby w jednej
 	// podpowiedzi - to dwie strony tego samego licznika.
-	if (m_state[stt_bleeding] != nullptr)
+	if (m_state[stt_bleeding] && m_state[stt_bleeding]->m_bleeding)
+        UpdateBleedingInfo(actor);
+    else if (m_state[stt_bleeding] != nullptr)
 	{
 		const float drain = actor->conditions().BleedingSpeed() * cv.m_fV_Bleeding;
 		const float heal  = cv.m_fV_WoundIncarnation + actor->conditions().GetBoostBleedingRestore();
@@ -604,37 +1050,62 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		m_state[stt_bleeding]->set_hint_text(hint.c_str());
 	}
 
-	// Regeneracja. GetRestoreSpeed zbiera komplet - baze z actor.ltx, sytosc,
-	// pragnienie, artefakty z pasa i kombinezon - i zwraca ULAMEK PASKA NA SEKUNDE,
-	// wiec razy 100 daje procent na sekunde.
-	//
-	// Liczba przy pasku jest tym samym tempem razy 1000 (czyli promile na sekunde),
-	// bo w polu 48 px nie miesci sie "0,020 %/s". To NIE jest ta sama skala,
-	// co "+N" w opisie ulepszenia kombinezonu: tam property_functor_a wypisuje
-	// surowe "value" z sekcji ulepszenia, recznie wpisana liczbe bez zwiazku
-	// z parametrem (np. health_restore_speed = 0.0006 opisany jako "+4").
-	if (m_state[stt_thirst] != nullptr)
-	{
-		const float rate = actor->GetRestoreSpeed(ALife::eHealthRestoreSpeed);
+    const auto updateRegeneration = [&](EStateType state, bool health)
+    {
+        ui_actor_state_item* item = m_state[state];
+        if (!item)
+            return;
+        const auto sources = actor->conditions().GetRegenerationSources(health);
+        xr_string hint = g_pStringTable->translate(health ? "ui_uip_tt_reg_health" : "ui_uip_tt_reg_power").c_str();
+        const auto line = [&](LPCSTR key, float value, bool always = false, bool showSign = true)
+        {
+            if (!always && value == 0.0f)
+                return;
+            string64 formatted;
+            ConditionUi::FormatRegenerationRate(formatted, value, showSign);
+            hint += "\\n%c[255,170,170,170]";
+            hint += g_pStringTable->translate(key).c_str();
+            hint += ": %c[255,224,230,234]";
+            hint += formatted;
+        };
+        line(health ? "ui_uip_reg_rate_health" : "ui_uip_reg_rate_power", sources.Total(), true, false);
+        hint += "\\n";
+        line("ui_uip_reg_natural", sources.natural, true, false);
+        line("ui_uip_reg_rest", sources.rest);
+        line("ui_uip_reg_artefacts", sources.artefacts);
+        line("ui_uip_reg_equipment", sources.equipment);
+        line("ui_uip_reg_temporary", sources.temporary);
+        item->set_hint_text(hint.c_str());
+        if (item->m_regeneration)
+            item->set_regeneration(ConditionUi::PercentPerSecond(sources.Total(), real_time_factor),
+                health ? ConditionUi::HealthRegenerationMaximum : ConditionUi::PowerRegenerationMaximum);
+    };
+    if (ConditionUi::RegenerationUnitsEnabled())
+    {
+        updateRegeneration(stt_thirst, true);
+        updateRegeneration(stt_power, false);
+    }
 
-		xr_string hint = g_pStringTable->translate("ui_uip_tt_reg_health").c_str();
-		add_line(hint, "ui_uip_reg_rate", rate * 100.0f, 3, "ui_uip_unit_hp_s");
-		m_state[stt_thirst]->set_hint_text(hint.c_str());
-	}
-
-	if (m_state[stt_power] != nullptr)
-	{
-		const float rate = actor->GetRestoreSpeed(ALife::ePowerRestoreSpeed);
-
-		xr_string hint = g_pStringTable->translate("ui_uip_tt_reg_power").c_str();
-		add_line(hint, "ui_uip_reg_rate", rate * 100.0f, 3, "ui_uip_unit_st_s");
-		m_state[stt_power]->set_hint_text(hint.c_str());
-	}
 }
 
 void ui_actor_state_wnd::update_round_states(EStateType stt_type, float initial, float max_power)
 {
 	auto state = m_state[stt_type];
+
+    if (stt_type == stt_fire || stt_type == stt_shock || stt_type == stt_acid ||
+        stt_type == stt_radia || stt_type == stt_psi)
+    {
+        const float ratio = Protection::DisplayRatio(initial, max_power);
+        state->set_protection_overflow(ratio);
+        float fill = ratio;
+        clamp(fill, 0.0f, 1.0f);
+        state->set_progress(fill);
+        state->set_arrow(fill);
+        string64 text;
+        ConditionUi::FormatProtectionPoints(text, ratio, false);
+        state->set_text_str(text);
+        return;
+    }
 
 	const float progress = floor(initial / max_power * 31) / 31; // number of sticks in progress bar
 	const float arrow = initial / max_power; //  = 0..1
@@ -674,12 +1145,16 @@ void ui_actor_state_wnd::Draw()
 {
 	inherited::Draw();
 	m_hint_wnd->Draw();
+    if (m_environment_hint_wnd)
+        m_environment_hint_wnd->Draw();
 }
 
 void ui_actor_state_wnd::Show( bool status )
 {
 	inherited::Show( status );
 	ShowChildren( status );
+    if (!status && m_environment_hint_wnd)
+        m_environment_hint_wnd->set_visible(false);
 }
 
 /// =============================================================================================
@@ -702,6 +1177,8 @@ ui_actor_state_item::~ui_actor_state_item()
 void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 {
 	CUIXmlInit::InitWindow( xml, path, 0, this);
+    m_regeneration = xml.ReadAttribInt(path, 0, "regeneration", 0) != 0;
+    m_bleeding = xml.ReadAttribInt(path, 0, "bleeding", 0) != 0;
 
 	XML_NODE* stored_root = xml.GetLocalRoot();
 	XML_NODE* new_root = xml.NavigateToNode( path, 0 );
@@ -717,6 +1194,11 @@ void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 		m_progress = UIHelper::CreateProgressBar( xml, "state_progress", this );
 		m_progress->IsExpressionSystem = xml.ReadAttrib(path, 0, "expression", nullptr) != nullptr;
 	}
+    if (xml.NavigateToNode("source_progress"))
+    {
+        m_environmental_exposure = UIHelper::CreateProgressBar(xml, "source_progress", this);
+        m_environmental_exposure->Show(false);
+    }
 	if ( xml.NavigateToNode( "progress_shape", 0 ) )	
 	{
 		m_sensor = new CUIProgressShape();
@@ -752,6 +1234,18 @@ void ui_actor_state_item::init_from_xml( CUIXml& xml, LPCSTR path )
 		m_magnitude = xml.ReadAttribFlt("icon3", 0, "magnitude", 1.0f);
 		m_static3->TextItemControl()->SetText("");
 	}
+    if (xml.NavigateToNode("overflow"))
+    {
+        m_overflow = UIHelper::CreateStatic(xml, "overflow", this);
+        m_overflow->Show(false);
+    }
+    if (xml.NavigateToNode("overflow_fill"))
+    {
+        m_overflow_fill = UIHelper::CreateStatic(xml, "overflow_fill", this);
+        m_overflow_fill->Show(false);
+    }
+	if (xml.NavigateToNode("value"))
+		m_value = UIHelper::CreateStatic(xml, "value", this);
 	set_arrow( 0.0f );
 	xml.SetLocalRoot( stored_root );
 }
@@ -842,4 +1336,68 @@ bool ui_actor_state_item::show_static( bool status, u8 number )
 		return false;
 	}
 	return true;
+}
+
+void ui_actor_state_item::set_value_text(LPCSTR text)
+{
+	if (m_value)
+		m_value->TextItemControl()->SetText(text);
+}
+
+void ui_actor_state_item::set_regeneration(float percentPerSecond, float maximum)
+{
+    string32 number;
+    // Positive panel values need no prefix; negative values retain their minus.
+    ConditionUi::FormatNumber(number, percentPerSecond, ConditionUi::DecimalSeparator(), false);
+    set_value_text(number);
+    if (m_progress)
+        m_progress->SetProgressPosImmediate(percentPerSecond / maximum);
+    const bool overflow = percentPerSecond > maximum;
+    if (m_overflow)
+        m_overflow->Show(overflow);
+    if (m_overflow_fill)
+        m_overflow_fill->Show(overflow);
+}
+
+void ui_actor_state_item::set_bleeding(float intensity)
+{
+    string32 number;
+    // Ceil the scaled float, including tiny positive bleeding. Never cap the number.
+    xr_sprintf(number, sizeof(number), "%.0f", std::ceil(intensity));
+    set_value_text(number);
+    if (m_progress)
+        m_progress->SetProgressPosImmediate(intensity / ConditionUi::BleedingMaximum);
+    const bool overflow = intensity > ConditionUi::BleedingMaximum;
+    if (m_overflow)
+        m_overflow->Show(overflow);
+    if (m_overflow_fill)
+        m_overflow_fill->Show(overflow);
+}
+
+// Use the unclamped ratio: 100 points itself is not overflow.
+void ui_actor_state_item::set_protection_overflow(float ratio)
+{
+    const bool overflow = ratio > 1.0f;
+    if (m_overflow)
+        m_overflow->Show(overflow);
+    if (m_overflow_fill)
+        m_overflow_fill->Show(overflow);
+}
+
+void ui_actor_state_item::set_environmental_exposure(ALife::EHitType type, float sourceRatio, float protectionRatio, float opacity)
+{
+    // Both layers compare current values without a lagging equipment animation.
+    if (m_progress)
+        m_progress->SetProgressPosImmediate(protectionRatio);
+    if (!m_environmental_exposure)
+        return;
+    const bool visible = sourceRatio > 0.0f && opacity > 0.0f;
+    m_environmental_exposure->Show(visible);
+    if (!visible)
+        return;
+    const auto color = Protection::GetSourceColor(type);
+    clamp(opacity, 0.0f, 1.0f);
+    const u32 alpha = u32(255.0f * opacity);
+    m_environmental_exposure->m_UIProgressItem.SetTextureColor(color_rgba(color.r, color.g, color.b, alpha));
+    m_environmental_exposure->SetProgressPosImmediate(sourceRatio);
 }

@@ -1,5 +1,7 @@
 #include "stdafx.h"
 #include "ui_af_params.h"
+#include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 
 #include "../Actor.h"
@@ -57,6 +59,13 @@ LPCSTR af_immunity_section_names[] = // ALife::EInfluenceType
 	"fire_wound_immunity",
 	"explosion_immunity",
 	"strike_immunity",
+};
+
+// These rows are indexed by influence, not by EHitType.
+static const ALife::EHitType af_zone_hit_types[] =
+{
+    ALife::eHitTypeRadiation, ALife::eHitTypeBurn, ALife::eHitTypeChemicalBurn,
+    ALife::eHitTypeTelepatic, ALife::eHitTypeShock
 };
 
 LPCSTR af_restore_section_names[] = // ALife::EConditionRestoreType
@@ -163,6 +172,7 @@ void CUIArtefactParams::InitFromXml( CUIXml& xml )
 		m_af_slots = new UIArtefactParamItem();
 		m_af_slots->Init(xml, "af_slots");
 		m_af_slots->SetAutoDelete(false);
+		m_af_slots->SetNoSign(true); // liczba pojemnikow bez wiodacego "+"
 
 		name = g_pStringTable->translate("st_prop_artefact").c_str();
 		m_af_slots->SetCaption(name);
@@ -234,9 +244,18 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			{
 				continue;
 			}
-			max_val = actor->conditions().GetZoneMaxPower((ALife::EInfluenceType)i);
-			val /= max_val;
-			m_immunity_item[i]->SetValue(val * pInvItem.GetCondition());
+            if (i < ALife::infl_max_count)
+            {
+                const ALife::EHitType hit_type = af_zone_hit_types[i];
+                max_val = actor->conditions().GetZoneMaxPower(hit_type);
+                m_immunity_item[i]->SetProtectionRatio(Protection::DisplayRatio(val * pInvItem.GetCondition(), max_val));
+            }
+            else
+            {
+                max_val = actor->conditions().GetZoneMaxPower((ALife::EInfluenceType)i);
+                val /= max_val;
+                m_immunity_item[i]->SetValue(val * pInvItem.GetCondition());
+            }
 
 			pos.set(m_immunity_item[i]->GetWndPos());
 			pos.y = h;
@@ -254,11 +273,24 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			}
 
 			val = pSettings->r_float(af_section, af_restore_section_names[i]);
-			if (fis_zero(val))
+			if ((i == ALife::eHealthRestoreSpeed || i == ALife::ePowerRestoreSpeed) ? val == 0.0f : fis_zero(val))
 			{
 				continue;
 			}
-			m_restore_item[i]->SetValue(val * pInvItem.GetCondition());
+            if ((i == ALife::eHealthRestoreSpeed || i == ALife::ePowerRestoreSpeed) && ConditionUi::RegenerationUnitsEnabled())
+            {
+                m_restore_item[i]->SetCaption(g_pStringTable->translate(i == ALife::eHealthRestoreSpeed
+                    ? "ui_uip_item_reg_health" : "ui_uip_item_reg_power").c_str());
+                m_restore_item[i]->SetRegenerationRate(val * pInvItem.GetCondition());
+            }
+            else if (i == ALife::eRadiationRestoreSpeed && ConditionUi::RadiationUnitsEnabled())
+			{
+				LPCSTR key = val > 0.0f ? "ui_uip_item_rad_emission" : "ui_uip_item_rad_absorption";
+				m_restore_item[i]->SetCaption(g_pStringTable->translate(key).c_str());
+				m_restore_item[i]->SetRadiationRate(val * pInvItem.GetCondition());
+			}
+			else
+				m_restore_item[i]->SetValue(val * pInvItem.GetCondition());
 
 			pos.set(m_restore_item[i]->GetWndPos());
 			pos.y = h;
@@ -356,7 +388,7 @@ void UIArtefactParamItem::SetValue( float value )
 {
 	value *= m_magnitude;
 	string32	buf;
-	xr_sprintf( buf, "%+.0f", value );
+	xr_sprintf( buf, m_no_sign ? "%.0f" : "%+.0f", value );
 	
 	string256 str;
 	if ( m_unit_str.size() )
@@ -386,4 +418,44 @@ void UIArtefactParamItem::SetValue( float value )
 		}
 	}
 
+}
+
+void UIArtefactParamItem::SetProtectionRatio(float ratio)
+{
+    string64 text;
+    ConditionUi::FormatProtectionPoints(text, ratio);
+    m_value->SetText(text);
+    m_value->SetTextColor(ratio < 0.0f ? red_clr : green_clr);
+    if (m_texture_minus.size())
+        m_caption->InitTexture(ratio < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIArtefactParamItem::SetRadiationRate(float value)
+{
+	string64 text;
+	ConditionUi::FormatRadiationRate(text, value);
+	m_value->SetText(text);
+	m_value->SetTextColor(ConditionUi::RadiationColor(value));
+	// Radiation emission is harmful; absorption (a negative rate) is beneficial.
+	if (m_texture_minus.size())
+		m_caption->InitTexture(value > 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIArtefactParamItem::SetRegenerationRate(float value)
+{
+    m_regeneration_rate = value;
+    m_has_regeneration_rate = true;
+    string64 text;
+    ConditionUi::FormatRegenerationRate(text, value);
+    m_value->SetText(text);
+    m_value->SetTextColor(value < 0.0f ? red_clr : green_clr);
+    if (m_texture_minus.size())
+        m_caption->InitTexture(value < 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
+}
+
+void UIArtefactParamItem::Update()
+{
+    if (m_has_regeneration_rate)
+        SetRegenerationRate(m_regeneration_rate);
+    CUIWindow::Update();
 }

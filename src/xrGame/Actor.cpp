@@ -32,6 +32,7 @@
 #include "../xrEngine/xr_input.h"
 //
 #include "Actor.h"
+#include "ProtectionValues.h"
 #include "ActorAnimation.h"
 #include "actor_anim_defs.h"
 #include "HudItem.h"
@@ -255,6 +256,8 @@ CActor::~CActor()
 
 void CActor::reinit	()
 {
+	m_artefact_update_time = 0.0f;
+    m_environmental_exposure.Reset();
 	character_physics_support()->movement()->CreateCharacter		();
 	character_physics_support()->movement()->SetPhysicsRefObject	(this);
 	CEntityAlive::reinit						();
@@ -616,6 +619,10 @@ void	CActor::Hit(SHit* pHDS)
 		R_ASSERT2	(0, err );
 	
 	}
+    // Observe raw hit power before artefacts, armour and immunity modifiers.
+    // The engine clock pauses with gameplay; opening a paused menu keeps the reading.
+    if (g_Alive())
+        m_environmental_exposure.Record(HDS.hit_type, HDS.damage(), Device.dwTimeGlobal);
 #ifdef DEBUG
 	if(ph_dbg_draw_mask.test(phDbgCharacterControl)) {
 		DBG_OpenCashedDraw();
@@ -2590,20 +2597,14 @@ void CActor::OnItemBelt		(CInventoryItem *inventory_item, const SInvItemPlace& p
 
 void CActor::UpdateArtefactsOnBeltAndOutfit()
 {
-	static float update_time = 0;
-
-	float f_update_time = 0;
-
-	if(update_time<ARTEFACTS_UPDATE_TIME)
-	{
-		update_time += conditions().fdelta_time();
+	// Include this update's time before checking the batching threshold.
+	// Previously the update that applied effects discarded its own delta.
+	m_artefact_update_time += _max(0.0f, conditions().fdelta_time());
+	if (m_artefact_update_time < ARTEFACTS_UPDATE_TIME)
 		return;
-	}
-	else
-	{
-		f_update_time	= update_time;
-		update_time		= 0.0f;
-	}
+
+	const float f_update_time = m_artefact_update_time;
+	m_artefact_update_time = 0.0f;
 
 	for (const PIItem item : inventory().m_belt)
 	{
@@ -2684,6 +2685,28 @@ float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type)
 	}
 
 	return sum;
+}
+
+Protection::ExposureReading CActor::GetEnvironmentalExposure(ALife::EHitType hit_type) const
+{
+    return m_environmental_exposure.Get(hit_type, Device.dwTimeGlobal);
+}
+
+float CActor::GetEquipmentProtection(ALife::EHitType hit_type)
+{
+    const auto outfit = GetOutfit();
+    const auto helmet = GetHelmet();
+    const float outfitProtection = outfit ? Protection::EquipmentContribution(outfit->GetDefHitTypeProtection(hit_type), hit_type) : 0.0f;
+    const float helmetProtection = helmet ? Protection::EquipmentContribution(helmet->GetDefHitTypeProtection(hit_type), hit_type) : 0.0f;
+    if (Protection::IsZoneType(hit_type))
+    {
+        // The number, bar and overflow marker use the tooltip's raw-hit threshold.
+        // Artefacts multiply incoming hits; their raw coefficients are not armour.
+        const auto threshold = Protection::EffectiveThreshold(outfitProtection, helmetProtection,
+            conditions().GetEnvironmentalProtectionBoost(hit_type), HitArtefactsOnBelt(1.0f, hit_type));
+        return threshold.attainable ? threshold.power : 0.0f;
+    }
+    return GetProtection_ArtefactsOnBelt(hit_type) + outfitProtection + helmetProtection;
 }
 
 void	CActor::SetZoomRndSeed		(s32 Seed)
@@ -2841,25 +2864,7 @@ float CActor::GetRestoreSpeed( ALife::EConditionRestoreType const& type )
 	switch ( type )
 	{
 	case ALife::eHealthRestoreSpeed:
-	{
-		res = conditions().change_v().m_fV_HealthRestore;
-		res += conditions().V_SatietyHealth() * ( (conditions().GetSatiety() > 0.0f) ? 1.0f : -1.0f );
-		res += conditions().V_ThirstHealth() * ( (conditions().GetThirst() > 0.0f) ? 1.0f : -1.0f );
-
-		for (const PIItem item : inventory().m_belt)
-		{
-			if (CArtefact* artefact = item->cast_artefact())
-			{
-				res += (artefact->m_fHealthRestoreSpeed * artefact->GetCondition());
-			}
-		}
-
-		if (CCustomOutfit* outfit = GetOutfit())
-		{
-			res += outfit->m_fHealthRestoreSpeed;
-		}
-		break;
-	}
+		return conditions().GetRegenerationSources(true).Total();
 	case ALife::eRadiationRestoreSpeed:
 	{	
 		for (const PIItem item : inventory().m_belt)
@@ -2913,29 +2918,7 @@ float CActor::GetRestoreSpeed( ALife::EConditionRestoreType const& type )
 		break;
 	}
 	case ALife::ePowerRestoreSpeed:
-	{
-		res = conditions().GetSatietyPower();
-
-		for (const PIItem item : inventory().m_belt)
-		{
-			if (CArtefact* artefact = item->cast_artefact())
-			{
-				res += (artefact->m_fPowerRestoreSpeed * artefact->GetCondition());
-			}
-		}
-
-		if (CCustomOutfit* outfit = GetOutfit())
-		{
-			res += outfit->m_fPowerRestoreSpeed;
-			VERIFY(outfit->m_fPowerLoss!=0.0f);
-			res /= outfit->m_fPowerLoss;
-		}
-		else
-		{
-			res /= 0.5f;
-		}
-		break;
-	}
+		return conditions().GetRegenerationSources(false).Total();
 	case ALife::eBleedingRestoreSpeed:
 	{
 		res = conditions().change_v().m_fV_WoundIncarnation;
