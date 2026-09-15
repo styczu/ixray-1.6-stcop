@@ -46,6 +46,11 @@ public:
 	bool show_result(const char* values);
 	void FitToWidth(float Width, bool WrapText = true);
 	float GetRequiredWidth();
+	bool is_regeneration() const;
+	ALife::EHitType protection_type() const;
+	bool is_protection() const;
+	// Ochrony i regeneracja maja dluzsza wartosc z jednostka, wiec zajmuja caly wiersz.
+	bool is_full_width_row() const { return is_regeneration() || is_protection(); }
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
