@@ -17,7 +17,7 @@ sprzętu.
 - `verify_clock.py` — test zachowania czasu na rzeczywistej funkcji z podanego
   checkoutu, z małymi zastępnikami klas silnika; wymaga Python 3 i `g++`.
 - `patch.json` — baza, commit, suma kontrolna i lista plików.
-- Gałąź źródłowa: `codex/equipment-condition-time`, jeden commit ponad czystym
+- Gałąź źródłowa: `fix/equipment-condition-time`, jeden commit ponad czystym
   upstreamem. Gałąź z pracami nad panelem pozostaje osobno.
 
 Aktualny eksport przygotowano na bazie `6c793faee008d83f86cec2429d39d7aa39b5bc66`
@@ -53,7 +53,7 @@ git -C NOWY_IXRAY am --keep-cr --3way PAKIET/0001-fix-equipment-condition-time.p
 
 ## Aktualizacja patcha
 
-Gałąź `codex/equipment-condition-time` utrzymuj jako samą poprawkę na bazie
+Gałąź `fix/equipment-condition-time` utrzymuj jako samą poprawkę na bazie
 wybranej wersji upstreamu. Można przenieść jej pojedynczy commit na nową bazę
 przez rebase/cherry-pick w osobnym checkoutcie, rozwiązać ewentualne konflikty,
 uruchomić test i dopiero wtedy wyeksportować commit ponownie:
