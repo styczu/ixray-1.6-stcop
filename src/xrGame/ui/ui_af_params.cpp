@@ -1,5 +1,7 @@
 #include "StdAfx.h"
 #include "ui_af_params.h"
+#include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 
 #include "../Actor.h"
@@ -222,16 +224,20 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 		h = m_Prop_line->GetWndPos().y + m_Prop_line->GetWndSize().y;
 	}
 
-	const auto setValue = [&](UIArtefactParamItem* item, float value)
+	const auto place = [&](UIArtefactParamItem* item)
     {
-        item->SetValue(value);
-
         Fvector2 pos = item->GetWndPos();
         pos.y = h;
         item->SetWndPos(pos);
 
         h += item->GetWndSize().y;
         AttachChild(item);
+    };
+
+	const auto setValue = [&](UIArtefactParamItem* item, float value)
+    {
+        item->SetValue(value);
+        place(item);
     };
 
 	if (m_disp_condition && is_artefact() && static_cast<CArtefact*>(&pInvItem)->DegradationRate())
@@ -255,6 +261,13 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			{
 				continue;
 			}
+			if (!m_immunity_item[id]->GetLegacyMode() && Protection::IsZoneType(id))
+			{
+				// Surowy wspolczynnik x100 (0.02 -> +2), bez przelicznika sily z mechaniki.
+				m_immunity_item[id]->SetAbsorption(val * pInvItem.GetCondition());
+				place(m_immunity_item[id]);
+				continue;
+			}
 			if (!m_immunity_item[id]->GetLegacyMode())
 			{
 				max_val = actor->conditions().GetZoneMaxPower(id);
@@ -274,8 +287,29 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 
 			float actor_val = READ_IF_EXISTS(pSettings, r_float, "actor_condition", af_actor_param_names[id], 1.0f);
 			val = READ_IF_EXISTS(pSettings, r_float, af_section, restore_section, 0.0f);
-			if (fis_zero(val))
+			const bool unitRow = !m_restore_item[id]->GetLegacyMode();
+			const bool regenerationRow = unitRow && (id == ALife::eHealthRestoreSpeed || id == ALife::ePowerRestoreSpeed)
+				&& ConditionUi::RegenerationUnitsEnabled();
+			const bool radiationRow = unitRow && id == ALife::eRadiationRestoreSpeed && ConditionUi::RadiationUnitsEnabled();
+			// Tempo regeneracji jest male, wiec wiersz znika tylko przy dokladnym zerze.
+			if (regenerationRow ? val == 0.0f : fis_zero(val))
 			{
+				continue;
+			}
+			if (regenerationRow)
+			{
+				m_restore_item[id]->SetCaption(g_pStringTable->translate(id == ALife::eHealthRestoreSpeed
+					? "ui_uip_item_reg_health" : "ui_uip_item_reg_power").c_str());
+				m_restore_item[id]->SetRegenerationRate(val * pInvItem.GetCondition());
+				place(m_restore_item[id]);
+				continue;
+			}
+			if (radiationRow)
+			{
+				const char* key = val > 0.0f ? "ui_uip_item_rad_emission" : "ui_uip_item_rad_absorption";
+				m_restore_item[id]->SetCaption(g_pStringTable->translate(key).c_str());
+				m_restore_item[id]->SetRadiationRate(val * pInvItem.GetCondition());
+				place(m_restore_item[id]);
 				continue;
 			}
 			if (m_restore_item[id]->GetLegacyMode())
