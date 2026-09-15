@@ -22,8 +22,10 @@ Gałęzie, wdrażanie, mechanika dodatków i konwencje są opisane w
   z patchem do cudzego drzewa, opisy commitów nie.
 - Dostosowuj się do formatowania otoczenia (tabulatory, `IC`, `R_ASSERT`) i nie
   refaktoryzuj przy okazji — pakiety poprawek muszą dać się nałożyć na inną wersję.
-- `patches/` jest łapane przez `.gitignore` (reguła `patch*/` z upstreamu). Nowe pliki
-  w pakietach wymagają `git add -f`.
+- **Gałąź źródłowa `fix/*` / `feature/*` niesie kod poprawki i testy, a `patches/<nazwa>/`
+  na `build/tmz` to przenośne artefakty pakietów** generowane z tej gałęzi. `.gitignore`
+  wyłącza `patches/` z upstreamowej reguły `patch*/`, więc `git status` i zwykłe
+  `git add` działają; `patch_tmp/` i podobne dalej są ignorowane.
 - Testy w `tests/` uruchamia się wprost (`python3 tests/<rodzina>/<test>.py`); **żadne
   CI ich nie odpala**. Wymagają `g++` z ASan/UBSan.
 
