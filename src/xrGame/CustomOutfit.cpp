@@ -167,6 +167,40 @@ float CCustomOutfit::GetBoneArmor(s16 element)
 	return m_boneProtection->getBoneArmor(element);
 }
 
+// Maksimum progu przebicia po kosciach krytych przez warstwe.
+// Wartosc ujemna w danych to znacznik "ta warstwa nie kryje tej kosci",
+// wiec takie kosci sa pomijane, a brak jakiejkolwiek krytej kosci daje -1.
+// Wpis "default" jest swiadomie pominiety: w danych gry nie wystepuje,
+// a jego zerowa wartosc domyslna udawalaby oslone tam, gdzie jej nie ma.
+static float _MaxBoneArmor(const SBoneProtections* bp, float condition)
+{
+	if (bp == nullptr)
+		return -1.0f;
+
+	float best = -1.0f;
+	for (SBoneProtections::storage_type::const_iterator it = bp->m_bones_koeff.begin();
+		 it != bp->m_bones_koeff.end(); ++it)
+	{
+		if (it->second.armor > best)
+			best = it->second.armor;
+	}
+
+	if (best < 0.0f)
+		return -1.0f;
+
+	return best * condition;
+}
+
+float CCustomOutfit::GetMaxBoneArmor() const
+{
+	return _MaxBoneArmor(m_boneProtection, GetCondition());
+}
+
+float CCustomOutfit::GetHitFractionActor() const
+{
+	return (m_boneProtection != nullptr) ? m_boneProtection->m_fHitFracActor : 1.0f;
+}
+
 float CCustomOutfit::HitThroughArmor(float hit_power, s16 element, float ap, bool& add_wound, ALife::EHitType hit_type)
 {
 	float NewHitPower = hit_power;
