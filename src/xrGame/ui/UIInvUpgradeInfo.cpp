@@ -224,7 +224,7 @@ bool UIInvUpgradeInfo::init_upgrade(Upgrade_type* upgr, CInventoryItem* inv_item
 	new_pos.y = m_prereq->GetWndPos().y + m_prereq->GetWndSize().y + 5.0f;
 	m_properties_wnd->SetWndPos(new_pos);
 
-	m_properties_wnd->set_upgrade_info(*m_upgrade);
+	m_properties_wnd->set_upgrade_info(*m_upgrade, inv_item->cast_helmet() == nullptr);
 
 	// this wnd
 	Fvector2 new_size;
