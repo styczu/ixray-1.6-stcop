@@ -21,9 +21,20 @@ class CUIArrow;
 class CUIStackPanel;
 class CInventoryOwner;
 class CActor;
+class CCustomOutfit;
+class CHelmet;
 
 class ui_actor_state_item;
 class ui_actor_state_row;
+
+// Prog przebicia dla sekcji sylwetki: 0 = to, co kryje glowe (helm albo
+// zintegrowany kaptur kombinezonu), 1 = reszta. -1 = nic nie kryje.
+// Tabela kosci siedzi w UIActorStateInfo.cpp - delegaty wyrazen wolaja to
+// stad, zeby jej nie dublowac.
+namespace ActorArmor
+{
+	float SectionValue(CActor* actor, int section);
+}
 
 class ui_actor_state_wnd final : public CUIWindow
 {
@@ -58,6 +69,7 @@ public:
 private:
 	ui_actor_state_item*	m_state[stt_count]{};
 	UIHint*					m_hint_wnd = nullptr;
+	UIHint*					m_environment_hint_wnd = nullptr;
 	bool					m_listMode = false;
 	CUIStackPanel*			m_stateList = nullptr;
 	xr_vector<ui_actor_state_row*> m_listRows;
@@ -81,6 +93,20 @@ private:
 			void			UpdateActorInfoList		( CActor* actor );
 			void			SetListValue			( EStateType type, float normalized );
 			void			update_round_states		(EStateType stt_type, float initial, float max_power);
+
+			// Wiersz klasy pancerza: liczba "glowa/korpus" oraz tooltip
+			// z rozbiciem na grupy kosci.
+			void			UpdateArmorInfo			(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet);
+
+			// Podpowiedzi, ktore musza pokazac wyliczona liczbe (skazenie, krwawienie).
+			// System wyrazen nie sklada napisow, wiec tekst powstaje w C++.
+            void            UpdateBleedingInfo(CActor* actor);
+			void			UpdateRateHints			(CActor* actor);
+            void UpdateProtectionHints(CActor* actor);
+            // Ochrona bojowa: rozszarpanie/uderzenie/wybuch (prog absolutny) i
+            // balistyka (absorpcja pancerza + mnoznik trudnosci). Liczba, pasek,
+            // trojkat i podpowiedz - wszystko w C++, bez wyrazen XML.
+            void UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet);
 
 public:
 			static EStateType ParseStateType		( LPCSTR name );
@@ -144,6 +170,10 @@ class ui_actor_state_item final : public UIHintWindow
 
 protected:
 	CUIStatic*				m_static;
+	CUIStatic*				m_value = nullptr;
+    CUIStatic* m_overflow = nullptr;
+    CUIStatic* m_overflow_fill = nullptr;
+    CUIProgressBar* m_environmental_exposure = nullptr;
 	CUIStatic*				m_static2;
 	CUIStatic*				m_static3;
 	CUIProgressShape*		m_sensor;
@@ -153,11 +183,19 @@ protected:
 
 public:
 	CUIProgressBar*			m_progress;
+    bool m_regeneration = false;
+    bool m_bleeding = false;
+    void set_bleeding(float intensity);
+    void set_protection_overflow(float ratio);
+    void set_environmental_exposure(ALife::EHitType type, float sourceRatio, float protectionRatio, float opacity);
+    void set_regeneration(float percentPerSecond, float maximum);
 					ui_actor_state_item		();
 	virtual			~ui_actor_state_item	();
 			void	init_from_xml			( CUIXml& xml, const char* path );
 	
+			void	set_value_text			( LPCSTR text );
 			bool	set_text				( float value ); // 0..1
+			bool	set_text_str			( LPCSTR text ); // dowolny napis w tym samym statyku
 			bool	set_progress			( float value ); // 0..1
 			bool	set_progress_shape		( float value ); // 0..1
 			int		set_arrow				( float value ); // 0..1
