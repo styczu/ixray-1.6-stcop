@@ -1,12 +1,19 @@
 # Codex project instructions
 
-Before doing any work in this repository, read `CLAUDE.md` in the repository root.
+Before doing any work in this repository, read:
 
-Treat `CLAUDE.md` as the primary source of project-specific instructions,
-conventions, workflows, and constraints. It points to the shared project
-documentation, which applies to this repository as well.
+1. `/home/tmz/Projects/ixray-docs/README.md`
+   — shared IX-Ray project rules, repository map, workflow rules, and documentation router.
 
-Follow those instructions unless they conflict with higher-priority
+2. `/home/tmz/Projects/ixray-docs/CODEX.md`
+   — Codex-specific workflow, subagent delegation, planning, implementation,
+   and review policy.
+
+3. `CLAUDE.md`
+   — repository-specific instructions, conventions, constraints, and links
+   to additional documentation relevant to this repository.
+
+Follow all applicable instructions unless they conflict with higher-priority
 Codex/system instructions.
 
 When modifying code:
