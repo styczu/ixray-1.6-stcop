@@ -1,0 +1,14 @@
+{
+  "name": "inventory-drop-preview",
+  "branch": "feature/inventory-drop-preview",
+  "original_integrated_commit": "15e6b828d14bc9ee7c8f0594feff49d14cc8bd0b",
+  "original_parent": "36e469d8fb3775505d5f8b90a54e026cd58588e7",
+  "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "patch": "0001-fix-inventory-drop-preview.patch",
+  "sha256": "4324fb0665ce780e5593e44888ed80744622fcd08ff8318aba54eac4ef7d9083",
+  "dependencies": [
+    "inventory-drop-cell"
+  ],
+  "ui_changes": false,
+  "format": "git format-patch --stdout --full-index --no-signature; git am --keep-cr --3way"
+}

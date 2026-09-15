@@ -1,0 +1,931 @@
+From 15e6b828d14bc9ee7c8f0594feff49d14cc8bd0b Mon Sep 17 00:00:00 2001
+From: tmz <styczu@gmail.com>
+Date: Mon, 14 Sep 2026 12:23:07 +0200
+Subject: [PATCH] =?UTF-8?q?Podgl=C4=85d=20kom=C3=B3rek,=20w=20kt=C3=B3re?=
+ =?UTF-8?q?=20trafi=20przeci=C4=85gany=20przedmiot?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Podczas przeciągania podświetla komórki, które przedmiot zajmie: jedną dla
+apteczki 1x1, dwie dla broni 2x1, cały blok dla kombinezonu. Zielono, gdy
+przedmiot się tam zmieści, czerwono, gdy miejsce jest zajęte i zadziała
+automatyczne rozmieszczenie.
+
+Żeby podgląd nie mógł skłamać, decyzja została wyjęta z SetItem do
+CUIDragDropListEx::PredictDrop. SetItem woła teraz tę funkcję zamiast
+własnej kopii warunków, a podgląd pyta ją o dokładnie tę samą pozycję,
+którą dostanie SetItem, czyli CUIDragItem::GetPosition(). Zachowanie
+samego upuszczania nie zmienia się.
+
+Dwa parametry domyślne w kontenerze, oba potrzebne tylko podglądowi:
+
+  IsRoomFree(..., ignore) - przeciągany przedmiot wciąż zajmuje swoje
+  komórki, bo usuwa go dopiero RemoveItem w OnItemDrop. Bez tego broń 2x1
+  przesuwana o jedno pole zawsze pokazywałaby "zajęte".
+
+  FindSimilar(..., skip) - przy przeciąganiu wewnątrz jednej listy
+  przedmiot nadal jest jej dzieckiem, więc R_ASSERT(i != itm) wywaliłby
+  grę. Ścieżka rozmieszczania nie podaje skip i asercję zachowuje.
+
+CUIDragDropReferenceList ma własne SetItem, które podmienia zawartość
+komórki zamiast jej odmówić, więc dostaje własne PredictDrop - inaczej
+zajęty szybki slot świeciłby na czerwono, choć przedmiot i tak by tam
+wszedł.
+
+Rysowanie w CUICellContainer::DrawDropPreview, po ikonach, żeby
+podświetlenie zajętej komórki nie schowało się pod ikoną. Modulacja
+istniejącej tekstury siatki kolorem wierzchołka - bez nowych shaderów,
+tekstur i bez zmian w gamedata. Pomijane są listy z virtual_cells, gdzie
+przedmiot i tak jest centrowany, oraz listy jednokomórkowe, czyli kosz
+o komórce 340x768.
+
+Podgląd pokazuje pozycję w siatce, a nie to, czy zasady gry pozwolą na
+ruch - CUIActorMenu::OnItemDrop może odrzucić przedmiot niezależnie.
+
+tests/inventory-drop/test_drop_preview.py kompiluje produkcyjne
+PredictDrop, PickCell, ValidCell, IsRoomFree, FindSimilar i GetItemPos
+i sprawdza wolną komórkę, zajętą komórkę, kursor poza siatką, nachodzenie
+na własne komórki, wielokomórkowy obrys, zamianę osi na liście pionowej
+oraz łączenie w stos.
+
+Kompiluje też produkcyjne Draw i DrawDropPreview z podstawionym
+rendererem. Podgląd liczy komórki bezwzględnie, a pętla siatki od
+pierwszej widocznej, więc test sprawdza, że oba przebiegi rysują ten sam
+kwadrat na tych samych współrzędnych - dla listy zwykłej, przewiniętej,
+z odstępami między komórkami i dla przedmiotu 2x1. Sprawdza także, że
+podświetlenia nie ma tam, gdzie nie powinno: virtual_cells, obca lista,
+brak custom_placement i lista jednokomórkowa.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01RxySzhoKaG8quQJnGaYkjH
+---
+ src/xrGame/ui/UIDragDropListEx.cpp        | 148 +++++-
+ src/xrGame/ui/UIDragDropListEx.h          |  15 +-
+ src/xrGame/ui/UIDragDropReferenceList.cpp |  20 +
+ src/xrGame/ui/UIDragDropReferenceList.h   |   1 +
+ tests/inventory-drop/test_drop_preview.py | 552 ++++++++++++++++++++++
+ 5 files changed, 725 insertions(+), 11 deletions(-)
+ create mode 100644 tests/inventory-drop/test_drop_preview.py
+
+diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
+index 67e4dbf57535604edbc27509b60c8473bd4b92e6..ce24bd14d56030667ff5586f7d0afbe3363d54d0 100644
+--- a/src/xrGame/ui/UIDragDropListEx.cpp
++++ b/src/xrGame/ui/UIDragDropListEx.cpp
+@@ -13,6 +13,11 @@ namespace
+ {
+ // Horizontal UV span for one cell when inventory grid is disabled (must match GetTexUVLT sliding room).
+ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
++
++// Tints for the cells the dragged item is about to land in. They modulate the cell
++// texture, so no extra shader or asset is needed.
++constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
++constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+ }
+ 
+ void CUICell::Clear()
+@@ -450,19 +455,65 @@ void CUIDragDropListEx::SetItem(CUICellItem* itm) //auto
+ 
+ bool CUIDragDropListEx::SetItem(CUICellItem* itm, Fvector2 abs_pos) // start at cursor pos
+ {
+-	if (m_container->AddSimilar(itm))
+-		return true;
++	Irect dest_cells;
+ 
+-	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
++	switch (PredictDrop(itm, abs_pos, dest_cells))
++	{
++	case dpMerge:
++		m_container->AddSimilar(itm);
++		break;
+ 
+-	if (m_container->ValidCell(dest_cell_pos) && m_container->IsRoomFree(dest_cell_pos, itm->GetGridSize()))
+-		SetItem(itm, dest_cell_pos);
+-	else
++	case dpPlace:
++		SetItem(itm, Ivector2().set(dest_cells.x1, dest_cells.y1));
++		break;
++
++	default:
+ 		SetItem(itm);
++		break;
++	}
+ 
+ 	return true;
+ }
+ 
++// What SetItem(itm, abs_pos) above is going to do, without doing it. The drop preview
++// asks this too, so a highlight can never disagree with where the item ends up.
++// out_cells is the inclusive range of cells that would be taken, empty when there is
++// nothing to point at. skip is an item whose own cells count as free: the dragged one,
++// which still sits in this list until OnItemDrop removes it.
++EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip)
++{
++	out_cells.set(0, 0, -1, -1);
++
++	if (IsGrouping())
++	{
++		if (CUICellItem* similar = m_container->FindSimilar(itm, skip))
++		{
++			const Ivector2 pos	= m_container->GetItemPos(similar);
++			Ivector2 size		= similar->GetGridSize();
++
++			if (GetVerticalPlacement())
++				std::swap(size.x, size.y);
++
++			out_cells.set(pos.x, pos.y, pos.x + size.x - 1, pos.y + size.y - 1);
++			return dpMerge;
++		}
++	}
++
++	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
++
++	if (!m_container->ValidCell(dest_cell_pos))
++		return dpAuto;
++
++	// PlaceItemAtPos swaps the grid size on vertical lists, so the preview has to too.
++	Ivector2 size = itm->GetGridSize();
++	if (GetVerticalPlacement())
++		std::swap(size.x, size.y);
++
++	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
++
++	return m_container->IsRoomFree(dest_cell_pos, itm->GetGridSize(), skip) ? dpPlace : dpAuto;
++}
++
+ void CUIDragDropListEx::SetItem(CUICellItem* itm, Ivector2 cell_pos) // start at cell
+ {
+ 	if(m_container->AddSimilar(itm))	return;
+@@ -593,7 +644,7 @@ bool CUICellContainer::AddSimilar(CUICellItem* itm)
+ 	return (i != nullptr);
+ }
+ 
+-CUICellItem* CUICellContainer::FindSimilar(CUICellItem* itm)
++CUICellItem* CUICellContainer::FindSimilar(CUICellItem* itm, CUICellItem* skip)
+ {
+ 	xrCriticalSectionGuard guard(csUi);
+ 	for (CUIWindow* child : m_ChildWndList)
+@@ -603,6 +654,11 @@ CUICellItem* CUICellContainer::FindSimilar(CUICellItem* itm)
+ #else
+ 		CUICellItem* i = (CUICellItem*)(child);
+ #endif
++		// The preview runs while the dragged item is still a child of this list and
++		// passes itself in; the placement path never does, so it keeps the check.
++		if (i == skip)
++			continue;
++
+ 		R_ASSERT(i != itm);
+ 		if (i->EqualTo(itm))
+ 		{
+@@ -746,7 +802,7 @@ bool CUICellContainer::HasFreeSpace		(const Ivector2& _size)
+ 	return false;
+ }
+ 
+-bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size)
++bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size, const CUICellItem* ignore)
+ {
+ 	Ivector2 tmp;
+ 
+@@ -761,7 +817,9 @@ bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size)
+ 
+ 			CUICell& C				= GetCellAt(tmp);
+ 
+-			if(!C.Empty())			return		false;
++			// The dragged item still holds its own cells while the preview runs; the
++			// real drop frees them with RemoveItem before it gets here.
++			if(!C.Empty() && C.m_item!=ignore)	return		false;
+ 		}
+ 	return true;
+ }
+@@ -1113,9 +1171,81 @@ void CUICellContainer::Draw()
+ 		}
+ 	}
+ 
++	DrawDropPreview			(tgt_cells, drawLT, f_len, sp_len);
++
+ 	UI().PopScissor			();
+ }
+ 
++// Tint the cells the dragged item would take. Drawn after the items so the highlight
++// of an occupied cell is not hidden under its icon.
++void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len)
++{
++	CUIDragItem* drag_item = CUIDragDropListEx::m_drag_item;
++	if (!drag_item || drag_item->BackList() != m_pParentDragDropList)
++		return;
++
++	CUICellItem* itm = drag_item->ParentItem();
++	if (!itm)
++		return;
++
++	// Virtual cells center the item instead of putting it in a cell, and a single cell
++	// list - the trash panel is one 340x768 cell - has nothing to point at.
++	if (m_pParentDragDropList->GetVirtualCells() || (m_cellsCapacity.x <= 1 && m_cellsCapacity.y <= 1))
++		return;
++
++	// OnItemDrop ignores a move inside a list that does not allow custom placement.
++	if (itm->OwnerList() == m_pParentDragDropList && !m_pParentDragDropList->GetCustomPlacement())
++		return;
++
++	Irect cells;
++	const EDropPreview preview = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), cells, itm);
++
++	Irect shown;
++	shown.x1 = _max(cells.x1, tgt_cells.x1);
++	shown.y1 = _max(cells.y1, tgt_cells.y1);
++	shown.x2 = _min(cells.x2, tgt_cells.x2);
++	shown.y2 = _min(cells.y2, tgt_cells.y2);
++
++	if (shown.x2 < shown.x1 || shown.y2 < shown.y1)
++		return;
++
++	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
++								 {0.0f,0.0f},{1.0f,1.0f},{0.0f,1.0f}};
++	const float texUSpan = m_isInventoryGridDisabled ? kInventoryCellUSpanGridDisabled : 0.25f;
++	const Fvector2 uvs[6] =		{{0.0f,0.0f},{texUSpan,0.0f},{texUSpan,1.0f},
++								 {0.0f,0.0f},{texUSpan,1.0f},{0.0f,1.0f}};
++
++	const u32 color = (preview==dpAuto) ? kDropPreviewBlocked : kDropPreviewFree;
++
++	UIRender->StartPrimitive	(u32((shown.width()+1)*(shown.height()+1)*6), IUIRender::ptTriList, UI().m_currentPointType);
++
++	for ( int x = shown.x1; x <= shown.x2; ++x )
++	{
++		for ( int y = shown.y1; y <= shown.y2; ++y )
++		{
++			Fvector2			rect_offset;
++			rect_offset.set		( (draw_lt.x + (f_len.x+sp_len.x)*(x-tgt_cells.x1)), (draw_lt.y + (f_len.y+sp_len.y)*(y-tgt_cells.y1)) );
++
++			Fvector2			tp;
++			GetTexUVLT			(tp, x, y, 0);
++
++			for ( u32 k = 0; k < 6; ++k )
++			{
++				const Fvector2& p	= pts[k];
++				const Fvector2& uv	= uvs[k];
++				UIRender->PushPoint(iFloor( rect_offset.x + p.x*(f_len.x) )-0.5f,
++									iFloor( rect_offset.y + p.y*(f_len.y) )-0.5f,
++									0,
++									color,
++									tp.x+uv.x, tp.y+uv.y);
++			}//for k
++		}//for y
++	}// for x
++
++	UIRender->SetShader( *hShader );
++	UIRender->FlushPrimitive();
++}
++
+ void CUICellContainer::clear_select_armament()
+ {
+ 	UI_CELLS_VEC_IT itb = m_cells.begin();
+diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
+index abd4cb3b41d383f859a298ca57c34fd17dcbb07e..19ef024f80b0d707929e494bd43deba946993bf1 100644
+--- a/src/xrGame/ui/UIDragDropListEx.h
++++ b/src/xrGame/ui/UIDragDropListEx.h
+@@ -26,6 +26,15 @@ struct CUICell{
+ typedef xr_vector<CUICell>			UI_CELLS_VEC;
+ typedef UI_CELLS_VEC::iterator		UI_CELLS_VEC_IT;
+ 
++// What dropping an item at a given position does: merge it into a similar stack,
++// place it at the cell it points at, or hand it to automatic placement.
++enum EDropPreview
++{
++	dpMerge,
++	dpPlace,
++	dpAuto,
++};
++
+ class CUIDragDropListEx :public CUIWindow, public CUIWndCallback
+ {
+ private:
+@@ -118,6 +127,7 @@ public:
+ 			virtual void	SetItem				(CUICellItem* itm); //auto
+ 			virtual bool	SetItem				(CUICellItem* itm, Fvector2 abs_pos);  // start at cursor pos
+ 			virtual void	SetItem				(CUICellItem* itm, Ivector2 cell_pos); // start at cell
++	virtual EDropPreview	PredictDrop			(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
+ 					bool	CanSetItem			(CUICellItem* itm);
+ 			
+ 			u32				ItemsCount			();
+@@ -180,6 +190,7 @@ public:
+ 
+ protected:
+ 	virtual		void			Draw				();
++				void			DrawDropPreview		(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len);
+ 
+ 	IC const	Ivector2&		CellsCapacity		()								{return m_cellsCapacity;};	
+ 				void			SetCellsCapacity	(const Ivector2& c);
+@@ -191,10 +202,10 @@ protected:
+ 				Ivector2		GetItemPos			(CUICellItem* itm);
+ 				Ivector2		FindFreeCell		(const Ivector2& size);
+ 				bool			HasFreeSpace		(const Ivector2& size);
+-				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size);
++				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const CUICellItem* ignore = nullptr);
+ 				
+ 				bool			AddSimilar			(CUICellItem* itm);
+-				CUICellItem*	FindSimilar			(CUICellItem* itm);
++				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);
+ 
+ 				void			PlaceItemAtPos		(CUICellItem* itm, Ivector2& cell_pos);
+ 				CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
+diff --git a/src/xrGame/ui/UIDragDropReferenceList.cpp b/src/xrGame/ui/UIDragDropReferenceList.cpp
+index ef2e8ec192c69bb3e170f6c0acf7e37ac05ca4d5..f2b9aa1302e4831c3001dee069f99ab317a2bf29 100644
+--- a/src/xrGame/ui/UIDragDropReferenceList.cpp
++++ b/src/xrGame/ui/UIDragDropReferenceList.cpp
+@@ -38,6 +38,26 @@ void CUIDragDropReferenceList::SetItem(CUICellItem* itm)
+ 	inherited::SetItem(itm);
+ }
+ 
++// Mirrors SetItem below, which replaces whatever sits in the cell instead of refusing
++// it - without this the preview would paint an occupied quick slot as blocked. Keep the
++// two in step.
++EDropPreview CUIDragDropReferenceList::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* /*skip*/)
++{
++	out_cells.set(0, 0, -1, -1);
++
++	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
++	if (!m_container->ValidCell(dest_cell_pos))
++		return dpAuto;
++
++	const Ivector2 size = itm->GetGridSize();
++	if (size.x > m_container->m_cellsCapacity.x || size.y > m_container->m_cellsCapacity.y)
++		return dpAuto;
++
++	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
++
++	return dpPlace;
++}
++
+ bool CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)
+ {
+ 	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
+diff --git a/src/xrGame/ui/UIDragDropReferenceList.h b/src/xrGame/ui/UIDragDropReferenceList.h
+index d853cd3cfa60d649d7bf79ac40bc2892ad32ca6f..b1ce1f1170e8afdf53a8cd62d8683da17ddfb666 100644
+--- a/src/xrGame/ui/UIDragDropReferenceList.h
++++ b/src/xrGame/ui/UIDragDropReferenceList.h
+@@ -17,6 +17,7 @@ public:
+ 	virtual void SetItem(CUICellItem* itm);
+ 	virtual bool SetItem(CUICellItem* itm, Fvector2 abs_pos);
+ 	virtual void SetItem(CUICellItem* itm, Ivector2 cell_pos);
++	virtual EDropPreview PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
+ 	virtual CUICellItem* RemoveItem(CUICellItem* itm, bool force_root);
+ 
+ 	void Initialize();
+diff --git a/tests/inventory-drop/test_drop_preview.py b/tests/inventory-drop/test_drop_preview.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..47b87ce53307841c44d735bc6753bc5f0b737c22
+--- /dev/null
++++ b/tests/inventory-drop/test_drop_preview.py
+@@ -0,0 +1,552 @@
++"""Compile the production drop prediction and the production cell drawing, then check
++that the cells highlighted while dragging are the cells SetItem would fill, and that
++the highlight is painted on exactly the same pixels as the grid cell underneath."""
++from pathlib import Path
++import os
++import re
++import subprocess
++import tempfile
++
++root = Path(os.environ.get('IXRAY_TEST_ROOT', str(Path(__file__).resolve().parents[2])))
++
++
++def body(text, signature):
++    start = text.index('{', text.index(signature))
++    depth, end = 1, start + 1
++    while depth:
++        if text[end] == '{':
++            depth += 1
++        elif text[end] == '}':
++            depth -= 1
++        end += 1
++    return text[start:end]
++
++
++drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
++
++# The cell tints and the UV span live in the anonymous namespace at the top of the file.
++constants = '\n'.join(re.findall(r'^constexpr (?:float|u32) k\w+\s*=.*?;$', drag_drop, re.M))
++assert 'kDropPreviewFree' in constants and 'kInventoryCellUSpanGridDisabled' in constants, constants
++
++bodies = {
++    'PREDICT_BODY': body(drag_drop, 'EDropPreview CUIDragDropListEx::PredictDrop('),
++    'PICK_BODY': body(drag_drop, 'Ivector2 CUICellContainer::PickCell('),
++    'VALID_BODY': body(drag_drop, 'bool CUICellContainer::ValidCell('),
++    'ROOM_BODY': body(drag_drop, 'bool CUICellContainer::IsRoomFree('),
++    'SIMILAR_BODY': body(drag_drop, 'CUICellItem* CUICellContainer::FindSimilar('),
++    'CELL_AT_BODY': body(drag_drop, 'CUICell& CUICellContainer::GetCellAt('),
++    'ITEM_POS_BODY': body(drag_drop, 'Ivector2 CUICellContainer::GetItemPos('),
++    'TEX_UV_BODY': body(drag_drop, 'void CUICellContainer::GetTexUVLT('),
++    'TOP_CELL_BODY': body(drag_drop, 'Ivector2 CUICellContainer::TopVisibleCell('),
++    'IN_RANGE_BODY': body(drag_drop, 'u32 CUICellContainer::GetCellsInRange('),
++    'DRAW_BODY': body(drag_drop, 'void CUICellContainer::Draw('),
++    'PREVIEW_BODY': body(drag_drop, 'void CUICellContainer::DrawDropPreview('),
++}
++
++code = r'''
++#include <cassert>
++#include <cmath>
++#include <cstdio>
++#include <vector>
++#include <utility>
++#include <algorithm>
++
++#define R_ASSERT(x) assert(x)
++typedef unsigned int u32;
++typedef unsigned char u8;
++static const float EPS = 0.0000001f;
++constexpr u32 color_rgba(u32 r, u32 g, u32 b, u32 a) { return ((a & 0xffu) << 24) | ((b & 0xffu) << 16) | ((g & 0xffu) << 8) | (r & 0xffu); }
++
++struct Fvector2
++{
++    float x, y;
++    Fvector2& set(float a, float b) { x = a; y = b; return *this; }
++    Fvector2& sub(const Fvector2& o) { x -= o.x; y -= o.y; return *this; }
++    Fvector2& mul(float s) { x *= s; y *= s; return *this; }
++};
++
++struct Ivector2
++{
++    int x, y;
++    Ivector2& set(int a, int b) { x = a; y = b; return *this; }
++    Ivector2& add(const Ivector2& o) { x += o.x; y += o.y; return *this; }
++    bool operator==(const Ivector2& o) const { return x == o.x && y == o.y; }
++};
++
++template <class T> struct RectVec;
++template <> struct RectVec<int> { typedef Ivector2 type; };
++template <> struct RectVec<float> { typedef Fvector2 type; };
++
++// x1..y2 and lt/rb overlap the same storage, the way _rect does in the engine.
++template <class T> struct Rect
++{
++    typedef typename RectVec<T>::type Tvector;
++    union
++    {
++        struct { T x1, y1, x2, y2; };
++        struct { Tvector lt, rb; };
++    };
++    Rect() { x1 = y1 = x2 = y2 = T(0); }
++    Rect& set(T a, T b, T c, T d) { x1 = a; y1 = b; x2 = c; y2 = d; return *this; }
++    T width() const { return x2 - x1; }
++    T height() const { return y2 - y1; }
++    bool operator==(const Rect& o) const { return x1 == o.x1 && y1 == o.y1 && x2 == o.x2 && y2 == o.y2; }
++    bool empty() const { return x2 < x1 || y2 < y1; }
++};
++typedef Rect<int> Irect;
++typedef Rect<float> Frect;
++
++static int iFloor(float f) { return (int)std::floor(f); }
++template <class T> static T _min(T a, T b) { return a < b ? a : b; }
++template <class T> static T _max(T a, T b) { return a > b ? a : b; }
++template <class T> static void clamp(T& v, const T& lo, const T& hi) { if (v < lo) v = lo; else if (v > hi) v = hi; }
++struct xrCriticalSectionGuard { explicit xrCriticalSectionGuard(int&) {} };
++
++enum EDropPreview { dpMerge, dpPlace, dpAuto };
++
++// --- render capture -------------------------------------------------------------
++struct Point { int batch; float x, y, z; u32 color; float u, v; };
++struct IUIRender { enum ePrimitiveType { ptTriList }; enum ePointType { pttLIT }; };
++
++struct RenderCapture
++{
++    std::vector<Point> points;
++    int batch = -1;
++    int shader_sets = 0;
++    void StartPrimitive(u32, int, int) { ++batch; }
++    void PushPoint(float x, float y, float z, u32 c, float u, float v) { points.push_back(Point{batch, x, y, z, c, u, v}); }
++    void SetShader(int) { ++shader_sets; }
++    void FlushPrimitive() {}
++    void reset() { points.clear(); batch = -1; shader_sets = 0; }
++    int batches() const { return batch + 1; }
++    std::vector<Point> of(int b) const
++    {
++        std::vector<Point> res;
++        for (const Point& p : points)
++            if (p.batch == b)
++                res.push_back(p);
++        return res;
++    }
++};
++static RenderCapture capture;
++static RenderCapture* UIRender = &capture;
++
++// ClientToScreenScaled is a plain per-axis scale; deliberately non-uniform here so an
++// axis mix-up in the preview cannot pass.
++struct UiCore
++{
++    int m_currentPointType = 0;
++    Frect scissor;
++    int scissor_depth = 0;
++    void ClientToScreenScaled(Fvector2& dest, float left, float top) const { dest.set(left * 1.25f, top * 1.4f); }
++    void PushScissor(const Frect& r) { scissor = r; ++scissor_depth; }
++    void PopScissor() { --scissor_depth; }
++};
++static UiCore ui_core_instance;
++static UiCore& UI() { return ui_core_instance; }
++static struct { u32 dwFrame; } Device = { 7 };
++
++struct ui_shader { int v = 0; int& operator*() { return v; } };
++
++CONSTANTS
++
++struct CUICellContainer;
++struct CUICellItem;
++
++struct CUIDragItem;
++
++struct CUIDragDropListEx
++{
++    static CUIDragItem* m_drag_item;
++    CUICellContainer* m_container = nullptr;
++    u32 back_color = 0xFFFFFFFF;
++    bool grouping = false, vertical = false, virtual_cells = false, custom_placement = true;
++    int scroll_pos = 0;
++    Frect client_area;
++
++    bool IsGrouping() { return grouping; }
++    bool GetVerticalPlacement() { return vertical; }
++    bool GetVirtualCells() { return virtual_cells; }
++    bool GetCustomPlacement() { return custom_placement; }
++    int ScrollPos() { return scroll_pos; }
++    void GetClientArea(Frect& r) { r = client_area; }
++
++    const Ivector2& CellsCapacity();
++    EDropPreview PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
++};
++
++struct CUIWindow { virtual ~CUIWindow() {} };
++
++// Only the parts of a cell item the prediction and the drawing touch.
++struct CUICellItem : CUIWindow
++{
++    Ivector2 grid;
++    int kind;
++    CUIDragDropListEx* owner = nullptr;
++    bool m_cur_mark = false, m_selected = false, m_select_armament = false, m_select_equipped = false;
++    u32 m_drawn_frame = 0;
++    int drawn = 0;
++    CUICellItem(int w, int h, int k) : kind(k) { grid.set(w, h); }
++    const Ivector2& GetGridSize() { return grid; }
++    bool EqualTo(CUICellItem* o) { return kind != 0 && kind == o->kind; }
++    CUIDragDropListEx* OwnerList() { return owner; }
++    void Draw() { ++drawn; }
++};
++
++struct CUIDragItem
++{
++    CUIDragDropListEx* back = nullptr;
++    CUICellItem* parent = nullptr;
++    Fvector2 pos;
++    CUIDragDropListEx* BackList() { return back; }
++    CUICellItem* ParentItem() { return parent; }
++    Fvector2 GetPosition() { return pos; }
++};
++CUIDragItem* CUIDragDropListEx::m_drag_item = nullptr;
++
++struct CUICell
++{
++    CUICellItem* m_item;
++    CUICell() : m_item(nullptr) {}
++    bool Empty() { return m_item == nullptr; }
++    bool operator==(const CUICell& o) const { return m_item == o.m_item; }
++};
++typedef std::vector<CUICell> UI_CELLS_VEC;
++typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
++
++struct CUICellContainer
++{
++    CUIDragDropListEx* m_pParentDragDropList = nullptr;
++    Ivector2 m_cellsCapacity, m_cellSize, m_cellSpacing;
++    Fvector2 origin;
++    bool m_isInventoryGridDisabled = false;
++    ui_shader hShader;
++    UI_CELLS_VEC m_cells, m_cells_to_draw;
++    std::vector<CUIWindow*> m_ChildWndList;
++    int csUi = 0;
++
++    void GetAbsolutePos(Fvector2& p) { p = origin; }
++    const Ivector2& CellSize() { return m_cellSize; }
++    const Ivector2& CellsSpacing() { return m_cellSpacing; }
++
++    bool ValidCell(const Ivector2& pos) const VALID_BODY
++    CUICell& GetCellAt(const Ivector2& pos) CELL_AT_BODY
++    Ivector2 PickCell(const Fvector2& abs_pos) PICK_BODY
++    bool IsRoomFree(const Ivector2& pos, const Ivector2& _size, const CUICellItem* ignore = nullptr) ROOM_BODY
++    CUICellItem* FindSimilar(CUICellItem* itm, CUICellItem* skip = nullptr) SIMILAR_BODY
++    Ivector2 GetItemPos(CUICellItem* itm) ITEM_POS_BODY
++    void GetTexUVLT(Fvector2& uv, u32 col, u32 row, u8 select_mode) TEX_UV_BODY
++    Ivector2 TopVisibleCell() TOP_CELL_BODY
++    u32 GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res) IN_RANGE_BODY
++    void Draw() DRAW_BODY
++    void DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len) PREVIEW_BODY
++
++    // Test scaffolding, not production code.
++    void reset(int cols, int rows)
++    {
++        m_cellsCapacity.set(cols, rows);
++        m_cells.assign(size_t(cols * rows), CUICell());
++        m_ChildWndList.clear();
++    }
++    void put(CUICellItem* itm, int cx, int cy)
++    {
++        Ivector2 size = itm->grid;
++        if (m_pParentDragDropList->GetVerticalPlacement())
++            std::swap(size.x, size.y);
++        for (int x = 0; x < size.x; ++x)
++            for (int y = 0; y < size.y; ++y)
++            {
++                Ivector2 p;
++                p.set(cx + x, cy + y);
++                GetCellAt(p).m_item = itm;
++            }
++        itm->owner = m_pParentDragDropList;
++        m_ChildWndList.push_back(itm);
++    }
++    Fvector2 aim(int cx, int cy) const
++    {
++        Fvector2 p;
++        p.set(origin.x + float((m_cellSize.x + m_cellSpacing.x) * cx) + float(m_cellSize.x) * 0.5f,
++              origin.y + float((m_cellSize.y + m_cellSpacing.y) * cy) + float(m_cellSize.y) * 0.5f);
++        return p;
++    }
++};
++
++const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
++
++EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip)
++PREDICT_BODY
++
++// --- helpers --------------------------------------------------------------------
++
++// The grid quads carry a per cell UV fingerprint once the grid texture is in its
++// "disabled" mode, so a quad can be traced back to the cell it was drawn for.
++static std::vector<Point> quad_for(const std::vector<Point>& pts, const Fvector2& tp)
++{
++    for (size_t i = 0; i + 6 <= pts.size(); i += 6)
++        if (std::fabs(pts[i].u - tp.x) < 1e-6f && std::fabs(pts[i].v - tp.y) < 1e-6f)
++            return std::vector<Point>(pts.begin() + long(i), pts.begin() + long(i) + 6);
++    return std::vector<Point>();
++}
++
++static void same_pixels(const std::vector<Point>& a, const std::vector<Point>& b)
++{
++    assert(a.size() == 6 && b.size() == 6);
++    for (int k = 0; k < 6; ++k)
++    {
++        assert(a[size_t(k)].x == b[size_t(k)].x);
++        assert(a[size_t(k)].y == b[size_t(k)].y);
++        assert(a[size_t(k)].u == b[size_t(k)].u);
++        assert(a[size_t(k)].v == b[size_t(k)].v);
++    }
++}
++
++struct Scene
++{
++    CUIDragDropListEx list;
++    CUICellContainer box;
++    CUIDragItem drag;
++
++    Scene(int cols, int rows, int cell, int space)
++    {
++        list.m_container = &box;
++        box.m_pParentDragDropList = &list;
++        box.m_isInventoryGridDisabled = true;   // unique UV per cell
++        box.m_cellSize.set(cell, cell);
++        box.m_cellSpacing.set(space, 0);
++        box.origin.set(702.0f, 119.0f);
++        box.reset(cols, rows);
++        list.client_area.set(702.0f, 119.0f, 702.0f + float((cell + space) * cols), 119.0f + float(cell * rows));
++        drag.back = &list;
++        CUIDragDropListEx::m_drag_item = nullptr;
++    }
++
++    // Draw once with no drag (grid only) and once with the item hovering, then return
++    // the grid batch and the preview batch of the second pass.
++    void run(CUICellItem* itm, int cx, int cy)
++    {
++        drag.parent = itm;
++        drag.pos = box.aim(cx, cy);
++        CUIDragDropListEx::m_drag_item = &drag;
++        capture.reset();
++        box.Draw();
++    }
++};
++
++int main()
++{
++    // ---- prediction --------------------------------------------------------------
++    // gamedata/configs/ui/actor_menu.xml, dragdrop_bag: 7x14 cells of 41x41.
++    Scene bag(7, 14, 41, 0);
++    CUIDragDropListEx& list = bag.list;
++    CUICellContainer& box = bag.box;
++
++    CUICellItem medkit(1, 1, 1);
++    Irect cells;
++    Irect want;
++
++    // Empty cell: the item goes exactly where the cursor points.
++    assert(list.PredictDrop(&medkit, box.aim(3, 5), cells) == dpPlace);
++    assert(cells == want.set(3, 5, 3, 5));
++
++    // Occupied cell: automatic placement takes over, but the cells the cursor points
++    // at are still reported so the preview can mark them as blocked.
++    CUICellItem bread(1, 1, 2);
++    box.put(&bread, 3, 5);
++    assert(list.PredictDrop(&medkit, box.aim(3, 5), cells) == dpAuto);
++    assert(cells == want.set(3, 5, 3, 5));
++
++    // Outside the grid: nothing to point at.
++    Fvector2 above;
++    above.set(box.origin.x + 20.0f, box.origin.y - 20.0f);
++    assert(list.PredictDrop(&medkit, above, cells) == dpAuto);
++    assert(cells.empty());
++
++    // A 2x1 weapon nudged one cell to the right overlaps the cell it is leaving. The
++    // real drop calls RemoveItem first, so the preview has to ignore the dragged item
++    // - otherwise moving a weapon by one cell would always look blocked.
++    box.reset(7, 14);
++    CUICellItem rifle(2, 1, 3);
++    box.put(&rifle, 0, 0);
++    assert(list.PredictDrop(&rifle, box.aim(1, 0), cells, &rifle) == dpPlace);
++    assert(cells == want.set(1, 0, 2, 0));
++    assert(list.PredictDrop(&rifle, box.aim(1, 0), cells, nullptr) == dpAuto);
++
++    // The footprint is the whole item, not just the cell under the cursor.
++    box.reset(7, 14);
++    CUICellItem suit(2, 3, 4);
++    assert(list.PredictDrop(&suit, box.aim(1, 2), cells) == dpPlace);
++    assert(cells == want.set(1, 2, 2, 4));
++
++    // A footprint running off the right edge cannot be placed.
++    assert(list.PredictDrop(&suit, box.aim(6, 2), cells) == dpAuto);
++
++    // Vertical lists swap the footprint, the way PlaceItemAtPos does.
++    list.vertical = true;
++    box.reset(7, 14);
++    assert(list.PredictDrop(&suit, box.aim(1, 2), cells) == dpPlace);
++    assert(cells == want.set(1, 2, 3, 3));
++    list.vertical = false;
++
++    // Grouping wins over position: the item merges into the stack it matches, wherever
++    // the cursor is, and the preview points at that stack.
++    box.reset(7, 14);
++    list.grouping = true;
++    CUICellItem stack(1, 1, 1);
++    box.put(&stack, 2, 3);
++    assert(list.PredictDrop(&medkit, box.aim(6, 12), cells) == dpMerge);
++    assert(cells == want.set(2, 3, 2, 3));
++
++    // A different item still lands under the cursor.
++    CUICellItem bolt(1, 1, 9);
++    assert(list.PredictDrop(&bolt, box.aim(6, 12), cells) == dpPlace);
++    assert(cells == want.set(6, 12, 6, 12));
++
++    // Dragging the stack itself inside its own list must not match itself.
++    assert(list.PredictDrop(&stack, box.aim(6, 12), cells, &stack) == dpPlace);
++    assert(cells == want.set(6, 12, 6, 12));
++
++    // Two identical stacks: the one that is not being dragged is the merge target.
++    CUICellItem other(1, 1, 1);
++    box.put(&other, 4, 4);
++    assert(list.PredictDrop(&stack, box.aim(6, 12), cells, &stack) == dpMerge);
++    assert(cells == want.set(4, 4, 4, 4));
++    list.grouping = false;
++
++    // ---- the highlight lands on the cell it claims --------------------------------
++    // The preview is drawn from its own copy of the cell geometry; these checks pin it
++    // to the pixels the grid pass itself uses for the same cell.
++    {
++        Scene s(7, 14, 41, 0);
++        CUICellItem pill(1, 1, 5);
++        s.run(&pill, 4, 6);
++
++        assert(capture.batches() == 2);
++        Fvector2 tp;
++        s.box.GetTexUVLT(tp, 4, 6, 0);
++        const std::vector<Point> grid_quad = quad_for(capture.of(0), tp);
++        const std::vector<Point> preview = capture.of(1);
++        assert(!grid_quad.empty());
++        same_pixels(grid_quad, preview);
++        assert(preview[0].color == kDropPreviewFree);
++    }
++
++    // Scrolled list: the preview indexes cells absolutely while the grid pass counts
++    // from the first visible row, so this is where an off by one would show up.
++    {
++        Scene s(7, 14, 41, 0);
++        s.list.scroll_pos = 41 * 3;
++        CUICellItem pill(1, 1, 5);
++        s.run(&pill, 4, 6);
++
++        assert(s.box.TopVisibleCell().y == 3);
++        assert(capture.batches() == 2);
++        Fvector2 tp;
++        s.box.GetTexUVLT(tp, 4, 6, 0);
++        same_pixels(quad_for(capture.of(0), tp), capture.of(1));
++    }
++
++    // Spaced list, like the belt: cell pitch is not the cell size.
++    {
++        Scene s(5, 1, 41, 24);
++        CUICellItem pill(1, 1, 5);
++        const Ivector2 cell = s.box.PickCell(s.box.aim(3, 0));
++        s.run(&pill, 3, 0);
++
++        assert(capture.batches() == 2);
++        Fvector2 tp;
++        s.box.GetTexUVLT(tp, u32(cell.x), u32(cell.y), 0);
++        same_pixels(quad_for(capture.of(0), tp), capture.of(1));
++    }
++
++    // A 2x1 item highlights both of its cells, each on top of its own grid cell.
++    {
++        Scene s(7, 14, 41, 0);
++        CUICellItem gun(2, 1, 6);
++        s.run(&gun, 2, 8);
++
++        assert(capture.batches() == 2);
++        const std::vector<Point> preview = capture.of(1);
++        assert(preview.size() == 12);
++        for (int i = 0; i < 2; ++i)
++        {
++            Fvector2 tp;
++            s.box.GetTexUVLT(tp, u32(2 + i), 8, 0);
++            same_pixels(quad_for(capture.of(0), tp), quad_for(preview, tp));
++        }
++    }
++
++    // Blocked cells get the other tint.
++    {
++        Scene s(7, 14, 41, 0);
++        CUICellItem pill(1, 1, 5);
++        CUICellItem taken(1, 1, 7);
++        s.box.put(&taken, 4, 6);
++        s.run(&pill, 4, 6);
++
++        assert(capture.batches() == 2);
++        assert(capture.of(1)[0].color == kDropPreviewBlocked);
++        assert(kDropPreviewBlocked != kDropPreviewFree);
++        // Drawn after the item, so the tint is not hidden under the icon.
++        assert(taken.drawn == 1);
++    }
++
++    // ---- lists that must not be highlighted ---------------------------------------
++    {
++        Scene s(7, 14, 41, 0);
++        CUICellItem pill(1, 1, 5);
++
++        capture.reset();
++        s.box.Draw();
++        assert(capture.batches() == 1);          // no drag at all
++
++        s.list.virtual_cells = true;
++        s.run(&pill, 4, 6);
++        assert(capture.batches() == 1);          // equipment slots center the item
++        s.list.virtual_cells = false;
++
++        s.drag.back = nullptr;
++        capture.reset();
++        s.box.Draw();
++        assert(capture.batches() == 1);          // cursor is over another list
++        s.drag.back = &s.list;
++
++        s.box.put(&pill, 0, 0);                  // now owned by this list
++        s.list.custom_placement = false;
++        s.run(&pill, 4, 6);
++        assert(capture.batches() == 1);          // OnItemDrop ignores this move
++        s.list.custom_placement = true;
++    }
++    {
++        Scene trash(1, 1, 340, 0);               // dragdrop_trash: one huge cell
++        CUICellItem pill(1, 1, 5);
++        trash.run(&pill, 0, 0);
++        assert(capture.batches() == 1);
++    }
++
++    std::printf("ok\n");
++    return 0;
++}
++'''
++
++code = code.replace('CONSTANTS', constants)
++for token, text in bodies.items():
++    code = code.replace(token, text)
++
++with tempfile.TemporaryDirectory(prefix='ixray-drop-preview-') as directory:
++    source = Path(directory) / 'test.cpp'
++    source.write_text(code)
++    binary = source.with_suffix('')
++    subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
++                    # GetItemPos is extracted verbatim and carries the upstream indentation.
++                    '-Wno-misleading-indentation',
++                    '-fsanitize=address,undefined', '-g', str(source), '-o', str(binary)], check=True)
++    # LeakSanitizer cannot run inside the desktop sandbox; retain address/UB checks.
++    subprocess.run([str(binary)], check=True,
++                   env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
++
++print('PASS: production PredictDrop and the production Draw/DrawDropPreview pass; free cell, '
++      'blocked cell, off-grid cursor, self-overlap while moving a 2x1, multi-cell footprint, '
++      'vertical swap, grouping merge target and self-match; highlight pixels matched against the '
++      'grid cell for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, '
++      'foreign list, fixed placement, single cell list; ASan/UBSan')

@@ -1,0 +1,12 @@
+{
+  "name": "inventory-drop-cell",
+  "branch": "fix/inventory-drop-cell",
+  "original_integrated_commit": "36e469d8fb3775505d5f8b90a54e026cd58588e7",
+  "original_parent": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "patch": "0001-fix-inventory-drop-cell.patch",
+  "sha256": "5e300b1ea0d51753f04071dbd82304db04579986ce18d48a95d85db132caf787",
+  "dependencies": [],
+  "ui_changes": false,
+  "format": "git format-patch --stdout --full-index --no-signature; git am --keep-cr --3way"
+}
