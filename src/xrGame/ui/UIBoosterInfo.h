@@ -27,6 +27,7 @@ protected:
 	UIBoosterInfoItem*	m_booster_time;
 
 	CUIStatic*			m_Prop_line = nullptr;
+	CUIStatic*			m_satiety_note = nullptr;
 
 }; // class CUIBoosterInfo
 
