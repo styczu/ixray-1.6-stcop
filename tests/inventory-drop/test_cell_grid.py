@@ -68,6 +68,7 @@ typedef unsigned int u32;
 typedef unsigned char u8;
 static const float EPS = 0.0000001f;
 constexpr u32 color_rgba(u32 r, u32 g, u32 b, u32 a) { return ((a & 0xffu) << 24) | ((b & 0xffu) << 16) | ((g & 0xffu) << 8) | (r & 0xffu); }
+constexpr u32 subst_alpha(u32 rgba, u32 a) { return (rgba & 0x00ffffffu) | color_rgba(0, 0, 0, a); }
 
 struct Fvector2
 {
