@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "UIBoosterInfo.h"
+#include "UIConditionFormat.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "object_broker.h"
 #include "../EntityCondition.h"
@@ -33,6 +34,7 @@ CUIBoosterInfo::~CUIBoosterInfo()
 	xr_delete(m_booster_intoxication);
 	xr_delete(m_booster_anabiotic);
 	xr_delete(m_booster_time);
+	xr_delete(m_satiety_note);
 	if (m_Prop_line)
 		xr_delete(m_Prop_line);
 }
@@ -141,6 +143,14 @@ void CUIBoosterInfo::InitFromXml(CUIXml& xml)
 		m_booster_time->SetCaption(name);
 	}
 
+	xml.SetLocalRoot(base_node);
+	if (xml.NavigateToNode("regeneration_note"))
+	{
+		m_satiety_note = UIHelper::CreateStatic(xml, "regeneration_note", this);
+		m_satiety_note->SetAutoDelete(false);
+		m_satiety_note->SetTextST("ui_uip_item_reg_satiety");
+		m_satiety_note->AdjustHeightToText();
+	}
 	xml.SetLocalRoot( stored_root );
 }
 
@@ -167,8 +177,12 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 	{
 		if(pSettings->line_exist(section.c_str(), ef_boosters_section_names[i]) && ef_boosters_section_names[i] && m_booster_items[i])
 		{
-			val = pSettings->r_float(section, ef_boosters_section_names[i]) * m_booster_items[i]->m_magnitude;
-			if (std::abs(val) < 1.f)
+			const float raw = pSettings->r_float(section, ef_boosters_section_names[i]);
+			const bool regenerationRow = (i == eBoostHpRestore || i == eBoostPowerRestore) && ConditionUi::RegenerationUnitsEnabled();
+			const bool radiationRow = i == eBoostRadiationRestore && ConditionUi::RadiationUnitsEnabled();
+			val = raw * m_booster_items[i]->m_magnitude;
+			// Wiersze z jednostka pokazuja surowe tempo, wiec male wartosci nie znikaja.
+			if (regenerationRow ? raw == 0.0f : (radiationRow ? fis_zero(raw) : std::abs(val) < 1.f))
 			{
 				continue;
 			}
@@ -205,7 +219,24 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 					break;
 			}
 			val /= max_val;
-			m_booster_items[i]->SetValue(val);
+			if (regenerationRow)
+			{
+				// Wlasne (nominalne) tempo przedmiotu; panel postaci pokazuje efekt zalezny od sytosci.
+				m_booster_items[i]->SetCaption(g_pStringTable->translate(type == eBoostPowerRestore
+					? "ui_uip_item_reg_power" : "ui_uip_item_reg_health").c_str());
+				m_booster_items[i]->SetRegenerationRate(raw / max_val);
+			}
+			else if (radiationRow)
+			{
+				const float rate = raw / max_val;
+				const char* key = rate < 0.0f ? "ui_uip_item_rad_removal" : "ui_uip_item_rad_increase";
+				m_booster_items[i]->SetCaption(g_pStringTable->translate(key).c_str());
+				m_booster_items[i]->SetRadiationRate(rate);
+			}
+			else
+			{
+				m_booster_items[i]->SetValue(val);
+			}
 
 			pos.set(m_booster_items[i]->GetWndPos());
 			pos.y = h;
@@ -314,7 +345,15 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 		val	= pSettings->r_float(section, "boost_time");
 		if(!fis_zero(val))
 		{
-			m_booster_time->SetValue(val * m_booster_time->m_magnitude);
+			if (ConditionUi::RegenerationUnitsEnabled())
+			{
+				m_booster_time->SetCaption(g_pStringTable->translate("ui_uip_item_reg_duration").c_str());
+				m_booster_time->SetDuration(val);
+			}
+			else
+			{
+				m_booster_time->SetValue(val * m_booster_time->m_magnitude);
+			}
 			pos.set(m_booster_time->GetWndPos());
 			pos.y = h;
 			m_booster_time->SetWndPos(pos);
@@ -322,6 +361,13 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
 			h += m_booster_time->GetWndSize().y;
 			AttachChild(m_booster_time);
 		}
+	}
+	if (m_satiety_note && pSettings->line_exist(section, "boost_power_restore") &&
+		pSettings->r_float(section, "boost_power_restore") != 0.0f)
+	{
+		m_satiety_note->SetWndPos(Fvector2().set(0.0f, h));
+		AttachChild(m_satiety_note);
+		h += m_satiety_note->GetHeight();
 	}
 	SetHeight(h);
 }
