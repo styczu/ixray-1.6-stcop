@@ -103,6 +103,7 @@ template <class T> struct Rect
     };
     Rect() { x1 = y1 = x2 = y2 = T(0); }
     Rect& set(T a, T b, T c, T d) { x1 = a; y1 = b; x2 = c; y2 = d; return *this; }
+    Rect& set(const Rect& o) { x1 = o.x1; y1 = o.y1; x2 = o.x2; y2 = o.y2; return *this; }
     T width() const { return x2 - x1; }
     T height() const { return y2 - y1; }
 };
@@ -116,6 +117,13 @@ template <class T> static void clamp(T& v, const T& lo, const T& hi) { if (v < l
 struct xrCriticalSectionGuard { explicit xrCriticalSectionGuard(int&) {} };
 
 enum EDropPreview { dpMerge, dpPlace, dpAuto };
+
+struct SDropPrediction
+{
+    EDropPreview result;
+    Irect attempted_cells;
+    Irect final_cells;
+};
 
 // --- render capture -------------------------------------------------------------
 struct Point { int batch; float x, y, z; u32 color; float u, v; };
@@ -226,10 +234,13 @@ struct CUIDragDropListEx
     void ReinitScrollProduction();
 
     const Ivector2& CellsCapacity();
-    EDropPreview PredictDrop(CUICellItem*, const Fvector2&, Irect& out_cells, CUICellItem* = nullptr)
+    SDropPrediction PredictDrop(CUICellItem*, const Fvector2&, CUICellItem* = nullptr)
     {
-        out_cells.set(0, 0, -1, -1);
-        return dpAuto;
+        SDropPrediction prediction;
+        prediction.result = dpAuto;
+        prediction.attempted_cells.set(0, 0, -1, -1);
+        prediction.final_cells.set(0, 0, -1, -1);
+        return prediction;
     }
 };
 

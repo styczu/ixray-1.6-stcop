@@ -482,16 +482,16 @@ void CUIDragDropListEx::SetItem(CUICellItem* itm) //auto
 
 bool CUIDragDropListEx::SetItem(CUICellItem* itm, Fvector2 abs_pos) // start at cursor pos
 {
-	Irect dest_cells;
+	const SDropPrediction prediction = PredictDrop(itm, abs_pos);
 
-	switch (PredictDrop(itm, abs_pos, dest_cells))
+	switch (prediction.result)
 	{
 	case dpMerge:
 		m_container->AddSimilar(itm);
 		break;
 
 	case dpPlace:
-		SetItem(itm, Ivector2().set(dest_cells.x1, dest_cells.y1));
+		SetItem(itm, Ivector2().set(prediction.final_cells.x1, prediction.final_cells.y1));
 		break;
 
 	default:
@@ -504,12 +504,15 @@ bool CUIDragDropListEx::SetItem(CUICellItem* itm, Fvector2 abs_pos) // start at 
 
 // What SetItem(itm, abs_pos) above is going to do, without doing it. The drop preview
 // asks this too, so a highlight can never disagree with where the item ends up.
-// out_cells is the inclusive range of cells that would be taken, empty when there is
-// nothing to point at. skip is an item whose own cells count as free: the dragged one,
-// which still sits in this list until OnItemDrop removes it.
-EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip)
+// attempted_cells is the inclusive range under the cursor; final_cells is where
+// automatic placement resolves it. skip is an item whose own cells count as free: the
+// dragged one, which still sits in this list until OnItemDrop removes it.
+SDropPrediction CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip)
 {
-	out_cells.set(0, 0, -1, -1);
+	SDropPrediction prediction;
+	prediction.result = dpAuto;
+	prediction.attempted_cells.set(0, 0, -1, -1);
+	prediction.final_cells.set(0, 0, -1, -1);
 
 	if (IsGrouping())
 	{
@@ -521,24 +524,38 @@ EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& ab
 			if (GetVerticalPlacement())
 				std::swap(size.x, size.y);
 
-			out_cells.set(pos.x, pos.y, pos.x + size.x - 1, pos.y + size.y - 1);
-			return dpMerge;
+			prediction.result = dpMerge;
+			prediction.attempted_cells.set(pos.x, pos.y, pos.x + size.x - 1, pos.y + size.y - 1);
+			prediction.final_cells.set(prediction.attempted_cells);
+			return prediction;
 		}
 	}
 
-	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
-
-	if (!m_container->ValidCell(dest_cell_pos))
-		return dpAuto;
-
-	// PlaceItemAtPos swaps the grid size on vertical lists, so the preview has to too.
+	// PlaceItemAtPos swaps the grid size on vertical lists, so both footprints have to too.
 	Ivector2 size = itm->GetGridSize();
 	if (GetVerticalPlacement())
 		std::swap(size.x, size.y);
 
-	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
+	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
 
-	return m_container->IsRoomFree(dest_cell_pos, itm->GetGridSize(), skip) ? dpPlace : dpAuto;
+	if (m_container->ValidCell(dest_cell_pos))
+	{
+		prediction.attempted_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
+
+		if (m_container->IsRoomFree(dest_cell_pos, itm->GetGridSize(), skip))
+		{
+			prediction.result = dpPlace;
+			prediction.final_cells.set(prediction.attempted_cells);
+			return prediction;
+		}
+	}
+
+	Ivector2 final_pos;
+	Ivector2 final_capacity;
+	if (m_container->ResolveFreeCell(itm->GetGridSize(), final_pos, final_capacity, skip))
+		prediction.final_cells.set(final_pos.x, final_pos.y, final_pos.x + size.x - 1, final_pos.y + size.y - 1);
+
+	return prediction;
 }
 
 void CUIDragDropListEx::SetItem(CUICellItem* itm, Ivector2 cell_pos) // start at cell
@@ -804,7 +821,7 @@ CUICellItem* CUICellContainer::RemoveItem(CUICellItem* itm, bool force_root)
 	return					itm;
 }
 
-Ivector2 CUICellContainer::FindFreeCell	(const Ivector2& _size)
+bool CUICellContainer::FindFreeCellInCapacity(const Ivector2& _size, const Ivector2& capacity, Ivector2& out_pos, const CUICellItem* ignore)
 {
 	Ivector2 tmp;
 	Ivector2 size = _size;
@@ -812,44 +829,85 @@ Ivector2 CUICellContainer::FindFreeCell	(const Ivector2& _size)
 	if(m_pParentDragDropList->GetVerticalPlacement())
 		std::swap(size.x, size.y);
 
-	for(tmp.y=0; tmp.y<=m_cellsCapacity.y-size.y; ++tmp.y )
-		for(tmp.x=0; tmp.x<=m_cellsCapacity.x-size.x; ++tmp.x )
-			if(IsRoomFree(tmp,_size))
-				return  tmp;
+	for(tmp.y=0; tmp.y<=capacity.y-size.y; ++tmp.y )
+		for(tmp.x=0; tmp.x<=capacity.x-size.x; ++tmp.x )
+			if(IsRoomFree(tmp, _size, capacity, ignore))
+			{
+				out_pos = tmp;
+				return true;
+			}
+
+	return false;
+}
+
+// Resolve the same row-major first fit as FindFreeCell without changing the list.
+// Rows beyond the current capacity are the empty rows Grow would append.
+bool CUICellContainer::ResolveFreeCell(const Ivector2& _size, Ivector2& out_pos, Ivector2& out_capacity, const CUICellItem* ignore)
+{
+	out_pos.set(-1, -1);
+	out_capacity = m_cellsCapacity;
+
+	Ivector2 size = _size;
+	if(m_pParentDragDropList->GetVerticalPlacement())
+		std::swap(size.x, size.y);
+
+	if(size.x <= 0 || size.y <= 0 || size.x > m_cellsCapacity.x)
+		return false;
+
+	const int max_rows = m_cellsCapacity.y + size.y;
+	for(;;)
+	{
+		if(FindFreeCellInCapacity(_size, out_capacity, out_pos, ignore))
+			return true;
+
+		if(!m_pParentDragDropList->IsAutoGrow() || out_capacity.y >= max_rows)
+			return false;
+
+		++out_capacity.y;
+	}
+}
+
+Ivector2 CUICellContainer::FindFreeCell(const Ivector2& _size)
+{
+	Ivector2 tmp;
+	Ivector2 capacity;
+
+	if(ResolveFreeCell(_size, tmp, capacity))
+	{
+		while(m_cellsCapacity.y < capacity.y)
+			Grow();
+		return tmp;
+	}
 
 	if(m_pParentDragDropList->IsAutoGrow())
 	{
-		Grow	();
-		return							FindFreeCell	(size);
-	}else{
-		m_pParentDragDropList->Compact		();
-		for(tmp.y=0; tmp.y<=m_cellsCapacity.y-size.y; ++tmp.y )
-			for(tmp.x=0; tmp.x<=m_cellsCapacity.x-size.x; ++tmp.x )
-				if(IsRoomFree(tmp,_size))
-					return  tmp;
-
-		R_ASSERT2		(0,"there are no free room to place item");
+		R_ASSERT2(0, "there are no free room to place item");
+		return tmp;
 	}
-	return			tmp;
+
+	// Preserve the existing fixed-grid fallback. It is intentionally not run by
+	// ResolveFreeCell because prediction must not rearrange the list.
+	m_pParentDragDropList->Compact();
+	capacity = m_cellsCapacity;
+	if(FindFreeCellInCapacity(_size, capacity, tmp))
+		return tmp;
+
+	R_ASSERT2(0, "there are no free room to place item");
+	return tmp;
 }
 
 bool CUICellContainer::HasFreeSpace		(const Ivector2& _size)
 {
 	Ivector2 tmp;
-	Ivector2 size = _size;
-
-	if(m_pParentDragDropList->GetVerticalPlacement())
-		std::swap(size.x, size.y);
-
-	for(tmp.y=0; tmp.y<=m_cellsCapacity.y-size.y; ++tmp.y )
-		for(tmp.x=0; tmp.x<=m_cellsCapacity.x-size.x; ++tmp.x )
-			if(IsRoomFree(tmp,_size))
-				return true;
-
-	return false;
+	return FindFreeCellInCapacity(_size, m_cellsCapacity, tmp);
 }
 
 bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size, const CUICellItem* ignore)
+{
+	return IsRoomFree(pos, _size, m_cellsCapacity, ignore);
+}
+
+bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size, const Ivector2& capacity, const CUICellItem* ignore)
 {
 	Ivector2 tmp;
 
@@ -860,9 +918,15 @@ bool CUICellContainer::IsRoomFree(const Ivector2& pos, const Ivector2& _size, co
 	for(tmp.x =pos.x; tmp.x<pos.x+size.x; ++tmp.x)
 		for(tmp.y =pos.y; tmp.y<pos.y+size.y; ++tmp.y)
 		{
-			if(!ValidCell(tmp))		return		false;
+			if(tmp.x < 0 || tmp.y < 0 || tmp.x >= capacity.x || tmp.y >= capacity.y)
+				return false;
 
-			CUICell& C				= GetCellAt(tmp);
+			// A logical capacity larger than m_cellsCapacity represents the rows
+			// automatic placement would append. They contain no items yet.
+			if(!ValidCell(tmp))
+				continue;
+
+			CUICell& C = GetCellAt(tmp);
 
 			// The dragged item still holds its own cells while the preview runs; the
 			// real drop frees them with RemoveItem before it gets here.
@@ -1350,17 +1414,7 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	if (itm->OwnerList() == m_pParentDragDropList && !m_pParentDragDropList->GetCustomPlacement())
 		return;
 
-	Irect cells;
-	const EDropPreview preview = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), cells, itm);
-
-	Irect shown;
-	shown.x1 = _max(cells.x1, tgt_cells.x1);
-	shown.y1 = _max(cells.y1, tgt_cells.y1);
-	shown.x2 = _min(cells.x2, tgt_cells.x2);
-	shown.y2 = _min(cells.y2, tgt_cells.y2);
-
-	if (shown.x2 < shown.x1 || shown.y2 < shown.y1)
-		return;
+	const SDropPrediction prediction = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), itm);
 
 	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
 								 {0.0f,0.0f},{1.0f,1.0f},{0.0f,1.0f}};
@@ -1368,35 +1422,57 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	const Fvector2 uvs[6] =		{{0.0f,0.0f},{texUSpan,0.0f},{texUSpan,1.0f},
 								 {0.0f,0.0f},{texUSpan,1.0f},{0.0f,1.0f}};
 
-	const u32 color = (preview==dpAuto) ? kDropPreviewBlocked : kDropPreviewFree;
-
-	UIRender->StartPrimitive	(u32((shown.width()+1)*(shown.height()+1)*6), IUIRender::ptTriList, UI().m_currentPointType);
-
-	for ( int x = shown.x1; x <= shown.x2; ++x )
+	auto draw_cells = [&](const Irect& cells, u32 color)
 	{
-		for ( int y = shown.y1; y <= shown.y2; ++y )
+		Irect shown;
+		shown.x1 = _max(cells.x1, tgt_cells.x1);
+		shown.y1 = _max(cells.y1, tgt_cells.y1);
+		shown.x2 = _min(cells.x2, tgt_cells.x2);
+		shown.y2 = _min(cells.y2, tgt_cells.y2);
+
+		if (shown.x2 < shown.x1 || shown.y2 < shown.y1)
+			return;
+
+		UIRender->StartPrimitive(u32((shown.width()+1)*(shown.height()+1)*6), IUIRender::ptTriList, UI().m_currentPointType);
+
+		for ( int x = shown.x1; x <= shown.x2; ++x )
 		{
-			Fvector2			rect_offset;
-			rect_offset.set		( (draw_lt.x + (f_len.x+sp_len.x)*(x-tgt_cells.x1)), (draw_lt.y + (f_len.y+sp_len.y)*(y-tgt_cells.y1)) );
-
-			Fvector2			tp;
-			GetTexUVLT			(tp, x, y, 0);
-
-			for ( u32 k = 0; k < 6; ++k )
+			for ( int y = shown.y1; y <= shown.y2; ++y )
 			{
-				const Fvector2& p	= pts[k];
-				const Fvector2& uv	= uvs[k];
-				UIRender->PushPoint(snap_grid_px( rect_offset.x + p.x*(f_len.x) ),
-									snap_grid_px( rect_offset.y + p.y*(f_len.y) ),
-									0,
-									color,
-									tp.x+uv.x, tp.y+uv.y);
-			}//for k
-		}//for y
-	}// for x
+				Fvector2			rect_offset;
+				rect_offset.set		( (draw_lt.x + (f_len.x+sp_len.x)*(x-tgt_cells.x1)), (draw_lt.y + (f_len.y+sp_len.y)*(y-tgt_cells.y1)) );
 
-	UIRender->SetShader( *hShader );
-	UIRender->FlushPrimitive();
+				Fvector2			tp;
+				GetTexUVLT			(tp, x, y, 0);
+
+				for ( u32 k = 0; k < 6; ++k )
+				{
+					const Fvector2& p	= pts[k];
+					const Fvector2& uv	= uvs[k];
+					UIRender->PushPoint(snap_grid_px( rect_offset.x + p.x*(f_len.x) ),
+										snap_grid_px( rect_offset.y + p.y*(f_len.y) ),
+										0,
+										color,
+										tp.x+uv.x, tp.y+uv.y);
+				}//for k
+			}//for y
+		}// for x
+
+		UIRender->SetShader( *hShader );
+		UIRender->FlushPrimitive();
+	};
+
+	if (prediction.result == dpAuto)
+	{
+		draw_cells(prediction.attempted_cells, kDropPreviewBlocked);
+
+		const Irect& attempted = prediction.attempted_cells;
+		const Irect& final = prediction.final_cells;
+		if (attempted.x1 != final.x1 || attempted.y1 != final.y1 || attempted.x2 != final.x2 || attempted.y2 != final.y2)
+			draw_cells(final, kDropPreviewFree);
+	}
+	else
+		draw_cells(prediction.final_cells, kDropPreviewFree);
 }
 
 void CUICellContainer::clear_select_armament()
