@@ -9,6 +9,12 @@ final footprint wybrany przez automatic placement jest zielony. Dla zwykłego
 `dpPlace` istniejący pojedynczy zielony footprint pozostaje bez zmian, podobnie jak
 jednoznaczny target `dpMerge` i semantyka reference-list/quick-slotów.
 
+Pierwsza wersja kodu poprawnie wysyłała geometrię do renderera, ale przy
+`DisableInventoryGrid=true` pozostawała niewidoczna: próbkowała normalny pasek
+`ui_grid_alt.dds`, którego alfa jest celowo równa zero. Drugi commit pakietu używa
+widocznego neutralnego paska atlasu i kompensuje jego alfę przed nałożeniem czerwonego
+lub zielonego koloru. Zwykła tekstura `ui_grid` zachowuje dotychczasową ścieżkę.
+
 **Wymaga wcześniejszego nałożenia `inventory-cell-grid`**, a przez jego zależności także
 `inventory-drop-cell` i `inventory-drop-preview`. `apply.py` sprawdza stabilny marker
 `CellOffsetUI` wniesiony przez `inventory-cell-grid` i odmawia na czystym upstreamie.
@@ -33,7 +39,10 @@ a dopiero rzeczywisty `FindFreeCell()` wykonuje potrzebne `Grow()`.
 `DrawDropPreview()` przy `dpAuto` rysuje attempted footprint na czerwono i różny final
 footprint na zielono. Każdy prostokąt jest osobno przycinany do widocznej części listy,
 więc final po przewinięciu trafia na właściwe komórki. Identyczne prostokąty nie są
-rysowane dwukrotnie.
+rysowane dwukrotnie. Przy ukrytej siatce preview korzysta z neutralnego, widocznego
+paska atlasu zamiast całkowicie przezroczystego paska normalnej komórki. Jego alfa
+`102/255` jest kompensowana alfą wierzchołka `240/255`, co daje zamierzone efektywne
+`96/255` bez zmiany czerwonego i zielonego RGB.
 
 ## Świadome konsekwencje
 
@@ -59,6 +68,9 @@ kompiluje produkcyjne ciała `PredictDrop`, `ResolveFreeCell`, `FindFreeCell`,
 reference-list. Sprawdza między innymi wolne i zajęte miejsce, czerwony attempted i
 zielony final, pełne footprinty wielokomórkowe, same-list remove/drop, vertical
 placement, auto-grow, merge, quick-slot replacement oraz clipping po przewinięciu.
+Test czyta również rzeczywisty DXT5 `ui_grid_alt.dds`: przypina zerową alfę paska 0,
+alfę 102 paska 1, produkcyjny wybór UV oraz kompensację koloru. Osobny przypadek pilnuje
+niezmienionej ścieżki zwykłego `ui_grid`.
 
 Pakiet zweryfikowano na czystym upstreamie
 `6c793faee008d83f86cec2429d39d7aa39b5bc66`: bez zależności `apply.py` odmawia, a po
@@ -66,7 +78,7 @@ kolejnym nałożeniu trzech wcześniejszych pakietów przechodzą check, apply, 
 rozpoznanie poprawki i komplet testów. Wynikowe `src/` i `tests/inventory-drop/` są
 równoważne gałęzi źródłowej.
 
-CI po wypchnięciu 15 września 2026: **zielone**. Dla commita źródłowego
+CI pierwszej wersji z 15 września 2026: **zielone**. Dla commita źródłowego
 `44cd856ff914d736dfdb8a4a0812d3b1c1bb0a83` przeszły
 [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875498) i
 [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875437).
@@ -74,7 +86,11 @@ Dla integracyjnego stanu `build/tmz` `e955faff29a6439ba211c5a34b157b3efea4bc23`
 przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875243)
 i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35026875178).
 
-Test w grze: **nie wykonano**.
+CI drugiego commita, naprawiającego widoczność przy `DisableInventoryGrid`: jeszcze nie
+uruchomiono — wynik zostanie wpisany po wypchnięciu przebudowanego pakietu.
+
+Test w grze: pierwsza wersja została sprawdzona i ujawniła całkowicie niewidoczny
+preview przy `DisableInventoryGrid`; po opisanej wyżej poprawce **nie wykonano**.
 
 ## Użycie
 

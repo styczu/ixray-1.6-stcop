@@ -2,15 +2,17 @@
   "name": "inventory-drop-final-preview",
   "branch": "feature/inventory-drop-final-preview",
   "original_commits": [
-    "44cd856ff914d736dfdb8a4a0812d3b1c1bb0a83"
+    "44cd856ff914d736dfdb8a4a0812d3b1c1bb0a83",
+    "783e1439d00782f68359fec0cda90bdd2133574f"
   ],
   "original_parent": "02915a7da253990a6c8e4eade2c348c4bfb0b75d",
   "integrated_commits": [
-    "a2e993db171451880f5d24ad44e60edcbe809143"
+    "a2e993db171451880f5d24ad44e60edcbe809143",
+    "d29e56cf97ce13c9a1c07b9a4180d4f456a946d8"
   ],
   "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
   "patch": "0001-fix-inventory-drop-final-preview.patch",
-  "sha256": "fbb86160f2e6966632efc225d79826cea464450210b30fe0232d898379b19735",
+  "sha256": "0b6bcc725e3bba191dbec2bc4dcd341945000c5a06c6ad17318201a2df5ef631",
   "dependencies": [
     "inventory-cell-grid"
   ],
