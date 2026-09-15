@@ -3,6 +3,7 @@
 #include "../../xrUI/UIXmlInit.h"
 #include "../../xrUI/UIHelper.h"
 #include "../../xrEngine/string_table.h"
+#include "UIConditionFormat.h"
 
 namespace ItemParamXml
 {
@@ -198,14 +199,25 @@ void UIItemParam::SetValue(float Value, bool ApplyMagnitude)
 	{
 		xr_strconcat(Text, Buffer);
 	}
-	ValueText->SetText(Text);
-
 	constexpr u32 Red = color_argb(255, 210, 50, 50);
-	constexpr u32 Blue = color_argb(255, 44, 172, 246);
 	constexpr u32 Neutral = color_argb(255, 170, 170, 170);
 	const bool IsPositive = IsSignInverse ? Value < 0.0f : Value >= 0.0f;
 	// Consumable panels historically keep both signs gray; artefacts mark harmful values red.
 	const u32 LegacyColor = !ApplyMagnitude || IsPositive ? Neutral : Red;
+	ApplyValueText(Text, IsPositive, LegacyColor);
+}
+
+void UIItemParam::ApplyValueText(const char* Text, bool IsPositive, u32 LegacyColor)
+{
+	if (!ValueText)
+	{
+		return;
+	}
+
+	ValueText->SetText(Text);
+
+	constexpr u32 Red = color_argb(255, 210, 50, 50);
+	constexpr u32 Blue = color_argb(255, 44, 172, 246);
 	const u32 Color = ColorizeValue ? (IsPositive ? Blue : Red) : LegacyColor;
 	const u32 TextColor = ColorizeText ? (IsPositive ? Blue : Red) : LegacyColor;
 	ValueText->SetTextColor(TextColor);
@@ -259,4 +271,53 @@ void UIItemParam::ShowValue(bool IsShown)
 			ValueText->SetText("");
 		}
 	}
+}
+
+void UIItemParam::SetAbsorption(float Immunity)
+{
+	string64 Text;
+	ConditionUi::FormatAbsorption(Text, Immunity);
+	ApplyValueText(Text, Immunity >= 0.0f, Immunity < 0.0f ? color_argb(255, 210, 50, 50) : color_argb(255, 170, 170, 170));
+}
+
+void UIItemParam::SetRadiationRate(float RatePerGameSecond)
+{
+	string64 Text;
+	ConditionUi::FormatRadiationRate(Text, RatePerGameSecond);
+	// Emisja radiacji szkodzi; pochlanianie (ujemne tempo) pomaga.
+	ApplyValueText(Text, RatePerGameSecond <= 0.0f, ConditionUi::RadiationColor(RatePerGameSecond));
+}
+
+void UIItemParam::SetRegenerationRate(float RatePerGameSecond)
+{
+	RegenerationRate = RatePerGameSecond;
+	HasRegenerationRate = true;
+	string64 Text;
+	ConditionUi::FormatRegenerationRate(Text, RatePerGameSecond);
+	ApplyValueText(Text, RatePerGameSecond >= 0.0f, RatePerGameSecond < 0.0f ? color_argb(255, 210, 50, 50) : color_argb(255, 170, 170, 170));
+}
+
+void UIItemParam::SetDuration(float GameSeconds)
+{
+	DurationSeconds = GameSeconds;
+	HasDuration = true;
+	const float Factor = IsGameTypeSingle() ? Device.time_factor() : 1.0f;
+	string32 Number;
+	ConditionUi::FormatNumber(Number, Factor > 0.0f ? GameSeconds / Factor : GameSeconds, ConditionUi::DecimalSeparator(), false);
+	string64 Text;
+	xr_strconcat(Text, Number, " ", g_pStringTable->translate("ui_inv_seconds_short").c_str());
+	ApplyValueText(Text, true, color_argb(255, 170, 170, 170));
+}
+
+void UIItemParam::Update()
+{
+	if (HasRegenerationRate)
+	{
+		SetRegenerationRate(RegenerationRate);
+	}
+	if (HasDuration)
+	{
+		SetDuration(DurationSeconds);
+	}
+	CUIStatic::Update();
 }
