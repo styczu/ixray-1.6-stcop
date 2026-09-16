@@ -553,6 +553,11 @@ void CUIDragItem::Draw()
 	inherited::Draw			();
 	if(m_custom_draw) 
 		m_custom_draw->OnDraw(this);
+
+	// The dragged icon is the render callback known to be alive for the whole drag.
+	// Draw the target list's preview here, on top of both the inventory and the icon.
+	if (m_back_list)
+		m_back_list->DrawDropPreview(this);
 }
 
 void CUIDragItem::SetBackList(CUIDragDropListEx* l)

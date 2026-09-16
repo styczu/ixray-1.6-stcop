@@ -49,7 +49,6 @@ bodies = {
     'TEX_UV_BODY': body(drag_drop, 'void CUICellContainer::GetTexUVLT('),
     'IN_RANGE_BODY': body(drag_drop, 'u32 CUICellContainer::GetCellsInRange('),
     'DRAW_BODY': body(drag_drop, 'void CUICellContainer::Draw('),
-    'PREVIEW_BODY': body(drag_drop, 'void CUICellContainer::DrawDropPreview('),
 }
 
 code = r'''
@@ -293,6 +292,10 @@ struct CUICellContainer
     Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
     Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f}, wnd_pos{0.0f, 0.0f};
     bool m_isInventoryGridDisabled = true;
+    u32 m_dropPreviewFrame = u32(-1);
+    Frect m_dropPreviewClip;
+    Irect m_dropPreviewCells;
+    Fvector2 m_dropPreviewDrawLT, m_dropPreviewCellSize, m_dropPreviewSpacing;
     ui_shader hShader;
     UI_CELLS_VEC m_cells, m_cells_to_draw;
     int csUi = 0;
@@ -318,7 +321,6 @@ struct CUICellContainer
     void GetTexUVLT(Fvector2& uv, u32 col, u32 row, u8 select_mode) TEX_UV_BODY
     u32 GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res) IN_RANGE_BODY
     void Draw() DRAW_BODY
-    void DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len) PREVIEW_BODY
 
     // Test scaffolding, not production code.
     void reset(int cols, int rows)
