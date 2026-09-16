@@ -788,7 +788,7 @@ int main()
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         assert(capture.of(1).size() == 1);
         assert(capture.of(1)[0].color == 0x12345678u); // dragged icon precedes preview
         Fvector2 grid_uv, preview_uv;
@@ -819,7 +819,7 @@ int main()
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         const std::vector<Point> preview = capture.of(2);
         assert(preview.size() == 6);
         assert(preview[0].u == 0.0f && preview[0].v == 0.0f);
@@ -836,7 +836,7 @@ int main()
         s.run(&pill, 4, 6);
 
         assert(s.box.TopVisibleCell().y == 3);
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         Fvector2 grid_uv, preview_uv;
         s.box.GetTexUVLT(grid_uv, 4, 6, 0);
         s.box.GetTexUVLT(preview_uv, 4, 6, 1);
@@ -850,7 +850,7 @@ int main()
         const Ivector2 cell = s.box.PickCell(s.box.aim(3, 0));
         s.run(&pill, 3, 0);
 
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         Fvector2 grid_uv, preview_uv;
         s.box.GetTexUVLT(grid_uv, u32(cell.x), u32(cell.y), 0);
         s.box.GetTexUVLT(preview_uv, u32(cell.x), u32(cell.y), 1);
@@ -863,7 +863,7 @@ int main()
         CUICellItem gun(2, 1, 6);
         s.run(&gun, 2, 8);
 
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         const std::vector<Point> preview = capture.of(2);
         assert(preview.size() == 12);
         for (int i = 0; i < 2; ++i)
@@ -883,7 +883,7 @@ int main()
         s.box.put(&taken, 4, 6);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 4);
+        assert(capture.batches() == 5);
         assert(capture.of(2)[0].color == subst_alpha(kDropPreviewBlocked, 240));
         assert(capture.of(3)[0].color == subst_alpha(kDropPreviewFree, 240));
         Fvector2 attempted_grid_uv, attempted_preview_uv, final_grid_uv, final_preview_uv;
@@ -912,13 +912,13 @@ int main()
         }
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 1, 1);
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         assert(capture.of(2)[0].color == subst_alpha(kDropPreviewBlocked, 240));
 
         s.list.scroll_pos = iFloor(5.0f * s.box.m_cellSize.y) + 1;
         s.run(&pill, 1, 1);
         assert(s.box.TopVisibleCell().y == 5);
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         assert(capture.of(2)[0].color == subst_alpha(kDropPreviewFree, 240));
         Fvector2 final_grid_uv, final_preview_uv;
         s.box.GetTexUVLT(final_grid_uv, 0, 5, 0);
@@ -954,7 +954,7 @@ int main()
         capture.reset();
         forced_box.Draw();
         drag.Draw();
-        assert(capture.batches() == 3);
+        assert(capture.batches() == 4);
         assert(capture.of(2)[0].color == subst_alpha(kDropPreviewBlocked, 240));
     }
 

@@ -1633,6 +1633,16 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 	else
 		draw_cells(prediction.final_cells, kDropPreviewFree);
 
+	// TEMP DIAGNOSTIC (inventory-drop-final-preview): everything checked so far (guards,
+	// PredictDrop, colors, non-degenerate shown rect, scissor result) is correct, yet
+	// nothing is visible in game. The one thing not yet tested is whether ANY draw call
+	// issued from this exact deferred call site (CUIDragItem::Draw() -> DrawDropPreview)
+	// reaches the screen at all. Unconditional, opaque magenta quad on the grid's own
+	// top-left cell, appended last (does not shift the batch indices above), using the
+	// same proven-good hShader/UV technique as the grid background itself, independent
+	// of prediction/guards/atlas alpha.
+	draw_cells(Irect().set(tgt_cells.x1, tgt_cells.y1, tgt_cells.x1, tgt_cells.y1), color_rgba(255, 0, 255, 255));
+
 	UI().PopScissor();
 }
 
