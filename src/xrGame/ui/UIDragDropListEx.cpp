@@ -365,14 +365,6 @@ void CUIDragDropListEx::Draw()
 
 }
 
-void CUIDragDropListEx::DrawDropPreview(CUIDragItem* drag_item)
-{
-	if (!drag_item || drag_item->BackList() != this)
-		return;
-
-	m_container->DrawDropPreview(drag_item);
-}
-
 void CUIDragDropListEx::Update()
 {
 	inherited::Update			();
@@ -660,7 +652,6 @@ CUICell& CUIDragDropListEx::GetCellAt(const Ivector2& pos)
 CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
 	: m_pParentDragDropList(parent)
 	, m_isInventoryGridDisabled(EngineExternal()[EEngineExternalUI::DisableInventoryGrid])
-	, m_dropPreviewFrame(u32(-1))
 {
 	if (m_isInventoryGridDisabled)
 	{
@@ -1319,29 +1310,6 @@ void CUICellContainer::Draw()
 	f_len.set	(float(m_cellSizeScreen.x),		float(m_cellSizeScreen.y));
 	sp_len.set	(float(m_cellSpacingScreen.x),	float(m_cellSpacingScreen.y));
 
-	// The active drag item is rendered later than the regular HUD/UI pass. Preserve
-	// this frame's exact grid geometry so its preview uses the same cells and pixels.
-	m_dropPreviewFrame		= Device.dwFrame;
-	m_dropPreviewClip		= clientArea;
-	m_dropPreviewCells		= tgt_cells;
-	m_dropPreviewDrawLT		= drawLT;
-	m_dropPreviewCellSize	= f_len;
-	m_dropPreviewSpacing	= sp_len;
-
-	// TEMP DIAGNOSTIC (inventory-drop-final-preview): confirm which container stamps
-	// its preview geometry each frame and with what visible cell range. Logged only
-	// when the identity of the stamping container changes, to avoid per-frame spam.
-	{
-		static const CUICellContainer* s_lastLoggedContainer = nullptr;
-		if (s_lastLoggedContainer != this)
-		{
-			s_lastLoggedContainer = this;
-			Msg("[drop-preview] Draw: container=0x%p frame=%u tgt_cells=(%d,%d)-(%d,%d)",
-				this, m_dropPreviewFrame,
-				tgt_cells.x1, tgt_cells.y1, tgt_cells.x2, tgt_cells.y2);
-		}
-	}
-
 	GetCellsInRange(tgt_cells,m_cells_to_draw);
 
 	// fill cell buffer
@@ -1420,87 +1388,34 @@ void CUICellContainer::Draw()
 		}
 	}
 
+	DrawDropPreview				(tgt_cells, drawLT, f_len, sp_len);
+
 	UI().PopScissor			();
 }
 
-// Tint the cells the dragged item would take. This is called by CUIDragItem::Draw,
-// after the regular inventory and the dragged icon, so neither can hide the preview.
-void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
+// Tint the cells the dragged item would take. Called from Draw(), inside the same
+// scissor as the grid and item icons it is drawn on top of, using the current drag
+// item directly - no deferred callback, no geometry cached across a frame boundary.
+void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len)
 {
-	// TEMP DIAGNOSTIC (inventory-drop-final-preview): identify which early-return guard
-	// (if any) stops this call, logged only when the outcome changes for this container.
-	static const CUICellContainer* s_lastLoggedGuardContainer = nullptr;
-	static int s_lastLoggedGuard = -1;
-	auto log_guard = [&](int guard, const char* reason)
-	{
-		if (s_lastLoggedGuardContainer != this || s_lastLoggedGuard != guard)
-		{
-			s_lastLoggedGuardContainer = this;
-			s_lastLoggedGuard = guard;
-			Msg("[drop-preview] DrawDropPreview: container=0x%p guard=%d (%s)", this, guard, reason);
-		}
-	};
-
-	if (!drag_item || drag_item->BackList() != m_pParentDragDropList || m_dropPreviewFrame != Device.dwFrame)
-	{
-		log_guard(1, "drag_item null, BackList mismatch, or stale frame");
+	CUIDragItem* drag_item = CUIDragDropListEx::m_drag_item;
+	if (!drag_item || drag_item->BackList() != m_pParentDragDropList)
 		return;
-	}
 
 	CUICellItem* itm = drag_item->ParentItem();
 	if (!itm)
-	{
-		log_guard(2, "no ParentItem");
 		return;
-	}
 
 	// Virtual cells center the item instead of putting it in a cell, and a single cell
 	// list - the trash panel is one 340x768 cell - has nothing to point at.
 	if (m_pParentDragDropList->GetVirtualCells() || (m_cellsCapacity.x <= 1 && m_cellsCapacity.y <= 1))
-	{
-		log_guard(3, "virtual cells or single-cell capacity");
 		return;
-	}
 
 	// OnItemDrop ignores a move inside a list that does not allow custom placement.
 	if (itm->OwnerList() == m_pParentDragDropList && !m_pParentDragDropList->GetCustomPlacement())
-	{
-		log_guard(4, "same-list move without custom placement");
 		return;
-	}
 
 	const SDropPrediction prediction = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), itm);
-
-	log_guard(0, "proceeding to draw");
-	{
-		static const CUICellContainer* s_lastLoggedPredictionContainer = nullptr;
-		static SDropPrediction s_lastLoggedPrediction{ dpAuto, Irect().set(0,0,-2,-2), Irect().set(0,0,-2,-2) };
-		const bool changed = s_lastLoggedPredictionContainer != this
-			|| s_lastLoggedPrediction.result != prediction.result
-			|| s_lastLoggedPrediction.attempted_cells.x1 != prediction.attempted_cells.x1
-			|| s_lastLoggedPrediction.attempted_cells.y1 != prediction.attempted_cells.y1
-			|| s_lastLoggedPrediction.attempted_cells.x2 != prediction.attempted_cells.x2
-			|| s_lastLoggedPrediction.attempted_cells.y2 != prediction.attempted_cells.y2
-			|| s_lastLoggedPrediction.final_cells.x1 != prediction.final_cells.x1
-			|| s_lastLoggedPrediction.final_cells.y1 != prediction.final_cells.y1
-			|| s_lastLoggedPrediction.final_cells.x2 != prediction.final_cells.x2
-			|| s_lastLoggedPrediction.final_cells.y2 != prediction.final_cells.y2;
-		if (changed)
-		{
-			s_lastLoggedPredictionContainer = this;
-			s_lastLoggedPrediction = prediction;
-			Msg("[drop-preview] DrawDropPreview: result=%d attempted=(%d,%d)-(%d,%d) final=(%d,%d)-(%d,%d)",
-				int(prediction.result),
-				prediction.attempted_cells.x1, prediction.attempted_cells.y1,
-				prediction.attempted_cells.x2, prediction.attempted_cells.y2,
-				prediction.final_cells.x1, prediction.final_cells.y1,
-				prediction.final_cells.x2, prediction.final_cells.y2);
-		}
-	}
-	const Irect& tgt_cells = m_dropPreviewCells;
-	const Fvector2& draw_lt = m_dropPreviewDrawLT;
-	const Fvector2& f_len = m_dropPreviewCellSize;
-	const Fvector2& sp_len = m_dropPreviewSpacing;
 
 	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
 								 {0.0f,0.0f},{1.0f,1.0f},{0.0f,1.0f}};
@@ -1513,10 +1428,6 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 
 	auto draw_cells = [&](const Irect& cells, u32 color)
 	{
-		// TEMP DIAGNOSTIC (inventory-drop-final-preview): the tint color identifies which
-		// call this is (blocked/attempted vs. free/final) before any alpha compensation.
-		const u32 tint_kind = color;
-
 		// The visible ui_grid_alt mask has alpha 102/255. Compensate it so the
 		// resulting opacity matches the 96/255 preview alpha used with ui_grid.
 		if (m_isInventoryGridDisabled)
@@ -1528,25 +1439,7 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 		shown.x2 = _min(cells.x2, tgt_cells.x2);
 		shown.y2 = _min(cells.y2, tgt_cells.y2);
 
-		const bool degenerate = (shown.x2 < shown.x1 || shown.y2 < shown.y1);
-
-		// TEMP DIAGNOSTIC (inventory-drop-final-preview): confirm the clipped quad range
-		// and whether it collapsed to nothing. Two independent slots (blocked/free tint)
-		// so a change in either color's outcome logs, but a steady state does not.
-		{
-			static Irect s_lastLoggedShownBlocked = Irect().set(0, 0, -3, -3);
-			static Irect s_lastLoggedShownFree = Irect().set(0, 0, -3, -3);
-			Irect& slot = (tint_kind == kDropPreviewBlocked) ? s_lastLoggedShownBlocked : s_lastLoggedShownFree;
-			if (slot.x1 != shown.x1 || slot.y1 != shown.y1 || slot.x2 != shown.x2 || slot.y2 != shown.y2)
-			{
-				slot = shown;
-				Msg("[drop-preview] draw_cells: color=0x%08x cells=(%d,%d)-(%d,%d) shown=(%d,%d)-(%d,%d) degenerate=%d",
-					color, cells.x1, cells.y1, cells.x2, cells.y2,
-					shown.x1, shown.y1, shown.x2, shown.y2, int(degenerate));
-			}
-		}
-
-		if (degenerate)
+		if (shown.x2 < shown.x1 || shown.y2 < shown.y1)
 			return;
 
 		UIRender->StartPrimitive(u32((shown.width()+1)*(shown.height()+1)*6), IUIRender::ptTriList, UI().m_currentPointType);
@@ -1578,49 +1471,6 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 		UIRender->FlushPrimitive();
 	};
 
-	// TEMP DIAGNOSTIC (inventory-drop-final-preview): the render calls above check out
-	// (correct colors, non-degenerate quads, real production DrawDropPreview reached),
-	// so the remaining unverified step is what PushScissor intersects m_dropPreviewClip
-	// against. It is called here from CUIDragItem::Draw(), outside the normal nested
-	// window-tree draw where the stack would already hold clientArea's own ancestors -
-	// log whatever is on top of the stack (if anything) and the rect PushScissor
-	// actually computed and pushed, logged only when either changes.
-	{
-		static bool s_lastLoggedEmpty = true;
-		static Frect s_lastLoggedTop = Frect().set(0.0f, 0.0f, -4.0f, -4.0f);
-		static Frect s_lastLoggedClip = Frect().set(0.0f, 0.0f, -4.0f, -4.0f);
-		const bool wasEmpty = UI().m_Scissors.empty();
-		const Frect priorTop = wasEmpty ? Frect().set(0.0f, 0.0f, 0.0f, 0.0f) : UI().m_Scissors.top();
-		const bool changed = s_lastLoggedEmpty != wasEmpty
-			|| s_lastLoggedTop.x1 != priorTop.x1 || s_lastLoggedTop.y1 != priorTop.y1
-			|| s_lastLoggedTop.x2 != priorTop.x2 || s_lastLoggedTop.y2 != priorTop.y2
-			|| s_lastLoggedClip.x1 != m_dropPreviewClip.x1 || s_lastLoggedClip.y1 != m_dropPreviewClip.y1
-			|| s_lastLoggedClip.x2 != m_dropPreviewClip.x2 || s_lastLoggedClip.y2 != m_dropPreviewClip.y2;
-		if (changed)
-		{
-			s_lastLoggedEmpty = wasEmpty;
-			s_lastLoggedTop = priorTop;
-			s_lastLoggedClip = m_dropPreviewClip;
-			Msg("[drop-preview] pre-PushScissor: stack_empty=%d prior_top=(%.1f,%.1f)-(%.1f,%.1f) clip=(%.1f,%.1f)-(%.1f,%.1f)",
-				int(wasEmpty), priorTop.x1, priorTop.y1, priorTop.x2, priorTop.y2,
-				m_dropPreviewClip.x1, m_dropPreviewClip.y1, m_dropPreviewClip.x2, m_dropPreviewClip.y2);
-		}
-	}
-
-	UI().PushScissor(m_dropPreviewClip);
-
-	{
-		static Frect s_lastLoggedResult = Frect().set(0.0f, 0.0f, -4.0f, -4.0f);
-		const Frect result = UI().m_Scissors.empty() ? Frect().set(0.0f, 0.0f, 0.0f, 0.0f) : UI().m_Scissors.top();
-		if (s_lastLoggedResult.x1 != result.x1 || s_lastLoggedResult.y1 != result.y1
-			|| s_lastLoggedResult.x2 != result.x2 || s_lastLoggedResult.y2 != result.y2)
-		{
-			s_lastLoggedResult = result;
-			Msg("[drop-preview] post-PushScissor: result=(%.1f,%.1f)-(%.1f,%.1f)",
-				result.x1, result.y1, result.x2, result.y2);
-		}
-	}
-
 	if (prediction.result == dpAuto)
 	{
 		draw_cells(prediction.attempted_cells, kDropPreviewBlocked);
@@ -1632,18 +1482,6 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 	}
 	else
 		draw_cells(prediction.final_cells, kDropPreviewFree);
-
-	// TEMP DIAGNOSTIC (inventory-drop-final-preview): everything checked so far (guards,
-	// PredictDrop, colors, non-degenerate shown rect, scissor result) is correct, yet
-	// nothing is visible in game. The one thing not yet tested is whether ANY draw call
-	// issued from this exact deferred call site (CUIDragItem::Draw() -> DrawDropPreview)
-	// reaches the screen at all. Unconditional, opaque magenta quad on the grid's own
-	// top-left cell, appended last (does not shift the batch indices above), using the
-	// same proven-good hShader/UV technique as the grid background itself, independent
-	// of prediction/guards/atlas alpha.
-	draw_cells(Irect().set(tgt_cells.x1, tgt_cells.y1, tgt_cells.x1, tgt_cells.y1), color_rgba(255, 0, 255, 255));
-
-	UI().PopScissor();
 }
 
 void CUICellContainer::clear_select_armament()
