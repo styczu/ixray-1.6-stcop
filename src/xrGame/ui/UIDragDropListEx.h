@@ -35,13 +35,6 @@ enum EDropPreview
 	dpAuto,
 };
 
-struct SDropPrediction
-{
-	EDropPreview	result;
-	Irect			attempted_cells;
-	Irect			final_cells;
-};
-
 class CUIDragDropListEx :public CUIWindow, public CUIWndCallback
 {
 private:
@@ -138,14 +131,13 @@ public:
 			virtual void	SetItem				(CUICellItem* itm); //auto
 			virtual bool	SetItem				(CUICellItem* itm, Fvector2 abs_pos);  // start at cursor pos
 			virtual void	SetItem				(CUICellItem* itm, Ivector2 cell_pos); // start at cell
-	virtual SDropPrediction	PredictDrop		(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip = nullptr);
+	virtual EDropPreview	PredictDrop			(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
 					bool	CanSetItem			(CUICellItem* itm);
 			
 			u32				ItemsCount			();
 			CUICellItem*	GetItemIdx			(u32 idx);
 	virtual CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
 			void			CreateDragItem		(CUICellItem* itm);
-			void			DrawDropPreview		(CUIDragItem* drag_item);
 
 			void			DestroyDragItem		();
 			void			ClearAll(bool bDestroy, xr_vector<u16> IgnoredItemsIds = {}); // FFx0001
@@ -199,16 +191,6 @@ protected:
 	Fvector2					m_cellSpacing;				//UI base	m_cellSpacingScreen / scale
 	Fvector2					m_metricsScale;				//scale the four above were built at
 
-	// Geometry captured by the normal list pass and consumed later by the active
-	// drag item's render callback. The frame stamp prevents stale list geometry from
-	// being used when a list was not drawn in the current frame.
-	u32						m_dropPreviewFrame;
-	Frect						m_dropPreviewClip;
-	Irect						m_dropPreviewCells;
-	Fvector2					m_dropPreviewDrawLT;
-	Fvector2					m_dropPreviewCellSize;
-	Fvector2					m_dropPreviewSpacing;
-
 	UI_CELLS_VEC				m_cells;
 
 	void						GetTexUVLT			(Fvector2& uv, u32 col, u32 row, u8 select_mode);
@@ -227,7 +209,7 @@ public:
 protected:
 	virtual		void			Draw				();
 	virtual		void			Update				();
-				void			DrawDropPreview		(CUIDragItem* drag_item);
+				void			DrawDropPreview		(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len);
 
 	IC const	Ivector2&		CellsCapacity		()								{return m_cellsCapacity;};	
 				void			SetCellsCapacity	(const Ivector2& c);
@@ -249,11 +231,8 @@ protected:
 				Ivector2		TopVisibleCell		();
 				Ivector2		GetItemPos			(CUICellItem* itm);
 				Ivector2		FindFreeCell		(const Ivector2& size);
-				bool			FindFreeCellInCapacity(const Ivector2& size, const Ivector2& capacity, Ivector2& out_pos, const CUICellItem* ignore = nullptr);
-				bool			ResolveFreeCell		(const Ivector2& size, Ivector2& out_pos, Ivector2& out_capacity, const CUICellItem* ignore = nullptr);
 				bool			HasFreeSpace		(const Ivector2& size);
 				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const CUICellItem* ignore = nullptr);
-				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const Ivector2& capacity, const CUICellItem* ignore);
 				
 				bool			AddSimilar			(CUICellItem* itm);
 				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);

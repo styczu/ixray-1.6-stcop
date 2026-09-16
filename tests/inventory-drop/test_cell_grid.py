@@ -49,6 +49,7 @@ bodies = {
     'TEX_UV_BODY': body(drag_drop, 'void CUICellContainer::GetTexUVLT('),
     'IN_RANGE_BODY': body(drag_drop, 'u32 CUICellContainer::GetCellsInRange('),
     'DRAW_BODY': body(drag_drop, 'void CUICellContainer::Draw('),
+    'PREVIEW_BODY': body(drag_drop, 'void CUICellContainer::DrawDropPreview('),
 }
 
 code = r'''
@@ -67,7 +68,6 @@ typedef unsigned int u32;
 typedef unsigned char u8;
 static const float EPS = 0.0000001f;
 constexpr u32 color_rgba(u32 r, u32 g, u32 b, u32 a) { return ((a & 0xffu) << 24) | ((b & 0xffu) << 16) | ((g & 0xffu) << 8) | (r & 0xffu); }
-constexpr u32 subst_alpha(u32 rgba, u32 a) { return (rgba & 0x00ffffffu) | color_rgba(0, 0, 0, a); }
 
 struct Fvector2
 {
@@ -103,7 +103,6 @@ template <class T> struct Rect
     };
     Rect() { x1 = y1 = x2 = y2 = T(0); }
     Rect& set(T a, T b, T c, T d) { x1 = a; y1 = b; x2 = c; y2 = d; return *this; }
-    Rect& set(const Rect& o) { x1 = o.x1; y1 = o.y1; x2 = o.x2; y2 = o.y2; return *this; }
     T width() const { return x2 - x1; }
     T height() const { return y2 - y1; }
 };
@@ -117,13 +116,6 @@ template <class T> static void clamp(T& v, const T& lo, const T& hi) { if (v < l
 struct xrCriticalSectionGuard { explicit xrCriticalSectionGuard(int&) {} };
 
 enum EDropPreview { dpMerge, dpPlace, dpAuto };
-
-struct SDropPrediction
-{
-    EDropPreview result;
-    Irect attempted_cells;
-    Irect final_cells;
-};
 
 // --- render capture -------------------------------------------------------------
 struct Point { int batch; float x, y, z; u32 color; float u, v; };
@@ -234,13 +226,10 @@ struct CUIDragDropListEx
     void ReinitScrollProduction();
 
     const Ivector2& CellsCapacity();
-    SDropPrediction PredictDrop(CUICellItem*, const Fvector2&, CUICellItem* = nullptr)
+    EDropPreview PredictDrop(CUICellItem*, const Fvector2&, Irect& out_cells, CUICellItem* = nullptr)
     {
-        SDropPrediction prediction;
-        prediction.result = dpAuto;
-        prediction.attempted_cells.set(0, 0, -1, -1);
-        prediction.final_cells.set(0, 0, -1, -1);
-        return prediction;
+        out_cells.set(0, 0, -1, -1);
+        return dpAuto;
     }
 };
 
@@ -292,10 +281,6 @@ struct CUICellContainer
     Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
     Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f}, wnd_pos{0.0f, 0.0f};
     bool m_isInventoryGridDisabled = true;
-    u32 m_dropPreviewFrame = u32(-1);
-    Frect m_dropPreviewClip;
-    Irect m_dropPreviewCells;
-    Fvector2 m_dropPreviewDrawLT, m_dropPreviewCellSize, m_dropPreviewSpacing;
     ui_shader hShader;
     UI_CELLS_VEC m_cells, m_cells_to_draw;
     int csUi = 0;
@@ -321,6 +306,7 @@ struct CUICellContainer
     void GetTexUVLT(Fvector2& uv, u32 col, u32 row, u8 select_mode) TEX_UV_BODY
     u32 GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res) IN_RANGE_BODY
     void Draw() DRAW_BODY
+    void DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len) PREVIEW_BODY
 
     // Test scaffolding, not production code.
     void reset(int cols, int rows)

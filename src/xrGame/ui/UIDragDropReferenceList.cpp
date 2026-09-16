@@ -63,26 +63,21 @@ void CUIDragDropReferenceList::SetItem(CUICellItem* itm)
 // Mirrors SetItem below, which replaces whatever sits in the cell instead of refusing
 // it - without this the preview would paint an occupied quick slot as blocked. Keep the
 // two in step.
-SDropPrediction CUIDragDropReferenceList::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* /*skip*/)
+EDropPreview CUIDragDropReferenceList::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* /*skip*/)
 {
-	SDropPrediction prediction;
-	prediction.result = dpAuto;
-	prediction.attempted_cells.set(0, 0, -1, -1);
-	prediction.final_cells.set(0, 0, -1, -1);
+	out_cells.set(0, 0, -1, -1);
 
 	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
 	if (!m_container->ValidCell(dest_cell_pos))
-		return prediction;
+		return dpAuto;
 
 	const Ivector2 size = itm->GetGridSize();
 	if (size.x > m_container->m_cellsCapacity.x || size.y > m_container->m_cellsCapacity.y)
-		return prediction;
+		return dpAuto;
 
-	prediction.result = dpPlace;
-	prediction.attempted_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
-	prediction.final_cells.set(prediction.attempted_cells);
+	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
 
-	return prediction;
+	return dpPlace;
 }
 
 bool CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)
