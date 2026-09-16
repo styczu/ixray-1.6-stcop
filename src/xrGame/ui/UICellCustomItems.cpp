@@ -122,15 +122,29 @@ void CUIInventoryCellItem::UpdateItemText()
 
 	if ( count > 1 || helper_count )
 	{
-		xr_sprintf						( str, "x%d", count );
+		xr_sprintf						( str, "%d", count );
 		m_text->TextItemControl()->SetText	( str );
 		m_text->Show					( true );
+
+		// Discreet background: only worth showing once the digits start
+		// crowding the corner. AdjustWidthToText keeps it snug around
+		// whatever the count actually is instead of a fixed pill size.
+		m_text->AdjustWidthToText		();
+		float pad						= 4.0f;
+		UI().ClientToScreenScaledWidth	( pad );
+		m_text->SetWidth				( m_text->GetWidth() + pad );
+
+		if ( count >= 10 )
+			m_text->TextureOn			();
+		else
+			m_text->TextureOff			();
 	}
 	else
 	{
 		xr_sprintf						( str, "");
 		m_text->TextItemControl()->SetText	( str );
 		m_text->Show					( false );
+		m_text->TextureOff				();
 	}
 }
 
