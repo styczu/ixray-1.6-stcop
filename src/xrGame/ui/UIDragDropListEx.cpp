@@ -365,6 +365,14 @@ void CUIDragDropListEx::Draw()
 
 }
 
+void CUIDragDropListEx::DrawDropPreview(CUIDragItem* drag_item)
+{
+	if (!drag_item || drag_item->BackList() != this)
+		return;
+
+	m_container->DrawDropPreview(drag_item);
+}
+
 void CUIDragDropListEx::Update()
 {
 	inherited::Update			();
@@ -652,6 +660,7 @@ CUICell& CUIDragDropListEx::GetCellAt(const Ivector2& pos)
 CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
 	: m_pParentDragDropList(parent)
 	, m_isInventoryGridDisabled(EngineExternal()[EEngineExternalUI::DisableInventoryGrid])
+	, m_dropPreviewFrame(u32(-1))
 {
 	if (m_isInventoryGridDisabled)
 	{
@@ -1310,6 +1319,15 @@ void CUICellContainer::Draw()
 	f_len.set	(float(m_cellSizeScreen.x),		float(m_cellSizeScreen.y));
 	sp_len.set	(float(m_cellSpacingScreen.x),	float(m_cellSpacingScreen.y));
 
+	// The active drag item is rendered later than the regular HUD/UI pass. Preserve
+	// this frame's exact grid geometry so its preview uses the same cells and pixels.
+	m_dropPreviewFrame		= Device.dwFrame;
+	m_dropPreviewClip		= clientArea;
+	m_dropPreviewCells		= tgt_cells;
+	m_dropPreviewDrawLT		= drawLT;
+	m_dropPreviewCellSize	= f_len;
+	m_dropPreviewSpacing	= sp_len;
+
 	GetCellsInRange(tgt_cells,m_cells_to_draw);
 
 	// fill cell buffer
@@ -1388,17 +1406,14 @@ void CUICellContainer::Draw()
 		}
 	}
 
-	DrawDropPreview			(tgt_cells, drawLT, f_len, sp_len);
-
 	UI().PopScissor			();
 }
 
-// Tint the cells the dragged item would take. Drawn after the items so the highlight
-// of an occupied cell is not hidden under its icon.
-void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len)
+// Tint the cells the dragged item would take. This is called by CUIDragItem::Draw,
+// after the regular inventory and the dragged icon, so neither can hide the preview.
+void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 {
-	CUIDragItem* drag_item = CUIDragDropListEx::m_drag_item;
-	if (!drag_item || drag_item->BackList() != m_pParentDragDropList)
+	if (!drag_item || drag_item->BackList() != m_pParentDragDropList || m_dropPreviewFrame != Device.dwFrame)
 		return;
 
 	CUICellItem* itm = drag_item->ParentItem();
@@ -1415,6 +1430,10 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 		return;
 
 	const SDropPrediction prediction = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), itm);
+	const Irect& tgt_cells = m_dropPreviewCells;
+	const Fvector2& draw_lt = m_dropPreviewDrawLT;
+	const Fvector2& f_len = m_dropPreviewCellSize;
+	const Fvector2& sp_len = m_dropPreviewSpacing;
 
 	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
 								 {0.0f,0.0f},{1.0f,1.0f},{0.0f,1.0f}};
@@ -1470,6 +1489,8 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 		UIRender->FlushPrimitive();
 	};
 
+	UI().PushScissor(m_dropPreviewClip);
+
 	if (prediction.result == dpAuto)
 	{
 		draw_cells(prediction.attempted_cells, kDropPreviewBlocked);
@@ -1481,6 +1502,8 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	}
 	else
 		draw_cells(prediction.final_cells, kDropPreviewFree);
+
+	UI().PopScissor();
 }
 
 void CUICellContainer::clear_select_armament()

@@ -24,6 +24,7 @@ def body(text, signature):
 
 
 drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
+cell_item = (root / 'src/xrGame/ui/UICellItem.cpp').read_text()
 reference_list = (root / 'src/xrGame/ui/UIDragDropReferenceList.cpp').read_text()
 
 # The cell tints and the UV span live in the anonymous namespace at the top of the file.
@@ -76,6 +77,8 @@ bodies = {
     'IN_RANGE_BODY': body(drag_drop, 'u32 CUICellContainer::GetCellsInRange('),
     'DRAW_BODY': body(drag_drop, 'void CUICellContainer::Draw('),
     'PREVIEW_BODY': body(drag_drop, 'void CUICellContainer::DrawDropPreview('),
+    'LIST_PREVIEW_BODY': body(drag_drop, 'void CUIDragDropListEx::DrawDropPreview('),
+    'DRAG_DRAW_BODY': body(cell_item, 'void CUIDragItem::Draw('),
     'METRICS_BODY': body(drag_drop, 'bool CUICellContainer::UpdateCellMetrics('),
     'OFFSET_BODY': body(drag_drop, 'Fvector2 CUICellContainer::CellOffsetUI('),
     'SCREEN_LEN_BODY': body(drag_drop, 'IC int screen_cell_len('),
@@ -105,6 +108,7 @@ struct Fvector2
     float x, y;
     Fvector2& set(float a, float b) { x = a; y = b; return *this; }
     Fvector2& sub(const Fvector2& o) { x -= o.x; y -= o.y; return *this; }
+    Fvector2& sub(const Fvector2& a, const Fvector2& b) { x = a.x - b.x; y = a.y - b.y; return *this; }
     Fvector2& add(const Fvector2& o) { x += o.x; y += o.y; return *this; }
     Fvector2& add(const Fvector2& a, const Fvector2& b) { x = a.x + b.x; y = a.y + b.y; return *this; }
     Fvector2& mul(float s) { x *= s; y *= s; return *this; }
@@ -247,9 +251,22 @@ struct CUIDragDropListEx
     virtual CUICellItem* RemoveItem(CUICellItem* itm, bool force_root);
     CUICell& GetCellAt(const Ivector2& pos);
     virtual SDropPrediction PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip = nullptr);
+    void DrawDropPreview(CUIDragItem* drag_item);
 };
 
-struct CUIWindow { virtual ~CUIWindow() {} };
+struct CUIWindow
+{
+    Fvector2 wnd_pos{0.0f, 0.0f};
+    virtual ~CUIWindow() {}
+    virtual void Draw()
+    {
+        UIRender->StartPrimitive(1, IUIRender::ptTriList, UI().m_currentPointType);
+        UIRender->PushPoint(0.0f, 0.0f, 0.0f, 0x12345678u, 0.0f, 0.0f);
+        UIRender->FlushPrimitive();
+    }
+    const Fvector2& GetWndPos() const { return wnd_pos; }
+    void MoveWndDelta(const Fvector2& delta) { wnd_pos.add(delta); }
+};
 typedef std::vector<CUIWindow*>::iterator WINDOW_LIST_it;
 
 // Only the parts of a cell item the prediction and the drawing touch.
@@ -287,14 +304,32 @@ struct CUICellItem : CUIWindow
     void Draw() { ++drawn; }
 };
 
-struct CUIDragItem
+struct CursorStub
 {
-    CUIDragDropListEx* back = nullptr;
-    CUICellItem* parent = nullptr;
+    Fvector2 position{0.0f, 0.0f};
+    const Fvector2& GetCursorPosition() const { return position; }
+};
+static CursorStub cursor_stub;
+static CursorStub& GetUICursor() { return cursor_stub; }
+
+struct ICustomDrawDragItem
+{
+    virtual ~ICustomDrawDragItem() {}
+    virtual void OnDraw(CUIDragItem*) = 0;
+};
+
+struct CUIDragItem : CUIWindow
+{
+    typedef CUIWindow inherited;
+    CUIDragDropListEx* m_back_list = nullptr;
+    CUICellItem* m_pParent = nullptr;
+    Fvector2 m_pos_offset{0.0f, 0.0f};
     Fvector2 pos;
-    CUIDragDropListEx* BackList() { return back; }
-    CUICellItem* ParentItem() { return parent; }
+    ICustomDrawDragItem* m_custom_draw = nullptr;
+    CUIDragDropListEx* BackList() { return m_back_list; }
+    CUICellItem* ParentItem() { return m_pParent; }
     Fvector2 GetPosition() { return pos; }
+    void Draw() override DRAG_DRAW_BODY
 };
 CUIDragItem* CUIDragDropListEx::m_drag_item = nullptr;
 
@@ -320,6 +355,10 @@ struct CUICellContainer
     Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
     Fvector2 origin;
     bool m_isInventoryGridDisabled = false;
+    u32 m_dropPreviewFrame = u32(-1);
+    Frect m_dropPreviewClip;
+    Irect m_dropPreviewCells;
+    Fvector2 m_dropPreviewDrawLT, m_dropPreviewCellSize, m_dropPreviewSpacing;
     ui_shader hShader;
     UI_CELLS_VEC m_cells, m_cells_to_draw;
     std::vector<CUIWindow*> m_ChildWndList;
@@ -355,7 +394,7 @@ struct CUICellContainer
     Ivector2 TopVisibleCell() TOP_CELL_BODY
     u32 GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res) IN_RANGE_BODY
     void Draw() DRAW_BODY
-    void DrawDropPreview(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len) PREVIEW_BODY
+    void DrawDropPreview(CUIDragItem* drag_item) PREVIEW_BODY
     void Grow() GROW_BODY
 
     // Test scaffolding, not production code.
@@ -404,6 +443,9 @@ struct CUICellContainer
 
 const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
 CUICell& CUIDragDropListEx::GetCellAt(const Ivector2& pos) { return m_container->GetCellAt(pos); }
+
+void CUIDragDropListEx::DrawDropPreview(CUIDragItem* drag_item)
+LIST_PREVIEW_BODY
 
 SDropPrediction CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& abs_pos, CUICellItem* skip)
 PREDICT_BODY
@@ -499,19 +541,21 @@ struct Scene
         list.client_area.set(702.0f, 119.0f,
                              702.0f + (box.m_cellSize.x + box.m_cellSpacing.x) * float(cols),
                              119.0f + (box.m_cellSize.y + box.m_cellSpacing.y) * float(rows));
-        drag.back = &list;
+        drag.m_back_list = &list;
         CUIDragDropListEx::m_drag_item = nullptr;
     }
 
-    // Draw once with no drag (grid only) and once with the item hovering, then return
-    // the grid batch and the preview batch of the second pass.
+    // Reproduce the engine's render order: the regular UI/list pass first, then the
+    // active drag item's pureRender pass. The latter must emit the preview.
     void run(CUICellItem* itm, int cx, int cy)
     {
-        drag.parent = itm;
+        drag.m_pParent = itm;
         drag.pos = box.aim(cx, cy);
+        cursor_stub.position = drag.pos;
         CUIDragDropListEx::m_drag_item = &drag;
         capture.reset();
         box.Draw();
+        drag.Draw();
     }
 };
 
@@ -736,16 +780,27 @@ int main()
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 2);
+        assert(capture.batches() == 3);
+        assert(capture.of(1).size() == 1);
+        assert(capture.of(1)[0].color == 0x12345678u); // dragged icon precedes preview
         Fvector2 grid_uv, preview_uv;
         s.box.GetTexUVLT(grid_uv, 4, 6, 0);
         s.box.GetTexUVLT(preview_uv, 4, 6, 1);
         const std::vector<Point> grid_quad = quad_for(capture.of(0), grid_uv);
-        const std::vector<Point> preview = quad_for(capture.of(1), preview_uv);
+        const std::vector<Point> preview = quad_for(capture.of(2), preview_uv);
         assert(!grid_quad.empty());
         same_geometry(grid_quad, preview);
         assert(grid_uv.x < 0.25f && preview_uv.x >= 0.25f && preview_uv.x < 0.5f);
         assert(preview[0].color == subst_alpha(kDropPreviewFree, 240));
+        assert(UI().scissor_depth == 0);
+
+        // The drag pass must not reuse geometry from a list which was not drawn in
+        // the current frame (for example after changing inventory mode).
+        ++Device.dwFrame;
+        capture.reset();
+        s.drag.Draw();
+        assert(capture.batches() == 1);          // dragged icon only
+        --Device.dwFrame;
     }
 
     // With the ordinary grid texture its normal slice is visible, so preview keeps
@@ -756,8 +811,8 @@ int main()
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 2);
-        const std::vector<Point> preview = capture.of(1);
+        assert(capture.batches() == 3);
+        const std::vector<Point> preview = capture.of(2);
         assert(preview.size() == 6);
         assert(preview[0].u == 0.0f && preview[0].v == 0.0f);
         assert(preview[0].color == kDropPreviewFree);
@@ -773,11 +828,11 @@ int main()
         s.run(&pill, 4, 6);
 
         assert(s.box.TopVisibleCell().y == 3);
-        assert(capture.batches() == 2);
+        assert(capture.batches() == 3);
         Fvector2 grid_uv, preview_uv;
         s.box.GetTexUVLT(grid_uv, 4, 6, 0);
         s.box.GetTexUVLT(preview_uv, 4, 6, 1);
-        same_geometry(quad_for(capture.of(0), grid_uv), quad_for(capture.of(1), preview_uv));
+        same_geometry(quad_for(capture.of(0), grid_uv), quad_for(capture.of(2), preview_uv));
     }
 
     // Spaced list, like the belt: cell pitch is not the cell size.
@@ -787,11 +842,11 @@ int main()
         const Ivector2 cell = s.box.PickCell(s.box.aim(3, 0));
         s.run(&pill, 3, 0);
 
-        assert(capture.batches() == 2);
+        assert(capture.batches() == 3);
         Fvector2 grid_uv, preview_uv;
         s.box.GetTexUVLT(grid_uv, u32(cell.x), u32(cell.y), 0);
         s.box.GetTexUVLT(preview_uv, u32(cell.x), u32(cell.y), 1);
-        same_geometry(quad_for(capture.of(0), grid_uv), quad_for(capture.of(1), preview_uv));
+        same_geometry(quad_for(capture.of(0), grid_uv), quad_for(capture.of(2), preview_uv));
     }
 
     // A 2x1 item highlights both of its cells, each on top of its own grid cell.
@@ -800,8 +855,8 @@ int main()
         CUICellItem gun(2, 1, 6);
         s.run(&gun, 2, 8);
 
-        assert(capture.batches() == 2);
-        const std::vector<Point> preview = capture.of(1);
+        assert(capture.batches() == 3);
+        const std::vector<Point> preview = capture.of(2);
         assert(preview.size() == 12);
         for (int i = 0; i < 2; ++i)
         {
@@ -820,18 +875,18 @@ int main()
         s.box.put(&taken, 4, 6);
         s.run(&pill, 4, 6);
 
-        assert(capture.batches() == 3);
-        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewBlocked, 240));
-        assert(capture.of(2)[0].color == subst_alpha(kDropPreviewFree, 240));
+        assert(capture.batches() == 4);
+        assert(capture.of(2)[0].color == subst_alpha(kDropPreviewBlocked, 240));
+        assert(capture.of(3)[0].color == subst_alpha(kDropPreviewFree, 240));
         Fvector2 attempted_grid_uv, attempted_preview_uv, final_grid_uv, final_preview_uv;
         s.box.GetTexUVLT(attempted_grid_uv, 4, 6, 0);
         s.box.GetTexUVLT(attempted_preview_uv, 4, 6, 1);
         s.box.GetTexUVLT(final_grid_uv, 0, 0, 0);
         s.box.GetTexUVLT(final_preview_uv, 0, 0, 1);
-        same_geometry(quad_for(capture.of(0), attempted_grid_uv), quad_for(capture.of(1), attempted_preview_uv));
-        same_geometry(quad_for(capture.of(0), final_grid_uv), quad_for(capture.of(2), final_preview_uv));
+        same_geometry(quad_for(capture.of(0), attempted_grid_uv), quad_for(capture.of(2), attempted_preview_uv));
+        same_geometry(quad_for(capture.of(0), final_grid_uv), quad_for(capture.of(3), final_preview_uv));
         assert(kDropPreviewBlocked != kDropPreviewFree);
-        // Drawn after the item, so the tint is not hidden under the icon.
+        // Drawn after both the cell item and the dragged icon, so neither hides it.
         assert(taken.drawn == 1);
     }
 
@@ -849,18 +904,18 @@ int main()
         }
         CUICellItem pill(1, 1, 5);
         s.run(&pill, 1, 1);
-        assert(capture.batches() == 2);
-        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewBlocked, 240));
+        assert(capture.batches() == 3);
+        assert(capture.of(2)[0].color == subst_alpha(kDropPreviewBlocked, 240));
 
         s.list.scroll_pos = iFloor(5.0f * s.box.m_cellSize.y) + 1;
         s.run(&pill, 1, 1);
         assert(s.box.TopVisibleCell().y == 5);
-        assert(capture.batches() == 2);
-        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewFree, 240));
+        assert(capture.batches() == 3);
+        assert(capture.of(2)[0].color == subst_alpha(kDropPreviewFree, 240));
         Fvector2 final_grid_uv, final_preview_uv;
         s.box.GetTexUVLT(final_grid_uv, 0, 5, 0);
         s.box.GetTexUVLT(final_preview_uv, 0, 5, 1);
-        same_geometry(quad_for(capture.of(0), final_grid_uv), quad_for(capture.of(1), final_preview_uv));
+        same_geometry(quad_for(capture.of(0), final_grid_uv), quad_for(capture.of(2), final_preview_uv));
     }
 
     // If an unusual override resolves dpAuto to the attempted rectangle itself,
@@ -883,14 +938,16 @@ int main()
 
         CUICellItem pill(1, 1, 5);
         CUIDragItem drag;
-        drag.back = &forced_list;
-        drag.parent = &pill;
+        drag.m_back_list = &forced_list;
+        drag.m_pParent = &pill;
         drag.pos = forced_box.aim(1, 1);
+        cursor_stub.position = drag.pos;
         CUIDragDropListEx::m_drag_item = &drag;
         capture.reset();
         forced_box.Draw();
-        assert(capture.batches() == 2);
-        assert(capture.of(1)[0].color == subst_alpha(kDropPreviewBlocked, 240));
+        drag.Draw();
+        assert(capture.batches() == 3);
+        assert(capture.of(2)[0].color == subst_alpha(kDropPreviewBlocked, 240));
     }
 
     // ---- lists that must not be highlighted ---------------------------------------
@@ -904,26 +961,27 @@ int main()
 
         s.list.virtual_cells = true;
         s.run(&pill, 4, 6);
-        assert(capture.batches() == 1);          // equipment slots center the item
+        assert(capture.batches() == 2);          // icon only; equipment slots center the item
         s.list.virtual_cells = false;
 
-        s.drag.back = nullptr;
+        s.drag.m_back_list = nullptr;
         capture.reset();
         s.box.Draw();
-        assert(capture.batches() == 1);          // cursor is over another list
-        s.drag.back = &s.list;
+        s.drag.Draw();
+        assert(capture.batches() == 2);          // icon only; cursor is over another list
+        s.drag.m_back_list = &s.list;
 
         s.box.put(&pill, 0, 0);                  // now owned by this list
         s.list.custom_placement = false;
         s.run(&pill, 4, 6);
-        assert(capture.batches() == 1);          // OnItemDrop ignores this move
+        assert(capture.batches() == 2);          // icon only; OnItemDrop ignores this move
         s.list.custom_placement = true;
     }
     {
         Scene trash(1, 1, 340, 0);               // dragdrop_trash: one huge cell
         CUICellItem pill(1, 1, 5);
         trash.run(&pill, 0, 0);
-        assert(capture.batches() == 1);
+        assert(capture.batches() == 2);          // icon only; trash has no cell target
     }
 
     std::printf("ok\n");
@@ -932,7 +990,7 @@ int main()
 '''
 
 code = code.replace('CONSTANTS', constants)
-for token, text in bodies.items():
+for token, text in sorted(bodies.items(), key=lambda item: len(item[0]), reverse=True):
     code = code.replace(token, text)
 
 with tempfile.TemporaryDirectory(prefix='ixray-drop-preview-') as directory:
@@ -948,10 +1006,11 @@ with tempfile.TemporaryDirectory(prefix='ixray-drop-preview-') as directory:
                    env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
 
 print('PASS: production PredictDrop, ResolveFreeCell/FindFreeCell, SetItem/RemoveItem/PlaceItemAtPos, '
-      'reference-list PredictDrop/SetItem and production Draw/DrawDropPreview; attempted/final '
+      'reference-list PredictDrop/SetItem and production list/CUIDragItem Draw/DrawDropPreview; attempted/final '
       'footprints for free, blocked and off-grid targets; real same-list remove/drop, multi-cell, '
       'auto-grow and vertical auto-grow placement; grouping and quick-slot replacement; red attempted plus '
-      'green final rendering, independent scroll clipping and duplicate suppression; highlight pixels '
+      'green final rendering after the dragged icon, current-frame geometry, balanced scissor, independent '
+      'scroll clipping and duplicate suppression; highlight pixels '
       'matched for plain, scrolled, spaced and 2x1 cases; visible compensated ui_grid_alt mask and ordinary '
       'grid UVs; no highlight for virtual cells, foreign '
       'list, fixed placement or single-cell list; ASan/UBSan')

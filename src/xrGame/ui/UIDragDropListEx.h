@@ -145,6 +145,7 @@ public:
 			CUICellItem*	GetItemIdx			(u32 idx);
 	virtual CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
 			void			CreateDragItem		(CUICellItem* itm);
+			void			DrawDropPreview		(CUIDragItem* drag_item);
 
 			void			DestroyDragItem		();
 			void			ClearAll(bool bDestroy, xr_vector<u16> IgnoredItemsIds = {}); // FFx0001
@@ -198,6 +199,16 @@ protected:
 	Fvector2					m_cellSpacing;				//UI base	m_cellSpacingScreen / scale
 	Fvector2					m_metricsScale;				//scale the four above were built at
 
+	// Geometry captured by the normal list pass and consumed later by the active
+	// drag item's render callback. The frame stamp prevents stale list geometry from
+	// being used when a list was not drawn in the current frame.
+	u32						m_dropPreviewFrame;
+	Frect						m_dropPreviewClip;
+	Irect						m_dropPreviewCells;
+	Fvector2					m_dropPreviewDrawLT;
+	Fvector2					m_dropPreviewCellSize;
+	Fvector2					m_dropPreviewSpacing;
+
 	UI_CELLS_VEC				m_cells;
 
 	void						GetTexUVLT			(Fvector2& uv, u32 col, u32 row, u8 select_mode);
@@ -216,7 +227,7 @@ public:
 protected:
 	virtual		void			Draw				();
 	virtual		void			Update				();
-				void			DrawDropPreview		(const Irect& tgt_cells, const Fvector2& draw_lt, const Fvector2& f_len, const Fvector2& sp_len);
+				void			DrawDropPreview		(CUIDragItem* drag_item);
 
 	IC const	Ivector2&		CellsCapacity		()								{return m_cellsCapacity;};	
 				void			SetCellsCapacity	(const Ivector2& c);
