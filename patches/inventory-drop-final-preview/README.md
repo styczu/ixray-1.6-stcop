@@ -9,11 +9,16 @@ final footprint wybrany przez automatic placement jest zielony. Dla zwykłego
 `dpPlace` istniejący pojedynczy zielony footprint pozostaje bez zmian, podobnie jak
 jednoznaczny target `dpMerge` i semantyka reference-list/quick-slotów.
 
-Pierwsza wersja kodu poprawnie wysyłała geometrię do renderera, ale przy
-`DisableInventoryGrid=true` pozostawała niewidoczna: próbkowała normalny pasek
-`ui_grid_alt.dds`, którego alfa jest celowo równa zero. Drugi commit pakietu używa
-widocznego neutralnego paska atlasu i kompensuje jego alfę przed nałożeniem czerwonego
-lub zielonego koloru. Zwykła tekstura `ui_grid` zachowuje dotychczasową ścieżkę.
+Dwie wcześniejsze wersje poprawnie wyliczały geometrię, lecz próba w grze wykazała,
+że podgląd nadal nie trafiał do widocznej ścieżki renderowania. Bieżąca wersja
+przenosi jego wywołanie do aktywnego `CUIDragItem::Draw()`: tego samego callbacku,
+który przez cały drag rysuje ikonę trzymanego przedmiotu. Lista zachowuje geometrię
+i clipping z własnego przebiegu bieżącej klatki, a callback drag itemu rysuje preview
+na końcu, więc nie przykrywa go ani zawartość komórek, ani przeciągana ikona.
+
+Przy `DisableInventoryGrid=true` podgląd używa widocznego neutralnego paska
+`ui_grid_alt.dds` i kompensuje jego alfę przed nałożeniem czerwonego lub zielonego
+koloru. Zwykła tekstura `ui_grid` zachowuje dotychczasową ścieżkę.
 
 **Wymaga wcześniejszego nałożenia `inventory-cell-grid`**, a przez jego zależności także
 `inventory-drop-cell` i `inventory-drop-preview`. `apply.py` sprawdza stabilny marker
@@ -39,10 +44,12 @@ a dopiero rzeczywisty `FindFreeCell()` wykonuje potrzebne `Grow()`.
 `DrawDropPreview()` przy `dpAuto` rysuje attempted footprint na czerwono i różny final
 footprint na zielono. Każdy prostokąt jest osobno przycinany do widocznej części listy,
 więc final po przewinięciu trafia na właściwe komórki. Identyczne prostokąty nie są
-rysowane dwukrotnie. Przy ukrytej siatce preview korzysta z neutralnego, widocznego
-paska atlasu zamiast całkowicie przezroczystego paska normalnej komórki. Jego alfa
-`102/255` jest kompensowana alfą wierzchołka `240/255`, co daje zamierzone efektywne
-`96/255` bez zmiany czerwonego i zielonego RGB.
+rysowane dwukrotnie. Geometria listy ma znacznik numeru klatki, więc późniejszy
+callback drag itemu nie może użyć nieaktualnych współrzędnych lub clippingu listy,
+której w tej klatce nie narysowano. Przy ukrytej siatce preview korzysta z neutralnego,
+widocznego paska atlasu zamiast całkowicie przezroczystego paska normalnej komórki.
+Jego alfa `102/255` jest kompensowana alfą wierzchołka `240/255`, co daje zamierzone
+efektywne `96/255` bez zmiany czerwonego i zielonego RGB.
 
 ## Świadome konsekwencje
 
@@ -64,10 +71,12 @@ klatkę.
 
 Wszystkie testy `tests/inventory-drop/` przechodzą z ASan/UBSan. Rozszerzony harness
 kompiluje produkcyjne ciała `PredictDrop`, `ResolveFreeCell`, `FindFreeCell`,
-`RemoveItem`, `SetItem`, `PlaceItemAtPos`, `DrawDropPreview` oraz odpowiednią ścieżkę
-reference-list. Sprawdza między innymi wolne i zajęte miejsce, czerwony attempted i
-zielony final, pełne footprinty wielokomórkowe, same-list remove/drop, vertical
-placement, auto-grow, merge, quick-slot replacement oraz clipping po przewinięciu.
+`RemoveItem`, `SetItem`, `PlaceItemAtPos`, listowego `DrawDropPreview`,
+`CUIDragItem::Draw` oraz odpowiednią ścieżkę reference-list. Sprawdza między innymi
+wolne i zajęte miejsce, czerwony attempted i zielony final, pełne footprinty
+wielokomórkowe, same-list remove/drop, vertical placement, auto-grow, merge,
+quick-slot replacement, clipping po przewinięciu, aktualność geometrii w obrębie
+klatki oraz to, że podgląd jest emitowany po przeciąganej ikonie.
 Test czyta również rzeczywisty DXT5 `ui_grid_alt.dds`: przypina zerową alfę paska 0,
 alfę 102 paska 1, produkcyjny wybór UV oraz kompensację koloru. Osobny przypadek pilnuje
 niezmienionej ścieżki zwykłego `ui_grid`.
@@ -94,8 +103,10 @@ Dla integracyjnego stanu `build/tmz` `58b8903236b997a5b9193903cfa588a11828ef8a`
 przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030533545)
 i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030533528).
 
-Test w grze: pierwsza wersja została sprawdzona i ujawniła całkowicie niewidoczny
-preview przy `DisableInventoryGrid`; po opisanej wyżej poprawce **nie wykonano**.
+CI bieżącej wersji z callbackiem `CUIDragItem::Draw()`: **nie wykonano jeszcze**.
+
+Test w grze: dwie wcześniejsze wersje zostały sprawdzone i nie pokazywały drag
+preview. Dla bieżącej wersji z przeniesionym wywołaniem renderowania: **nie wykonano**.
 
 ## Użycie
 
