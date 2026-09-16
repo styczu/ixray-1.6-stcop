@@ -1578,7 +1578,48 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 		UIRender->FlushPrimitive();
 	};
 
+	// TEMP DIAGNOSTIC (inventory-drop-final-preview): the render calls above check out
+	// (correct colors, non-degenerate quads, real production DrawDropPreview reached),
+	// so the remaining unverified step is what PushScissor intersects m_dropPreviewClip
+	// against. It is called here from CUIDragItem::Draw(), outside the normal nested
+	// window-tree draw where the stack would already hold clientArea's own ancestors -
+	// log whatever is on top of the stack (if anything) and the rect PushScissor
+	// actually computed and pushed, logged only when either changes.
+	{
+		static bool s_lastLoggedEmpty = true;
+		static Frect s_lastLoggedTop = Frect().set(0.0f, 0.0f, -4.0f, -4.0f);
+		static Frect s_lastLoggedClip = Frect().set(0.0f, 0.0f, -4.0f, -4.0f);
+		const bool wasEmpty = UI().m_Scissors.empty();
+		const Frect priorTop = wasEmpty ? Frect().set(0.0f, 0.0f, 0.0f, 0.0f) : UI().m_Scissors.top();
+		const bool changed = s_lastLoggedEmpty != wasEmpty
+			|| s_lastLoggedTop.x1 != priorTop.x1 || s_lastLoggedTop.y1 != priorTop.y1
+			|| s_lastLoggedTop.x2 != priorTop.x2 || s_lastLoggedTop.y2 != priorTop.y2
+			|| s_lastLoggedClip.x1 != m_dropPreviewClip.x1 || s_lastLoggedClip.y1 != m_dropPreviewClip.y1
+			|| s_lastLoggedClip.x2 != m_dropPreviewClip.x2 || s_lastLoggedClip.y2 != m_dropPreviewClip.y2;
+		if (changed)
+		{
+			s_lastLoggedEmpty = wasEmpty;
+			s_lastLoggedTop = priorTop;
+			s_lastLoggedClip = m_dropPreviewClip;
+			Msg("[drop-preview] pre-PushScissor: stack_empty=%d prior_top=(%.1f,%.1f)-(%.1f,%.1f) clip=(%.1f,%.1f)-(%.1f,%.1f)",
+				int(wasEmpty), priorTop.x1, priorTop.y1, priorTop.x2, priorTop.y2,
+				m_dropPreviewClip.x1, m_dropPreviewClip.y1, m_dropPreviewClip.x2, m_dropPreviewClip.y2);
+		}
+	}
+
 	UI().PushScissor(m_dropPreviewClip);
+
+	{
+		static Frect s_lastLoggedResult = Frect().set(0.0f, 0.0f, -4.0f, -4.0f);
+		const Frect result = UI().m_Scissors.empty() ? Frect().set(0.0f, 0.0f, 0.0f, 0.0f) : UI().m_Scissors.top();
+		if (s_lastLoggedResult.x1 != result.x1 || s_lastLoggedResult.y1 != result.y1
+			|| s_lastLoggedResult.x2 != result.x2 || s_lastLoggedResult.y2 != result.y2)
+		{
+			s_lastLoggedResult = result;
+			Msg("[drop-preview] post-PushScissor: result=(%.1f,%.1f)-(%.1f,%.1f)",
+				result.x1, result.y1, result.x2, result.y2);
+		}
+	}
 
 	if (prediction.result == dpAuto)
 	{

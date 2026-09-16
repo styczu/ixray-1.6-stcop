@@ -94,6 +94,7 @@ code = r'''
 #include <vector>
 #include <utility>
 #include <algorithm>
+#include <stack>
 
 #define R_ASSERT(x) assert(x)
 #define R_ASSERT2(x, message) assert(x)
@@ -202,11 +203,14 @@ struct UiCore
     int m_currentPointType = 0;
     Frect scissor;
     int scissor_depth = 0;
+    // Real stack, so the TEMP DIAGNOSTIC lines in DrawDropPreview (production body,
+    // extracted verbatim below) that read UI().m_Scissors.empty()/.top() compile and run.
+    std::stack<Frect> m_Scissors;
     float ClientToScreenScaledX(float v) const { return v * g_scale_x; }
     float ClientToScreenScaledY(float v) const { return v * g_scale_y; }
     void ClientToScreenScaled(Fvector2& dest, float left, float top) const { dest.set(left * g_scale_x, top * g_scale_y); }
-    void PushScissor(const Frect& r) { scissor = r; ++scissor_depth; }
-    void PopScissor() { --scissor_depth; }
+    void PushScissor(const Frect& r) { scissor = r; ++scissor_depth; m_Scissors.push(r); }
+    void PopScissor() { --scissor_depth; m_Scissors.pop(); }
 };
 static UiCore ui_core_instance;
 static UiCore& UI() { return ui_core_instance; }
