@@ -556,6 +556,21 @@ void CUIDragItem::Draw()
 
 	// The dragged icon is the render callback known to be alive for the whole drag.
 	// Draw the target list's preview here, on top of both the inventory and the icon.
+
+	// TEMP DIAGNOSTIC (inventory-drop-final-preview): confirm whether m_back_list is
+	// set when this callback fires, and which list it resolves to. Logged only when
+	// the pointer changes, to avoid per-frame spam.
+	{
+		static bool s_loggedOnce = false;
+		static const CUIDragDropListEx* s_lastLoggedBackList = nullptr;
+		if (!s_loggedOnce || s_lastLoggedBackList != m_back_list)
+		{
+			s_loggedOnce = true;
+			s_lastLoggedBackList = m_back_list;
+			Msg("[drop-preview] CUIDragItem::Draw: m_back_list=0x%p", m_back_list);
+		}
+	}
+
 	if (m_back_list)
 		m_back_list->DrawDropPreview(this);
 }

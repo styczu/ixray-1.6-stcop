@@ -1328,6 +1328,20 @@ void CUICellContainer::Draw()
 	m_dropPreviewCellSize	= f_len;
 	m_dropPreviewSpacing	= sp_len;
 
+	// TEMP DIAGNOSTIC (inventory-drop-final-preview): confirm which container stamps
+	// its preview geometry each frame and with what visible cell range. Logged only
+	// when the identity of the stamping container changes, to avoid per-frame spam.
+	{
+		static const CUICellContainer* s_lastLoggedContainer = nullptr;
+		if (s_lastLoggedContainer != this)
+		{
+			s_lastLoggedContainer = this;
+			Msg("[drop-preview] Draw: container=0x%p frame=%u tgt_cells=(%d,%d)-(%d,%d)",
+				this, m_dropPreviewFrame,
+				tgt_cells.x1, tgt_cells.y1, tgt_cells.x2, tgt_cells.y2);
+		}
+	}
+
 	GetCellsInRange(tgt_cells,m_cells_to_draw);
 
 	// fill cell buffer
@@ -1413,23 +1427,76 @@ void CUICellContainer::Draw()
 // after the regular inventory and the dragged icon, so neither can hide the preview.
 void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 {
+	// TEMP DIAGNOSTIC (inventory-drop-final-preview): identify which early-return guard
+	// (if any) stops this call, logged only when the outcome changes for this container.
+	static const CUICellContainer* s_lastLoggedGuardContainer = nullptr;
+	static int s_lastLoggedGuard = -1;
+	auto log_guard = [&](int guard, const char* reason)
+	{
+		if (s_lastLoggedGuardContainer != this || s_lastLoggedGuard != guard)
+		{
+			s_lastLoggedGuardContainer = this;
+			s_lastLoggedGuard = guard;
+			Msg("[drop-preview] DrawDropPreview: container=0x%p guard=%d (%s)", this, guard, reason);
+		}
+	};
+
 	if (!drag_item || drag_item->BackList() != m_pParentDragDropList || m_dropPreviewFrame != Device.dwFrame)
+	{
+		log_guard(1, "drag_item null, BackList mismatch, or stale frame");
 		return;
+	}
 
 	CUICellItem* itm = drag_item->ParentItem();
 	if (!itm)
+	{
+		log_guard(2, "no ParentItem");
 		return;
+	}
 
 	// Virtual cells center the item instead of putting it in a cell, and a single cell
 	// list - the trash panel is one 340x768 cell - has nothing to point at.
 	if (m_pParentDragDropList->GetVirtualCells() || (m_cellsCapacity.x <= 1 && m_cellsCapacity.y <= 1))
+	{
+		log_guard(3, "virtual cells or single-cell capacity");
 		return;
+	}
 
 	// OnItemDrop ignores a move inside a list that does not allow custom placement.
 	if (itm->OwnerList() == m_pParentDragDropList && !m_pParentDragDropList->GetCustomPlacement())
+	{
+		log_guard(4, "same-list move without custom placement");
 		return;
+	}
 
 	const SDropPrediction prediction = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), itm);
+
+	log_guard(0, "proceeding to draw");
+	{
+		static const CUICellContainer* s_lastLoggedPredictionContainer = nullptr;
+		static SDropPrediction s_lastLoggedPrediction{ dpAuto, Irect().set(0,0,-2,-2), Irect().set(0,0,-2,-2) };
+		const bool changed = s_lastLoggedPredictionContainer != this
+			|| s_lastLoggedPrediction.result != prediction.result
+			|| s_lastLoggedPrediction.attempted_cells.x1 != prediction.attempted_cells.x1
+			|| s_lastLoggedPrediction.attempted_cells.y1 != prediction.attempted_cells.y1
+			|| s_lastLoggedPrediction.attempted_cells.x2 != prediction.attempted_cells.x2
+			|| s_lastLoggedPrediction.attempted_cells.y2 != prediction.attempted_cells.y2
+			|| s_lastLoggedPrediction.final_cells.x1 != prediction.final_cells.x1
+			|| s_lastLoggedPrediction.final_cells.y1 != prediction.final_cells.y1
+			|| s_lastLoggedPrediction.final_cells.x2 != prediction.final_cells.x2
+			|| s_lastLoggedPrediction.final_cells.y2 != prediction.final_cells.y2;
+		if (changed)
+		{
+			s_lastLoggedPredictionContainer = this;
+			s_lastLoggedPrediction = prediction;
+			Msg("[drop-preview] DrawDropPreview: result=%d attempted=(%d,%d)-(%d,%d) final=(%d,%d)-(%d,%d)",
+				int(prediction.result),
+				prediction.attempted_cells.x1, prediction.attempted_cells.y1,
+				prediction.attempted_cells.x2, prediction.attempted_cells.y2,
+				prediction.final_cells.x1, prediction.final_cells.y1,
+				prediction.final_cells.x2, prediction.final_cells.y2);
+		}
+	}
 	const Irect& tgt_cells = m_dropPreviewCells;
 	const Fvector2& draw_lt = m_dropPreviewDrawLT;
 	const Fvector2& f_len = m_dropPreviewCellSize;
@@ -1446,6 +1513,10 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 
 	auto draw_cells = [&](const Irect& cells, u32 color)
 	{
+		// TEMP DIAGNOSTIC (inventory-drop-final-preview): the tint color identifies which
+		// call this is (blocked/attempted vs. free/final) before any alpha compensation.
+		const u32 tint_kind = color;
+
 		// The visible ui_grid_alt mask has alpha 102/255. Compensate it so the
 		// resulting opacity matches the 96/255 preview alpha used with ui_grid.
 		if (m_isInventoryGridDisabled)
@@ -1457,7 +1528,25 @@ void CUICellContainer::DrawDropPreview(CUIDragItem* drag_item)
 		shown.x2 = _min(cells.x2, tgt_cells.x2);
 		shown.y2 = _min(cells.y2, tgt_cells.y2);
 
-		if (shown.x2 < shown.x1 || shown.y2 < shown.y1)
+		const bool degenerate = (shown.x2 < shown.x1 || shown.y2 < shown.y1);
+
+		// TEMP DIAGNOSTIC (inventory-drop-final-preview): confirm the clipped quad range
+		// and whether it collapsed to nothing. Two independent slots (blocked/free tint)
+		// so a change in either color's outcome logs, but a steady state does not.
+		{
+			static Irect s_lastLoggedShownBlocked = Irect().set(0, 0, -3, -3);
+			static Irect s_lastLoggedShownFree = Irect().set(0, 0, -3, -3);
+			Irect& slot = (tint_kind == kDropPreviewBlocked) ? s_lastLoggedShownBlocked : s_lastLoggedShownFree;
+			if (slot.x1 != shown.x1 || slot.y1 != shown.y1 || slot.x2 != shown.x2 || slot.y2 != shown.y2)
+			{
+				slot = shown;
+				Msg("[drop-preview] draw_cells: color=0x%08x cells=(%d,%d)-(%d,%d) shown=(%d,%d)-(%d,%d) degenerate=%d",
+					color, cells.x1, cells.y1, cells.x2, cells.y2,
+					shown.x1, shown.y1, shown.x2, shown.y2, int(degenerate));
+			}
+		}
+
+		if (degenerate)
 			return;
 
 		UIRender->StartPrimitive(u32((shown.width()+1)*(shown.height()+1)*6), IUIRender::ptTriList, UI().m_currentPointType);
