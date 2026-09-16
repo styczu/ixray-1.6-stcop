@@ -103,7 +103,13 @@ Dla integracyjnego stanu `build/tmz` `58b8903236b997a5b9193903cfa588a11828ef8a`
 przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030533545)
 i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35030533528).
 
-CI bieżącej wersji z callbackiem `CUIDragItem::Draw()`: **nie wykonano jeszcze**.
+CI bieżącej wersji z callbackiem `CUIDragItem::Draw()`: **zielone**. Dla commita
+źródłowego `bbfc8a5cf3266aeac67f9b70ac9407f2b30580ef` przeszły
+[Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35083015777) i
+[Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35083015775).
+Dla integracyjnego stanu `build/tmz` `43c4d0daff8ef77a1fc75b81a31b5417667bdc3c`
+przeszły [Build engine](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35083016024)
+i [Non-Unity build](https://github.com/styczu/ixray-1.6-stcop/actions/runs/35083015964).
 
 Test w grze: dwie wcześniejsze wersje zostały sprawdzone i nie pokazywały drag
 preview. Dla bieżącej wersji z przeniesionym wywołaniem renderowania: **nie wykonano**.
