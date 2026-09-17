@@ -16,8 +16,10 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
 
 // Tints for the cells the dragged item is about to land in. They modulate the cell
 // texture, so no extra shader or asset is needed.
-constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
-constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+constexpr u32 kDropPreviewFree    = color_rgba(140, 220, 140, 40);
+constexpr u32 kDropPreviewBlocked = color_rgba(220, 120, 120, 40);
+//constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
+//constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
 
 // A grid vertex, rounded the way CUICellItem's own rectangle is rounded
 // (CUIStaticItem::flSnapToScreenPixels), so the background of a cell and the icon on
