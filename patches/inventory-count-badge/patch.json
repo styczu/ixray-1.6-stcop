@@ -1,0 +1,15 @@
+{
+  "name": "inventory-count-badge",
+  "branch": "fix/inventory-count-badge",
+  "upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
+  "commit": "eb0f3f70ac7376cc2aff54f616f759e2d7eac18c",
+  "original_integrated_commit": "df4380385b08ba67a49b2a6cad3fb54f0812d6a4",
+  "patch": "0001-fix-inventory-count-badge.patch",
+  "sha256": "a0c30aac846e5172b081680a4f2e113370ed6995a6d604525e0bef9b7aca9eb6",
+  "files": [
+    "src/xrGame/ui/UICellCustomItems.cpp"
+  ],
+  "dependencies": [],
+  "ui_changes": true,
+  "format": "git format-patch; git am --keep-cr --3way"
+}

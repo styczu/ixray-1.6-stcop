@@ -1,0 +1,52 @@
+From eb0f3f70ac7376cc2aff54f616f759e2d7eac18c Mon Sep 17 00:00:00 2001
+From: tmz <styczu@gmail.com>
+Date: Wed, 16 Sep 2026 23:23:15 +0200
+Subject: [PATCH] Drop the "x" prefix from stacked-item counts, fade in the
+ background only past 9
+
+CUIInventoryCellItem::UpdateItemText hardcoded "x%d" and a fixed-size pill
+texture regardless of digit count. Print the bare number instead, and only
+turn the background texture on once the count reaches two digits, sizing it
+to the text with AdjustWidthToText() plus a small margin rather than always
+rendering a fixed-width frame around a single digit.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ src/xrGame/ui/UICellCustomItems.cpp | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/src/xrGame/ui/UICellCustomItems.cpp b/src/xrGame/ui/UICellCustomItems.cpp
+index 705e5549021be4985085c36ba32ed5c728bd7b53..c82d4946131beb31dc42351575f4c5bb4c7423fd 100644
+--- a/src/xrGame/ui/UICellCustomItems.cpp
++++ b/src/xrGame/ui/UICellCustomItems.cpp
+@@ -122,15 +122,29 @@ void CUIInventoryCellItem::UpdateItemText()
+ 
+ 	if ( count > 1 || helper_count )
+ 	{
+-		xr_sprintf						( str, "x%d", count );
++		xr_sprintf						( str, "%d", count );
+ 		m_text->TextItemControl()->SetText	( str );
+ 		m_text->Show					( true );
++
++		// Discreet background: only worth showing once the digits start
++		// crowding the corner. AdjustWidthToText keeps it snug around
++		// whatever the count actually is instead of a fixed pill size.
++		m_text->AdjustWidthToText		();
++		float pad						= 4.0f;
++		UI().ClientToScreenScaledWidth	( pad );
++		m_text->SetWidth				( m_text->GetWidth() + pad );
++
++		if ( count >= 10 )
++			m_text->TextureOn			();
++		else
++			m_text->TextureOff			();
+ 	}
+ 	else
+ 	{
+ 		xr_sprintf						( str, "");
+ 		m_text->TextItemControl()->SetText	( str );
+ 		m_text->Show					( false );
++		m_text->TextureOff				();
+ 	}
+ }
+ 
