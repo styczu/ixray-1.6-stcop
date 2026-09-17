@@ -1324,6 +1324,22 @@ void CUICellContainer::Draw()
 		}
 	}
 
+	CUIDragItem* drag_item = CUIDragDropListEx::m_drag_item;
+	if (drag_item && drag_item->BackList() == m_pParentDragDropList)
+	{
+		static CUIDragItem* s_loggedDragItem = nullptr;
+		static CUIDragDropListEx* s_loggedList = nullptr;
+		if (s_loggedDragItem != drag_item || s_loggedList != m_pParentDragDropList)
+		{
+			s_loggedDragItem = drag_item;
+			s_loggedList = m_pParentDragDropList;
+			const bool scissorEmpty = UI().m_Scissors.empty();
+			const Frect scissor = scissorEmpty ? Frect().set(0.0f, 0.0f, 0.0f, 0.0f) : UI().m_Scissors.top();
+			Msg("[DROP-PREVIEW] Container::Draw called, list=%p scissor_empty=%d scissor=(%.1f,%.1f)-(%.1f,%.1f)",
+				m_pParentDragDropList, int(scissorEmpty), scissor.x1, scissor.y1, scissor.x2, scissor.y2);
+		}
+	}
+
 	DrawDropPreview			(tgt_cells, drawLT, f_len, sp_len);
 
 	UI().PopScissor			();
@@ -1362,6 +1378,34 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	if (shown.x2 < shown.x1 || shown.y2 < shown.y1)
 		return;
 
+	{
+		static CUIDragItem* s_loggedDragItem = nullptr;
+		static CUIDragDropListEx* s_loggedList = nullptr;
+		static Irect s_loggedShown = Irect().set(0, 0, -2, -2);
+		const bool changed = s_loggedDragItem != drag_item
+			|| s_loggedList != m_pParentDragDropList
+			|| s_loggedShown.x1 != shown.x1 || s_loggedShown.y1 != shown.y1
+			|| s_loggedShown.x2 != shown.x2 || s_loggedShown.y2 != shown.y2;
+		if (changed)
+		{
+			s_loggedDragItem = drag_item;
+			s_loggedList = m_pParentDragDropList;
+			s_loggedShown = shown;
+			Frect listRect;
+			m_pParentDragDropList->GetAbsoluteRect(listRect);
+			const bool scissorEmpty = UI().m_Scissors.empty();
+			const Frect scissor = scissorEmpty ? Frect().set(0.0f, 0.0f, 0.0f, 0.0f) : UI().m_Scissors.top();
+			const Fvector2 dropPos = drag_item->GetPosition();
+			Msg("[DROP-PREVIEW] DrawDropPreview list=(%.1f,%.1f)-(%.1f,%.1f) scissor_empty=%d scissor=(%.1f,%.1f)-(%.1f,%.1f) tgt=(%d,%d)-(%d,%d) shown=(%d,%d)-(%d,%d) draw_lt=(%.1f,%.1f) cell=(%.1f,%.1f) spacing=(%.1f,%.1f) drop=(%.1f,%.1f)",
+				listRect.x1, listRect.y1, listRect.x2, listRect.y2,
+				int(scissorEmpty), scissor.x1, scissor.y1, scissor.x2, scissor.y2,
+				tgt_cells.x1, tgt_cells.y1, tgt_cells.x2, tgt_cells.y2,
+				shown.x1, shown.y1, shown.x2, shown.y2,
+				draw_lt.x, draw_lt.y, f_len.x, f_len.y, sp_len.x, sp_len.y,
+				dropPos.x, dropPos.y);
+		}
+	}
+
 	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
 								 {0.0f,0.0f},{1.0f,1.0f},{0.0f,1.0f}};
 	const float texUSpan = m_isInventoryGridDisabled ? kInventoryCellUSpanGridDisabled : 0.25f;
@@ -1395,7 +1439,13 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 		}//for y
 	}// for x
 
-	UIRender->SetShader( *hShader );
+	// TEMP DIAGNOSTIC: keep the production prediction, geometry, scissor and layer,
+	// but replace the transparent ui_grid material with an existing untextured HUD
+	// shader. A visible green/red fill isolates the material as the root cause.
+	static ui_shader s_dropPreviewDiagnosticShader;
+	if (!s_dropPreviewDiagnosticShader->inited())
+		s_dropPreviewDiagnosticShader->create("hud\\crosshair");
+	UIRender->SetShader(*s_dropPreviewDiagnosticShader);
 	UIRender->FlushPrimitive();
 }
 

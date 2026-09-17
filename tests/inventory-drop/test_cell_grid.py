@@ -56,12 +56,14 @@ code = r'''
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <stack>
 #include <vector>
 #include <utility>
 #include <algorithm>
 
 #define R_ASSERT(x) assert(x)
 #define VERIFY(x) assert(x)
+template <class... Args> static void Msg(const char*, Args&&...) {}
 static bool _valid(float f) { return !std::isnan(f) && !std::isinf(f); }
 #define IC inline
 typedef unsigned int u32;
@@ -148,17 +150,26 @@ struct UiCore
 {
     int m_currentPointType = 0;
     Frect scissor;
+    std::stack<Frect> m_Scissors;
     float ClientToScreenScaledX(float v) const { return v * g_scale_x; }
     float ClientToScreenScaledY(float v) const { return v * g_scale_y; }
     void ClientToScreenScaled(Fvector2& dest, float left, float top) const { dest.set(left * g_scale_x, top * g_scale_y); }
-    void PushScissor(const Frect& r) { scissor = r; }
-    void PopScissor() {}
+    void PushScissor(const Frect& r) { scissor = r; m_Scissors.push(r); }
+    void PopScissor() { m_Scissors.pop(); }
 };
 static UiCore ui_core_instance;
 static UiCore& UI() { return ui_core_instance; }
 static struct { u32 dwFrame; } Device = { 7 };
 
-struct ui_shader { int v = 0; int& operator*() { return v; } };
+struct ui_shader
+{
+    int v = 0;
+    bool ready = false;
+    int& operator*() { return v; }
+    ui_shader* operator->() { return this; }
+    bool inited() const { return ready; }
+    void create(const char*) { ready = true; }
+};
 
 CONSTANTS
 
@@ -214,6 +225,7 @@ struct CUIDragDropListEx
     bool GetCustomPlacement() { return custom_placement; }
     int ScrollPos() { return scroll_pos; }
     void GetClientArea(Frect& r) { r = client_area; }
+    void GetAbsoluteRect(Frect& r) { r = client_area; }
     const Fvector2& GetWndSize() { return wnd_size; }
     ScrollBarStub scroll_bar;
     ScrollBarStub* m_vScrollBar = &scroll_bar;
