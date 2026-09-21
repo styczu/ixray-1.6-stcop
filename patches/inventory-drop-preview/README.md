@@ -82,7 +82,11 @@ commitu ta asercja pada. To pilnuje przeliczania współrzędnych i wyboru shade
 wyglądu na ekranie nie sprawdza.
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-**CI dla `38d143702` jeszcze nie uruchomiono.** Poniższe dotyczy pierwszego commitu.
+Drugi commit zbudowało CI 21 września 2026 na czubku łańcucha `7ce0fdf74` (tymczasowa
+`rebuild/inventory-drop-preview-shader`): `Build engine` w RelWithDebInfo (run
+`35627015764`) i `Non-Unity build` w Debug, RelWithDebInfo i Release (run `35627015732`)
+są zielone, tak samo oba workflow na `a5b65da44` z `build/tmz`. Poniższe dotyczy
+pierwszego commitu.
 
 Kompilacja na Windowsie przeszła. Na commicie `eae6a01c3` zielone są oba
 workflow: `Build engine` w RelWithDebInfo oraz `Non-Unity build` w Debug,
@@ -94,7 +98,7 @@ wyłącznie `Non-Unity build` w Debug.
 było w grze niewidoczne aż do shadera z drugiego commitu. Pierwszy raz zobaczono je
 17 września 2026 w diagnostycznym buildzie `eb20c9798` (gałąź
 `rebuild/inventory-drop-preview-render-diag`, ten sam shader i kolory). Build
-z `38d143702` w grze jeszcze nie był. Ekwipunek z pierwszym commitem sprawdzono w grze
+z tym kodem (`a5b65da44` z `build/tmz`) zainstalowano 21 września 2026, w grze jeszcze go nie sprawdzono. Ekwipunek z pierwszym commitem sprawdzono w grze
 przy 2560x1440. Były to buildy z tym kodem i zmianami panelu:
 m.in. `7fcb532af` (dawna gałąź `feature/inventory-cell-grid`), a 15 września 2026
 `236edf3a7` z `build/tmz`, na którym ekwipunek wyglądał poprawnie. Nie ma zapisu, które

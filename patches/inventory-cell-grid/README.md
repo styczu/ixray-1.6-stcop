@@ -312,8 +312,9 @@ Powrotu do profilu `default` w `UIScrollBar.cpp` **nie pokrywa żaden test** —
 
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
 
-**CI dla przebudowanego łańcucha (`7ce0fdf74`) jeszcze nie uruchomiono.** Poniższe
-dotyczy wersji sprzed przebudowy.
+Przebudowany łańcuch zbudowało CI na `7ce0fdf74`: `Build engine` w RelWithDebInfo
+(run `35627015764`) i `Non-Unity build` w Debug, RelWithDebInfo i Release (run
+`35627015732`), wszystko zielone. Poniższe dotyczy wersji sprzed przebudowy.
 
 Kompilacja na Windowsie przeszła na samym łańcuchu źródłowym, bez zmian panelu, fontów
 i CI. Na `02915a7da` (ostatni commit kodu gałęzi `feature/inventory-cell-grid`, wypchnięty
