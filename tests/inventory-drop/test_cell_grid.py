@@ -282,6 +282,7 @@ struct CUICellContainer
     Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f}, wnd_pos{0.0f, 0.0f};
     bool m_isInventoryGridDisabled = true;
     ui_shader hShader;
+    ui_shader hPreviewShader;
     UI_CELLS_VEC m_cells, m_cells_to_draw;
     int csUi = 0;
 

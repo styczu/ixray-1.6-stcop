@@ -120,11 +120,12 @@ struct RenderCapture
     std::vector<Point> points;
     int batch = -1;
     int shader_sets = 0;
+    std::vector<int> shaders;
     void StartPrimitive(u32, int, int) { ++batch; }
     void PushPoint(float x, float y, float z, u32 c, float u, float v) { points.push_back(Point{batch, x, y, z, c, u, v}); }
-    void SetShader(int) { ++shader_sets; }
+    void SetShader(int shader) { ++shader_sets; shaders.push_back(shader); }
     void FlushPrimitive() {}
-    void reset() { points.clear(); batch = -1; shader_sets = 0; }
+    void reset() { points.clear(); batch = -1; shader_sets = 0; shaders.clear(); }
     int batches() const { return batch + 1; }
     std::vector<Point> of(int b) const
     {
@@ -241,7 +242,9 @@ struct CUICellContainer
     Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
     Fvector2 origin;
     bool m_isInventoryGridDisabled = false;
-    ui_shader hShader;
+    // Distinct handles, so a test can tell which one a pass was flushed with.
+    ui_shader hShader{1};
+    ui_shader hPreviewShader{2};
     UI_CELLS_VEC m_cells, m_cells_to_draw;
     std::vector<CUIWindow*> m_ChildWndList;
     int csUi = 0;
@@ -459,6 +462,12 @@ int main()
         assert(!grid_quad.empty());
         same_pixels(grid_quad, preview);
         assert(preview[0].color == kDropPreviewFree);
+
+        // The inside of a ui_grid cell is transparent: a preview flushed with the grid
+        // shader is tinted to nothing and never shows in game.
+        assert(capture.shaders.size() == 2);
+        assert(capture.shaders[0] == *s.box.hShader);
+        assert(capture.shaders[1] == *s.box.hPreviewShader);
     }
 
     // Scrolled list: the preview indexes cells absolutely while the grid pass counts
@@ -579,5 +588,5 @@ with tempfile.TemporaryDirectory(prefix='ixray-drop-preview-') as directory:
 print('PASS: production PredictDrop and the production Draw/DrawDropPreview pass; free cell, '
       'blocked cell, off-grid cursor, self-overlap while moving a 2x1, multi-cell footprint, '
       'vertical swap, grouping merge target and self-match; highlight pixels matched against the '
-      'grid cell for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, '
+      'grid cell for plain, scrolled, spaced and 2x1 cases; preview flushed with its own untextured shader, not the grid one; no highlight for virtual cells, '
       'foreign list, fixed placement, single cell list; ASan/UBSan')
