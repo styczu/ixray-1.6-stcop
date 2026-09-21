@@ -14,10 +14,10 @@ namespace
 // Horizontal UV span for one cell when inventory grid is disabled (must match GetTexUVLT sliding room).
 constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
 
-// Tints for the cells the dragged item is about to land in. They modulate the cell
-// texture, so no extra shader or asset is needed.
-constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
-constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+// Tints for the cells the dragged item is about to land in. They are drawn as flat
+// vertex color with hPreviewShader, so the alpha here is the final opacity.
+constexpr u32 kDropPreviewFree		= color_rgba(140, 220, 140, 40);
+constexpr u32 kDropPreviewBlocked	= color_rgba(220, 120, 120, 40);
 }
 
 void CUICell::Clear()
@@ -617,6 +617,9 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
 	{
 		hShader->create("hud\\fog_of_war", "ui\\ui_grid");
 	}
+	// The inside of a ui_grid cell is transparent, so tinting the grid texture
+	// leaves nothing on screen. The preview needs an untextured fill instead.
+	hPreviewShader->create("hud\\crosshair");
 //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
 	m_cellSpacing.set			( 0, 0 );
 }
@@ -1242,7 +1245,7 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 		}//for y
 	}// for x
 
-	UIRender->SetShader( *hShader );
+	UIRender->SetShader( *hPreviewShader );
 	UIRender->FlushPrimitive();
 }
 
