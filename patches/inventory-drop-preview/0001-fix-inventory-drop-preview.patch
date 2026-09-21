@@ -1,8 +1,8 @@
 From 15e6b828d14bc9ee7c8f0594feff49d14cc8bd0b Mon Sep 17 00:00:00 2001
 From: tmz <styczu@gmail.com>
 Date: Mon, 14 Sep 2026 12:23:07 +0200
-Subject: [PATCH] =?UTF-8?q?Podgl=C4=85d=20kom=C3=B3rek,=20w=20kt=C3=B3re?=
- =?UTF-8?q?=20trafi=20przeci=C4=85gany=20przedmiot?=
+Subject: [PATCH 1/2] =?UTF-8?q?Podgl=C4=85d=20kom=C3=B3rek,=20w=20kt=C3=B3?=
+ =?UTF-8?q?re=20trafi=20przeci=C4=85gany=20przedmiot?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -929,3 +929,130 @@ index 0000000000000000000000000000000000000000..47b87ce53307841c44d735bc6753bc5f
 +      'vertical swap, grouping merge target and self-match; highlight pixels matched against the '
 +      'grid cell for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, '
 +      'foreign list, fixed placement, single cell list; ASan/UBSan')
+
+From 38d143702df271bd2c8d79df7ba196c606f9f569 Mon Sep 17 00:00:00 2001
+From: tmz <styczu@gmail.com>
+Date: Mon, 21 Sep 2026 18:07:26 +0200
+Subject: [PATCH 2/2] =?UTF-8?q?Podgl=C4=85d=20upuszczenia=20rysowany=20w?=
+ =?UTF-8?q?=C5=82asnym,=20nieteksturowanym=20shaderem?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Podgląd barwił teksturę ui_grid, a wnętrze komórki tej tekstury jest
+przezroczyste, więc w grze nic nie było widać. Diagnoza z 17.09
+(rebuild/inventory-drop-preview-render-diag, 8e654bc11) pokazała, że ta sama
+geometria z shaderem hud\crosshair jest widoczna. Kontener dostaje osobny
+hPreviewShader, a kolory są te z eb20c9798 (alpha 40 jako ostateczna
+nieprzezroczystość).
+
+Test sprawdza, że przebieg podglądu idzie innym shaderem niż siatka. Bez
+poprawki pada na tej asercji.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ src/xrGame/ui/UIDragDropListEx.cpp        | 13 ++++++++-----
+ src/xrGame/ui/UIDragDropListEx.h          |  1 +
+ tests/inventory-drop/test_drop_preview.py | 17 +++++++++++++----
+ 3 files changed, 22 insertions(+), 9 deletions(-)
+
+diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
+index ce24bd14d56030667ff5586f7d0afbe3363d54d0..7a0edcccd79391f624ff736d357a6cf4dcf5460e 100644
+--- a/src/xrGame/ui/UIDragDropListEx.cpp
++++ b/src/xrGame/ui/UIDragDropListEx.cpp
+@@ -14,10 +14,10 @@ namespace
+ // Horizontal UV span for one cell when inventory grid is disabled (must match GetTexUVLT sliding room).
+ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
+ 
+-// Tints for the cells the dragged item is about to land in. They modulate the cell
+-// texture, so no extra shader or asset is needed.
+-constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
+-constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
++// Tints for the cells the dragged item is about to land in. They are drawn as flat
++// vertex color with hPreviewShader, so the alpha here is the final opacity.
++constexpr u32 kDropPreviewFree		= color_rgba(140, 220, 140, 40);
++constexpr u32 kDropPreviewBlocked	= color_rgba(220, 120, 120, 40);
+ }
+ 
+ void CUICell::Clear()
+@@ -617,6 +617,9 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
+ 	{
+ 		hShader->create("hud\\fog_of_war", "ui\\ui_grid");
+ 	}
++	// The inside of a ui_grid cell is transparent, so tinting the grid texture
++	// leaves nothing on screen. The preview needs an untextured fill instead.
++	hPreviewShader->create("hud\\crosshair");
+ //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
+ 	m_cellSpacing.set			( 0, 0 );
+ }
+@@ -1242,7 +1245,7 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
+ 		}//for y
+ 	}// for x
+ 
+-	UIRender->SetShader( *hShader );
++	UIRender->SetShader( *hPreviewShader );
+ 	UIRender->FlushPrimitive();
+ }
+ 
+diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
+index 19ef024f80b0d707929e494bd43deba946993bf1..3a2643e352d196243eecad4152bbdaceee89f9d6 100644
+--- a/src/xrGame/ui/UIDragDropListEx.h
++++ b/src/xrGame/ui/UIDragDropListEx.h
+@@ -164,6 +164,7 @@ class CUICellContainer :public CUIWindow
+ private:
+ 	typedef CUIWindow inherited;
+ 	ui_shader					hShader;
++	ui_shader					hPreviewShader;
+ 	UI_CELLS_VEC				m_cells_to_draw;
+ protected:
+ 	CUIDragDropListEx*			m_pParentDragDropList;
+diff --git a/tests/inventory-drop/test_drop_preview.py b/tests/inventory-drop/test_drop_preview.py
+index 47b87ce53307841c44d735bc6753bc5f0b737c22..aafbdc7a21a5dbf0849204a34e45167853686fef 100644
+--- a/tests/inventory-drop/test_drop_preview.py
++++ b/tests/inventory-drop/test_drop_preview.py
+@@ -113,11 +113,12 @@ struct RenderCapture
+     std::vector<Point> points;
+     int batch = -1;
+     int shader_sets = 0;
++    std::vector<int> shaders;
+     void StartPrimitive(u32, int, int) { ++batch; }
+     void PushPoint(float x, float y, float z, u32 c, float u, float v) { points.push_back(Point{batch, x, y, z, c, u, v}); }
+-    void SetShader(int) { ++shader_sets; }
++    void SetShader(int shader) { ++shader_sets; shaders.push_back(shader); }
+     void FlushPrimitive() {}
+-    void reset() { points.clear(); batch = -1; shader_sets = 0; }
++    void reset() { points.clear(); batch = -1; shader_sets = 0; shaders.clear(); }
+     int batches() const { return batch + 1; }
+     std::vector<Point> of(int b) const
+     {
+@@ -220,7 +221,9 @@ struct CUICellContainer
+     Ivector2 m_cellsCapacity, m_cellSize, m_cellSpacing;
+     Fvector2 origin;
+     bool m_isInventoryGridDisabled = false;
+-    ui_shader hShader;
++    // Distinct handles, so a test can tell which one a pass was flushed with.
++    ui_shader hShader{1};
++    ui_shader hPreviewShader{2};
+     UI_CELLS_VEC m_cells, m_cells_to_draw;
+     std::vector<CUIWindow*> m_ChildWndList;
+     int csUi = 0;
+@@ -429,6 +432,12 @@ int main()
+         assert(!grid_quad.empty());
+         same_pixels(grid_quad, preview);
+         assert(preview[0].color == kDropPreviewFree);
++
++        // The inside of a ui_grid cell is transparent: a preview flushed with the grid
++        // shader is tinted to nothing and never shows in game.
++        assert(capture.shaders.size() == 2);
++        assert(capture.shaders[0] == *s.box.hShader);
++        assert(capture.shaders[1] == *s.box.hPreviewShader);
+     }
+ 
+     // Scrolled list: the preview indexes cells absolutely while the grid pass counts
+@@ -548,5 +557,5 @@ with tempfile.TemporaryDirectory(prefix='ixray-drop-preview-') as directory:
+ print('PASS: production PredictDrop and the production Draw/DrawDropPreview pass; free cell, '
+       'blocked cell, off-grid cursor, self-overlap while moving a 2x1, multi-cell footprint, '
+       'vertical swap, grouping merge target and self-match; highlight pixels matched against the '
+-      'grid cell for plain, scrolled, spaced and 2x1 cases; no highlight for virtual cells, '
++      'grid cell for plain, scrolled, spaced and 2x1 cases; preview flushed with its own untextured shader, not the grid one; no highlight for virtual cells, '
+       'foreign list, fixed placement, single cell list; ASan/UBSan')

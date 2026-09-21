@@ -32,12 +32,17 @@ zamiast jej odmówić, więc dostaje własne `PredictDrop` - inaczej zajęty szy
 slot świeciłby na czerwono, choć przedmiot i tak by tam wszedł.
 
 Rysowanie w `CUICellContainer::DrawDropPreview`, po ikonach, żeby podświetlenie
-zajętej komórki nie schowało się pod ikoną. Modulacja istniejącej tekstury siatki
-kolorem wierzchołka - bez nowych shaderów, tekstur i bez zmian w `gamedata`.
-Kolory to dwie stałe na górze `UIDragDropListEx.cpp`. Pomijane są listy
+zajętej komórki nie schowało się pod ikoną. Kolor wierzchołka idzie przez osobny,
+nieteksturowany shader kontenera `hPreviewShader` (`hud\crosshair`, istniejący
+w silniku) - bez nowych tekstur i bez zmian w `gamedata`. Pierwsza wersja barwiła
+teksturę siatki `ui_grid`, ale wnętrze jej komórki jest przezroczyste, więc w grze
+nic nie było widać; to naprawia drugi commit patcha.
+Kolory to dwie stałe na górze `UIDragDropListEx.cpp`; ich alpha to końcowa
+nieprzezroczystość. Pomijane są listy
 z `virtual_cells`, gdzie przedmiot i tak jest centrowany, oraz listy
 jednokomórkowe, czyli kosz o komórce 340x768.
 
+Patch ma dwa commity: `15e6b828d` (podgląd) i `38d143702` (własny shader).
 Trzy pary plików źródłowych (`UIDragDropListEx.{h,cpp}`,
 `UIDragDropReferenceList.{h,cpp}`) i test
 `tests/inventory-drop/test_drop_preview.py`.
@@ -57,8 +62,8 @@ przypadek to ostatni piksel ostatniej komórki pasa, opisany w README pakietu
 Patch nakłada się na czysty upstream
 `6c793faee008d83f86cec2429d39d7aa39b5bc66` z nałożonym `inventory-drop-cell`,
 a po nałożeniu drzewo jest identyczne z gałęzią źródłową `feature/inventory-drop-preview`
-(commit `15e6b828d`). Ostatnio sprawdzone 15 września 2026 przy odbudowie łańcucha
-gałęzi inventory. Sprawdzono też, że bez
+(commit `38d143702`). Ostatnio sprawdzone 21 września 2026 przy przebudowie łańcucha
+gałęzi inventory o własny shader podglądu. Sprawdzono też, że bez
 zależności `apply.py` odmawia, a na repozytorium z już nałożoną poprawką zgłasza
 jej obecność. Dołączony test przechodzi w świeżo zapatchowanym checkoucie:
 kompiluje produkcyjne `PredictDrop`, `PickCell`, `ValidCell`, `IsRoomFree`,
@@ -72,8 +77,12 @@ Podgląd liczy komórki bezwzględnie, a pętla siatki od pierwszej widocznej, w
 test sprawdza, że oba przebiegi rysują ten sam kwadrat na tych samych
 współrzędnych - dla listy zwykłej, przewiniętej, z odstępami między komórkami
 i dla przedmiotu 2x1 - oraz że podświetlenia nie ma tam, gdzie nie powinno.
-To pilnuje samego przeliczania współrzędnych; wyglądu na ekranie nie sprawdza.
+Sprawdza też, że przebieg podglądu idzie innym shaderem niż siatka - bez drugiego
+commitu ta asercja pada. To pilnuje przeliczania współrzędnych i wyboru shadera;
+wyglądu na ekranie nie sprawdza.
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
+
+**CI dla `38d143702` jeszcze nie uruchomiono.** Poniższe dotyczy pierwszego commitu.
 
 Kompilacja na Windowsie przeszła. Na commicie `eae6a01c3` zielone są oba
 workflow: `Build engine` w RelWithDebInfo oraz `Non-Unity build` w Debug,
@@ -81,14 +90,17 @@ RelWithDebInfo i Release. Ta druga konfiguracja ma tu znaczenie: `FindSimilar`,
 które ten patch zmienia, ma w środku gałąź `#ifdef DEBUG`, a kompiluje ją
 wyłącznie `Non-Unity build` w Debug.
 
-**Próba w grze dotyczy buildów integracyjnych, nie samego pakietu.** Ekwipunek z tym
-kodem sprawdzono w grze przy 2560x1440. Były to buildy z tym kodem i zmianami panelu:
+**Próba w grze dotyczy buildów integracyjnych, nie samego pakietu.** Samo podświetlenie
+było w grze niewidoczne aż do shadera z drugiego commitu. Pierwszy raz zobaczono je
+17 września 2026 w diagnostycznym buildzie `eb20c9798` (gałąź
+`rebuild/inventory-drop-preview-render-diag`, ten sam shader i kolory). Build
+z `38d143702` w grze jeszcze nie był. Ekwipunek z pierwszym commitem sprawdzono w grze
+przy 2560x1440. Były to buildy z tym kodem i zmianami panelu:
 m.in. `7fcb532af` (dawna gałąź `feature/inventory-cell-grid`), a 15 września 2026
 `236edf3a7` z `build/tmz`, na którym ekwipunek wyglądał poprawnie. Nie ma zapisu, które
 z punktów poniżej przejrzano. Buildu z samych pakietów nałożonych na czysty upstream
 nie uruchamiano w grze. Po kompilacji sprawdź, czy podświetlane komórki
-zgadzają się z tym, gdzie przedmiot ląduje, i czy kolory są czytelne na twoim
-`ui_grid` - jeśli nie, zmień `kDropPreviewFree` i `kDropPreviewBlocked` na górze
+zgadzają się z tym, gdzie przedmiot ląduje, i czy kolory są czytelne - jeśli nie, zmień `kDropPreviewFree` i `kDropPreviewBlocked` na górze
 `src/xrGame/ui/UIDragDropListEx.cpp`. Przejdź plecak, pas, szybkie sloty, handel,
 sloty wyposażenia i kosz.
 

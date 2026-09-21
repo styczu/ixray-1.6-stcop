@@ -2,21 +2,22 @@
   "name": "inventory-cell-grid",
   "branch": "feature/inventory-cell-grid",
   "original_commits": [
-    "60564a6bf93bba1df9c047dcdee5846c82785d3e",
-    "fe243d080a08dbabdb8f4a7c8e3936cb5fa7e19d",
-    "2b665a2b03df95af5b8aa4f24f399cb2c7c2d6ea",
-    "02915a7da253990a6c8e4eade2c348c4bfb0b75d"
+    "749023fc9260af03f4835e94f89c1b70a7600e9b",
+    "fdd20e29d068d9f8b66a28a559db1a66bef330c1",
+    "88d04a085f4925ec4afa2616c0cc4f3a1fc39819",
+    "7ce0fdf74936d8ddd8f6538b9088a5bafff91b87"
   ],
-  "original_parent": "15e6b828d14bc9ee7c8f0594feff49d14cc8bd0b",
+  "original_parent": "38d143702df271bd2c8d79df7ba196c606f9f569",
   "integrated_commits": [
     "28424e0f3c53e3f986c0ae21c1de54c4fa922224",
     "e9fb81e262c3218d13c445a537911c570d572e86",
     "8c031bfb9606c0afe5d4cdd69260ef483939aefa",
-    "7fcb532af12f9ddef28b76220abdad42b306debb"
+    "7fcb532af12f9ddef28b76220abdad42b306debb",
+    "e9103f55eddee46954b00419b5cd947275772877"
   ],
   "verified_upstream_base": "6c793faee008d83f86cec2429d39d7aa39b5bc66",
   "patch": "0001-fix-inventory-cell-grid.patch",
-  "sha256": "d9ec25ad440f33e45ae6998bfa9be35ceb951a1ba701d37e04dbe791a9eba9fb",
+  "sha256": "4b4a63b20ba304017a8acf46804c3dfd2291a57c678ece95442498cb53bce0c6",
   "dependencies": [
     "inventory-drop-cell",
     "inventory-drop-preview"

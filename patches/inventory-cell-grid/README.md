@@ -248,7 +248,11 @@ ich patch-id różni się od odpowiedników na gałęzi źródłowej.
 
 ## Sprawdzone
 
-Stan z 15 września 2026, z odbudowy łańcucha gałęzi inventory. Patch (4 commity) nakłada
+Stan z 21 września 2026, z przebudowy łańcucha na nowy commit `inventory-drop-preview`
+(`38d143702`, własny shader podglądu). Cztery commity przeniesiono bez zmian treści poza
+kontekstem stałych podglądu. Jedyną adaptacją jest pole `hPreviewShader` w atrapie
+kontenera w `test_cell_grid.py`, bo produkcyjny konstruktor je teraz tworzy.
+Patch (4 commity) nakłada
 się na czysty upstream `6c793faee008d83f86cec2429d39d7aa39b5bc66` z nałożonymi
 `inventory-drop-cell` i `inventory-drop-preview`. Po nałożeniu całe drzewo jest identyczne
 z gałęzią źródłową, a pliki dotknięte przez rodzinę inventory także z `build/tmz`.
@@ -307,6 +311,9 @@ Powrotu do profilu `default` w `UIScrollBar.cpp` **nie pokrywa żaden test** —
 `CUIXml` i widgetów strzałek.
 
 Test wymaga Pythona 3 i g++ z ASan/UBSan; LeakSanitizer jest domyślnie wyłączony.
+
+**CI dla przebudowanego łańcucha (`7ce0fdf74`) jeszcze nie uruchomiono.** Poniższe
+dotyczy wersji sprzed przebudowy.
 
 Kompilacja na Windowsie przeszła na samym łańcuchu źródłowym, bez zmian panelu, fontów
 i CI. Na `02915a7da` (ostatni commit kodu gałęzi `feature/inventory-cell-grid`, wypchnięty

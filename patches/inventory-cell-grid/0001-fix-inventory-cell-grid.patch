@@ -1,4 +1,4 @@
-From 60564a6bf93bba1df9c047dcdee5846c82785d3e Mon Sep 17 00:00:00 2001
+From 749023fc9260af03f4835e94f89c1b70a7600e9b Mon Sep 17 00:00:00 2001
 From: tmz <styczu@gmail.com>
 Date: Mon, 14 Sep 2026 16:05:07 +0200
 Subject: [PATCH 1/4] =?UTF-8?q?Sta=C5=82y=20rozmiar=20kom=C3=B3rki=20ekwip?=
@@ -40,10 +40,10 @@ Claude-Session: https://claude.ai/code/session_01RxySzhoKaG8quQJnGaYkjH
  src/xrGame/ui/UIDragDropListEx.h          |  33 +-
  src/xrGame/ui/UIDragDropReferenceList.cpp |  27 +-
  src/xrGame/ui/UIDragDropReferenceList.h   |   6 +
- tests/inventory-drop/test_cell_grid.py    | 714 ++++++++++++++++++++++
+ tests/inventory-drop/test_cell_grid.py    | 715 ++++++++++++++++++++++
  tests/inventory-drop/test_drop_cell.py    |  66 +-
  tests/inventory-drop/test_drop_preview.py |  49 +-
- 8 files changed, 1030 insertions(+), 68 deletions(-)
+ 8 files changed, 1031 insertions(+), 68 deletions(-)
  create mode 100644 tests/inventory-drop/test_cell_grid.py
 
 diff --git a/src/xrGame/ui/UICellItem.cpp b/src/xrGame/ui/UICellItem.cpp
@@ -96,13 +96,13 @@ index 4a49faa1ddaae17c809d67f4c810cfc2c1a641b9..bb57a127fc87468d9ddb3f66ef3b86fd
  			float y = itm_grid_size.y * (cell_size.y + cell_space.y) - m_pConditionState->GetHeight() - 2.f;
  
 diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
-index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dacf432831a 100644
+index 7a0edcccd79391f624ff736d357a6cf4dcf5460e..a147317cb95781bdafae7286b88cac1710087ea9 100644
 --- a/src/xrGame/ui/UIDragDropListEx.cpp
 +++ b/src/xrGame/ui/UIDragDropListEx.cpp
 @@ -18,6 +18,25 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
- // texture, so no extra shader or asset is needed.
- constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
- constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+ // vertex color with hPreviewShader, so the alpha here is the final opacity.
+ constexpr u32 kDropPreviewFree		= color_rgba(140, 220, 140, 40);
+ constexpr u32 kDropPreviewBlocked	= color_rgba(220, 120, 120, 40);
 +
 +// Half a hundredth of a screen pixel. CUIStaticItem::RenderInternal floors the left
 +// edge of every icon, and the float error along scale*(absolute position + offset)
@@ -148,9 +148,9 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  {
  	return m_container->CellsSpacing();
  }
-@@ -618,7 +637,16 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
- 		hShader->create("hud\\fog_of_war", "ui\\ui_grid");
- 	}
+@@ -621,7 +640,16 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
+ 	// leaves nothing on screen. The preview needs an untextured fill instead.
+ 	hPreviewShader->create("hud\\crosshair");
  //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
 -	m_cellSpacing.set			( 0, 0 );
 +	m_cellsCapacity.set			( 0, 0 );
@@ -166,7 +166,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  }
  
  CUICellContainer::~CUICellContainer()
-@@ -683,6 +711,22 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
+@@ -686,6 +714,22 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
  			C.SetItem		(itm,(x==0&&y==0));
  		}
  	}
@@ -189,7 +189,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  	// without this will be double compression on wide screens
  	// solution works only for "quads" cells
  	if (m_pParentDragDropList->GetVerticalPlacement())
-@@ -695,9 +739,7 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
+@@ -698,9 +742,7 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
  	}
  
  	if (!m_pParentDragDropList->GetVirtualCells()) {
@@ -200,7 +200,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  	}
  	else
  	{
-@@ -709,10 +751,6 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
+@@ -712,10 +754,6 @@ void CUICellContainer::PlaceItemAtPos(CUICellItem* itm, Ivector2& cell_pos)
  
  		itm->SetWndPos(AlignPos);
  	}
@@ -211,7 +211,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  }
  
  CUICellItem* CUICellContainer::RemoveItem(CUICellItem* itm, bool force_root)
-@@ -870,19 +908,99 @@ void CUICellContainer::SetCellsCapacity(const Ivector2& c)
+@@ -873,19 +911,99 @@ void CUICellContainer::SetCellsCapacity(const Ivector2& c)
  
  void CUICellContainer::SetCellSize(const Ivector2& new_sz)
  {
@@ -314,7 +314,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  }
  
  CUICell& CUICellContainer::GetCellAt(const Ivector2& pos)
-@@ -919,12 +1037,12 @@ u32 CUICellContainer::GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res)
+@@ -922,12 +1040,12 @@ u32 CUICellContainer::GetCellsInRange(const Irect& rect, UI_CELLS_VEC& res)
  
  void CUICellContainer::ReinitSize()
  {
@@ -330,7 +330,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  	m_pParentDragDropList->ReinitScroll	();
  }
  
-@@ -1043,12 +1161,22 @@ void CUICellContainer::ClearAll(bool bDestroy, xr_vector<u16> IgnoredItemsIds)
+@@ -1046,12 +1164,22 @@ void CUICellContainer::ClearAll(bool bDestroy, xr_vector<u16> IgnoredItemsIds)
  Ivector2 CUICellContainer::PickCell(const Fvector2& abs_pos)
  {
  	Ivector2 res;
@@ -355,7 +355,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  	if(!ValidCell(res))		
  		res.set(-1, -1);
  	return res;
-@@ -1063,13 +1191,13 @@ void CUICellContainer::Draw()
+@@ -1066,13 +1194,13 @@ void CUICellContainer::Draw()
  	Ivector2			cell_cnt = m_pParentDragDropList->CellsCapacity();
  	if					(cell_cnt.x==0 || cell_cnt.y==0)	return;
  
@@ -373,7 +373,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  
  	clamp				(tgt_cells.x2, 0, cell_cnt.x-1);
  	clamp				(tgt_cells.y2, 0, cell_cnt.y-1);
-@@ -1078,7 +1206,9 @@ void CUICellContainer::Draw()
+@@ -1081,7 +1209,9 @@ void CUICellContainer::Draw()
  	GetAbsolutePos		(lt_abs_pos);
  
  	Fvector2					drawLT;
@@ -384,7 +384,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  	UI().ClientToScreenScaled	(drawLT, drawLT.x, drawLT.y);
  
  	const Fvector2 pts[6] =		{{0.0f,0.0f},{1.0f,0.0f},{1.0f,1.0f},
-@@ -1088,10 +1218,10 @@ void CUICellContainer::Draw()
+@@ -1091,10 +1221,10 @@ void CUICellContainer::Draw()
  	const Fvector2 uvs[6] =		{{0.0f,0.0f},{texUSpan,0.0f},{texUSpan,texVSpan},
  								 {0.0f,0.0f},{texUSpan,texVSpan},{0.0f,texVSpan}};
  
@@ -399,7 +399,7 @@ index ce24bd14d56030667ff5586f7d0afbe3363d54d0..8f349b12f3f75e480c9925fd09e11dac
  	GetCellsInRange(tgt_cells,m_cells_to_draw);
  
 diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
-index 19ef024f80b0d707929e494bd43deba946993bf1..906b473f1bd6eb3d599b30ef814fc6132d3bf81d 100644
+index 3a2643e352d196243eecad4152bbdaceee89f9d6..3354fafeb5b629086217ffeeaf27b05a96839278 100644
 --- a/src/xrGame/ui/UIDragDropListEx.h
 +++ b/src/xrGame/ui/UIDragDropListEx.h
 @@ -94,9 +94,9 @@ public:
@@ -414,7 +414,7 @@ index 19ef024f80b0d707929e494bd43deba946993bf1..906b473f1bd6eb3d599b30ef814fc613
  			void			SetCellsSpacing		(const Ivector2& new_sz);
  			void			SetCellsVertAlignment(xr_string alignment);
  			void			SetCellsHorizAlignment(xr_string alignment);
-@@ -170,8 +170,17 @@ protected:
+@@ -171,8 +171,17 @@ protected:
  	bool						m_isInventoryGridDisabled;
  
  	Ivector2					m_cellsCapacity;			//count		(col,	row)
@@ -434,7 +434,7 @@ index 19ef024f80b0d707929e494bd43deba946993bf1..906b473f1bd6eb3d599b30ef814fc613
  
  	UI_CELLS_VEC				m_cells;
  
-@@ -190,14 +199,25 @@ public:
+@@ -191,14 +200,25 @@ public:
  
  protected:
  	virtual		void			Draw				();
@@ -462,7 +462,7 @@ index 19ef024f80b0d707929e494bd43deba946993bf1..906b473f1bd6eb3d599b30ef814fc613
  				Ivector2		TopVisibleCell		();
  				Ivector2		GetItemPos			(CUICellItem* itm);
  				Ivector2		FindFreeCell		(const Ivector2& size);
-@@ -208,6 +228,7 @@ protected:
+@@ -209,6 +229,7 @@ protected:
  				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);
  
  				void			PlaceItemAtPos		(CUICellItem* itm, Ivector2& cell_pos);
@@ -546,10 +546,10 @@ index b1ce1f1170e8afdf53a8cd62d8683da17ddfb666..af734e7f3532448ef4ef1865b52276bc
  	void ReloadReferences(CInventoryOwner* pActor);
 diff --git a/tests/inventory-drop/test_cell_grid.py b/tests/inventory-drop/test_cell_grid.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..d5d069ff3aedaa1a457e19bb4222d293cef6a7ff
+index 0000000000000000000000000000000000000000..f551a813ccc190fdf8102f2f898724fdf1744594
 --- /dev/null
 +++ b/tests/inventory-drop/test_cell_grid.py
-@@ -0,0 +1,714 @@
+@@ -0,0 +1,715 @@
 +"""Compile the production cell metrics, item placement and grid drawing, then check that
 +one drag&drop list steps by one constant whole number of screen pixels: that the grid
 +background, the item rectangles and PickCell all agree on it, and that neighbouring item
@@ -792,6 +792,7 @@ index 0000000000000000000000000000000000000000..d5d069ff3aedaa1a457e19bb4222d293
 +    Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f};
 +    bool m_isInventoryGridDisabled = true;
 +    ui_shader hShader;
++    ui_shader hPreviewShader;
 +    UI_CELLS_VEC m_cells, m_cells_to_draw;
 +    int csUi = 0;
 +
@@ -1395,7 +1396,7 @@ index 99065b3f361b397ba0cd6209cac8e3b124d3554f..484d031f5210841bface5102f32f1fb9
          .replace('PICK_BODY', pick_cell))
  
 diff --git a/tests/inventory-drop/test_drop_preview.py b/tests/inventory-drop/test_drop_preview.py
-index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb50907491 100644
+index aafbdc7a21a5dbf0849204a34e45167853686fef..63d94f75ef486af758a663e6d951d1b7a451cd9f 100644
 --- a/tests/inventory-drop/test_drop_preview.py
 +++ b/tests/inventory-drop/test_drop_preview.py
 @@ -27,6 +27,7 @@ drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
@@ -1433,7 +1434,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
  
  enum EDropPreview { dpMerge, dpPlace, dpAuto };
  
-@@ -132,13 +139,17 @@ static RenderCapture capture;
+@@ -133,13 +140,17 @@ static RenderCapture capture;
  static RenderCapture* UIRender = &capture;
  
  // ClientToScreenScaled is a plain per-axis scale; deliberately non-uniform here so an
@@ -1453,7 +1454,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
      void PushScissor(const Frect& r) { scissor = r; ++scissor_depth; }
      void PopScissor() { --scissor_depth; }
  };
-@@ -150,6 +161,9 @@ struct ui_shader { int v = 0; int& operator*() { return v; } };
+@@ -151,6 +162,9 @@ struct ui_shader { int v = 0; int& operator*() { return v; } };
  
  CONSTANTS
  
@@ -1463,7 +1464,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
  struct CUICellContainer;
  struct CUICellItem;
  
-@@ -217,7 +231,10 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
+@@ -218,7 +232,10 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
  struct CUICellContainer
  {
      CUIDragDropListEx* m_pParentDragDropList = nullptr;
@@ -1474,8 +1475,8 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
 +    Fvector2 m_cellSize{0.0f, 0.0f}, m_cellSpacing{0.0f, 0.0f}, m_metricsScale{1.0f, 1.0f};
      Fvector2 origin;
      bool m_isInventoryGridDisabled = false;
-     ui_shader hShader;
-@@ -226,8 +243,11 @@ struct CUICellContainer
+     // Distinct handles, so a test can tell which one a pass was flushed with.
+@@ -229,8 +246,11 @@ struct CUICellContainer
      int csUi = 0;
  
      void GetAbsolutePos(Fvector2& p) { p = origin; }
@@ -1489,7 +1490,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
  
      bool ValidCell(const Ivector2& pos) const VALID_BODY
      CUICell& GetCellAt(const Ivector2& pos) CELL_AT_BODY
-@@ -265,9 +285,12 @@ struct CUICellContainer
+@@ -268,9 +288,12 @@ struct CUICellContainer
      }
      Fvector2 aim(int cx, int cy) const
      {
@@ -1504,7 +1505,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
          return p;
      }
  };
-@@ -312,11 +335,14 @@ struct Scene
+@@ -315,11 +338,14 @@ struct Scene
          list.m_container = &box;
          box.m_pParentDragDropList = &list;
          box.m_isInventoryGridDisabled = true;   // unique UV per cell
@@ -1522,7 +1523,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
          drag.back = &list;
          CUIDragDropListEx::m_drag_item = nullptr;
      }
-@@ -435,7 +461,8 @@ int main()
+@@ -444,7 +470,8 @@ int main()
      // from the first visible row, so this is where an off by one would show up.
      {
          Scene s(7, 14, 41, 0);
@@ -1533,7 +1534,7 @@ index 47b87ce53307841c44d735bc6753bc5f0b737c22..caa7825f015eaa893ac82bf97def2cfb
          s.run(&pill, 4, 6);
  
 
-From fe243d080a08dbabdb8f4a7c8e3936cb5fa7e19d Mon Sep 17 00:00:00 2001
+From fdd20e29d068d9f8b66a28a559db1a66bef330c1 Mon Sep 17 00:00:00 2001
 From: tmz <styczu@gmail.com>
 Date: Mon, 14 Sep 2026 17:11:08 +0200
 Subject: [PATCH 2/4] =?UTF-8?q?Kwadratowa=20kom=C3=B3rka=20z=20screen=5Fce?=
@@ -1605,12 +1606,12 @@ index bb57a127fc87468d9ddb3f66ef3b86fd291dc1d4..a97702a56f15767a7878cde9ed58c54d
  	m_text->SetAutoDelete	( true );
  	AttachChild				( m_text );
 diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
-index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085ccd95d4b 100644
+index a147317cb95781bdafae7286b88cac1710087ea9..3527afd4203bdeec44b22b62426bb77364ef8b5b 100644
 --- a/src/xrGame/ui/UIDragDropListEx.cpp
 +++ b/src/xrGame/ui/UIDragDropListEx.cpp
 @@ -19,12 +19,14 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
- constexpr u32 kDropPreviewFree		= color_rgba(120, 255, 120, 96);
- constexpr u32 kDropPreviewBlocked	= color_rgba(255, 110, 110, 96);
+ constexpr u32 kDropPreviewFree		= color_rgba(140, 220, 140, 40);
+ constexpr u32 kDropPreviewBlocked	= color_rgba(220, 120, 120, 40);
  
 -// Half a hundredth of a screen pixel. CUIStaticItem::RenderInternal floors the left
 -// edge of every icon, and the float error along scale*(absolute position + offset)
@@ -1641,15 +1642,15 @@ index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085
  void CUIDragDropListEx::SetCellsSpacing(const Ivector2& new_sz)
  {
  	m_container->SetCellsSpacing(new_sz);
-@@ -638,6 +645,7 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
- 	}
+@@ -641,6 +648,7 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
+ 	hPreviewShader->create("hud\\crosshair");
  //	hShader_selected->create	( "hud\\fog_of_war", "ui_grid_selected" );
  	m_cellsCapacity.set			( 0, 0 );
 +	m_screenCellSize			= 0;
  	m_cellSizeRaw.set			( 0, 0 );
  	m_cellSpacingRaw.set		( 0, 0 );
  	m_cellSizeScreen.set		( 0, 0 );
-@@ -920,6 +928,15 @@ void CUICellContainer::SetCellsSpacing(const Ivector2& c)
+@@ -923,6 +931,15 @@ void CUICellContainer::SetCellsSpacing(const Ivector2& c)
  	ReinitSize					();
  }
  
@@ -1665,7 +1666,7 @@ index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085
  // The whole geometry of a list hangs off these four values: the grid background, the
  // item rectangles, PlaceItemAtPos, PickCell and the drop preview all read them and
  // nothing rounds on its own any more.
-@@ -938,7 +955,11 @@ bool CUICellContainer::UpdateCellMetrics()
+@@ -941,7 +958,11 @@ bool CUICellContainer::UpdateCellMetrics()
  		return false;
  
  	Ivector2 cell_screen, spacing_screen;
@@ -1678,7 +1679,7 @@ index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085
  	spacing_screen.set			(screen_cell_len(m_cellSpacingRaw.x, scale.x),	screen_cell_len(m_cellSpacingRaw.y, scale.y));
  
  	if	(scale.x == m_metricsScale.x		&& scale.y == m_metricsScale.y
-@@ -959,11 +980,12 @@ bool CUICellContainer::UpdateCellMetrics()
+@@ -962,11 +983,12 @@ bool CUICellContainer::UpdateCellMetrics()
  Fvector2 CUICellContainer::CellOffsetUI(const Ivector2& cell_pos) const
  {
  	// The step is the whole-pixel screen step; it is divided back into UI base units
@@ -1695,7 +1696,7 @@ index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085
  
  	res.x		/= m_metricsScale.x;
  	res.y		/= m_metricsScale.y;
-@@ -1274,8 +1296,8 @@ void CUICellContainer::Draw()
+@@ -1277,8 +1299,8 @@ void CUICellContainer::Draw()
  				//pv->set			(iFloor(drawLT.x + p.x*(f_len.x) + f_len.x*x)-0.5f, 
  				//				 iFloor(drawLT.y + p.y*(f_len.y) + f_len.y*y)-0.5f, 
  				//				 0xFFFFFFFF,tp.x+uv.x,tp.y+uv.y);
@@ -1706,7 +1707,7 @@ index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085
  									0,
  									m_pParentDragDropList->back_color,
  									tp.x+uv.x, tp.y+uv.y);
-@@ -1363,8 +1385,8 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
+@@ -1366,8 +1388,8 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
  			{
  				const Fvector2& p	= pts[k];
  				const Fvector2& uv	= uvs[k];
@@ -1718,7 +1719,7 @@ index 8f349b12f3f75e480c9925fd09e11dacf432831a..af5fd5712749709e62d916fe3e331085
  									color,
  									tp.x+uv.x, tp.y+uv.y);
 diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
-index 906b473f1bd6eb3d599b30ef814fc6132d3bf81d..7245596ec337cd4c6e5c31c03babcb459d816a9e 100644
+index 3354fafeb5b629086217ffeeaf27b05a96839278..1f85c55a9f62ddd3e163a41fd788b6bee05fde40 100644
 --- a/src/xrGame/ui/UIDragDropListEx.h
 +++ b/src/xrGame/ui/UIDragDropListEx.h
 @@ -96,6 +96,7 @@ public:
@@ -1729,7 +1730,7 @@ index 906b473f1bd6eb3d599b30ef814fc6132d3bf81d..7245596ec337cd4c6e5c31c03babcb45
  	const	Fvector2&		CellsSpacing		();
  			void			SetCellsSpacing		(const Ivector2& new_sz);
  			void			SetCellsVertAlignment(xr_string alignment);
-@@ -174,6 +175,11 @@ protected:
+@@ -175,6 +176,11 @@ protected:
  	// One cell has to cover a whole number of screen pixels or neighbouring items
  	// gape and overlap by one after rasterization. The screen sizes are the truth;
  	// the UI-base ones are only what CUIWindow positions have to be expressed in.
@@ -1741,7 +1742,7 @@ index 906b473f1bd6eb3d599b30ef814fc6132d3bf81d..7245596ec337cd4c6e5c31c03babcb45
  	Ivector2					m_cellSizeRaw;				//UI base	(width, height) as read from XML
  	Ivector2					m_cellSpacingRaw;			//UI base	(width, height) as read from XML
  	Ivector2					m_cellSizeScreen;			//screen px	(width, height) whole pixels
-@@ -206,6 +212,7 @@ protected:
+@@ -207,6 +213,7 @@ protected:
  				void			SetCellsCapacity	(const Ivector2& c);
  	IC const	Fvector2&		CellSize			()								{return m_cellSize;};	
  				void			SetCellSize			(const Ivector2& new_sz);
@@ -1885,7 +1886,7 @@ index 3552eaf77588e2f5fa81ee51d02349e018d67337..88f2a24be99269695a15c5f8dbb20b7e
  	const C2DFrustum& ScreenFrustum					()	const						{return (m_bPostprocess)?m_2DFrustumPP:m_2DFrustum;}
  	C2DFrustum&		ScreenFrustumLIT				()								{return m_FrustumLIT;}
 diff --git a/tests/inventory-drop/test_cell_grid.py b/tests/inventory-drop/test_cell_grid.py
-index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f233ed63f1 100644
+index f551a813ccc190fdf8102f2f898724fdf1744594..67288b269a00809b644eefcf7987337d9d9ba673 100644
 --- a/tests/inventory-drop/test_cell_grid.py
 +++ b/tests/inventory-drop/test_cell_grid.py
 @@ -30,11 +30,13 @@ def body(text, signature):
@@ -1921,7 +1922,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      Ivector2 m_cellsCapacity{0, 0};
      Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
      Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
-@@ -250,6 +256,7 @@ struct CUICellContainer
+@@ -251,6 +257,7 @@ struct CUICellContainer
      const Ivector2& CellsCapacity() { return m_cellsCapacity; }
  
      bool UpdateCellMetrics() METRICS_BODY
@@ -1929,7 +1930,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      Fvector2 CellOffsetUI(const Ivector2& cell_pos) const OFFSET_BODY
      void SetItemGeometry(CUICellItem* itm, const Ivector2& cell_pos) GEOMETRY_BODY
      void RefreshItemsPos() REFRESH_BODY
-@@ -291,11 +298,23 @@ struct CUICellContainer
+@@ -292,11 +299,23 @@ struct CUICellContainer
  const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
  
  // --- the rasterizer, modelled -----------------------------------------------------
@@ -1956,7 +1957,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
  {
      Rasterized r;
      r.x1 = float(iFloor(abs_pos.x * g_scale_x));
-@@ -310,12 +329,13 @@ struct Scene
+@@ -311,12 +330,13 @@ struct Scene
      CUIDragDropListEx list;
      CUICellContainer box;
  
@@ -1971,7 +1972,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
          box.UpdateCellMetrics();
          box.origin.set(702.0f, 119.0f);
          box.reset(cols, rows);
-@@ -417,6 +437,83 @@ int main()
+@@ -418,6 +438,83 @@ int main()
          assert(std::isfinite(off.x) && std::isfinite(off.y));
      }
  
@@ -2055,7 +2056,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      // ---- one constant step, whatever the mode --------------------------------------
      const Mode modes[] = {
          {1.0f, 1.0f, "1024x768"},
-@@ -429,16 +526,18 @@ int main()
+@@ -430,16 +527,18 @@ int main()
  
      // Every shipped list shape: bag, the 4:3 bag, the belt and the quick slots of both
      // aspect ratios, and the one-cell trash panel.
@@ -2083,7 +2084,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      };
  
      for (const Mode& m : modes)
-@@ -446,7 +545,14 @@ int main()
+@@ -447,7 +546,14 @@ int main()
          {
              g_scale_x = m.sx;
              g_scale_y = m.sy;
@@ -2099,7 +2100,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
  
              const int step_x = s.box.m_cellSizeScreen.x + s.box.m_cellSpacingScreen.x;
              const int step_y = s.box.m_cellSizeScreen.y + s.box.m_cellSpacingScreen.y;
-@@ -478,13 +584,26 @@ int main()
+@@ -479,13 +585,26 @@ int main()
                          assert(r.y1 - u.y1 == float(step_y));
                      }
  
@@ -2131,7 +2132,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
              capture.reset();
              s.box.Draw();
              const std::vector<Point> grid = capture.of(0);
-@@ -503,7 +622,7 @@ int main()
+@@ -504,7 +623,7 @@ int main()
                      assert(q.y2 - q.y1 == float(s.box.m_cellSizeScreen.y));
                  }
  
@@ -2140,7 +2141,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
              for (int cy = 0; cy < sh.rows; ++cy)
                  for (int cx = 0; cx < sh.cols; ++cx)
                  {
-@@ -536,12 +655,12 @@ int main()
+@@ -537,12 +656,12 @@ int main()
          s.box.put(&suit, 0, 4);
  
          const Rasterized rg = rasterize(s.item_abs(gun), gun.wnd_size);
@@ -2157,7 +2158,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      }
  
      // ---- a scrolled list keeps the same step ----------------------------------------
-@@ -608,7 +727,7 @@ int main()
+@@ -609,7 +728,7 @@ int main()
  
          // And the item is back on the grid.
          const Rasterized r = rasterize(s.item_abs(pill), pill.wnd_size);
@@ -2166,7 +2167,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      }
  
      // ---- vertical placement keeps its square-cell shape -----------------------------
-@@ -627,10 +746,11 @@ int main()
+@@ -628,10 +747,11 @@ int main()
      }
  
      // ---- the behaviour this replaces --------------------------------------------------
@@ -2182,7 +2183,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
      {
          g_scale_x = 1.875f;
          g_scale_y = 1.40625f;
-@@ -644,7 +764,7 @@ int main()
+@@ -645,7 +765,7 @@ int main()
              pos.set(s.box.origin.x + float((s.box.m_cellSpacingRaw.x + s.box.m_cellSizeRaw.x) * cx),
                      s.box.origin.y);
              size.set(float(s.box.m_cellSizeRaw.x), float(s.box.m_cellSizeRaw.y));
@@ -2191,7 +2192,7 @@ index d5d069ff3aedaa1a457e19bb4222d293cef6a7ff..3d3259ae4d4adae5e07e5157d84bb6f2
              if (cx == 1)
                  first_step = r.x1 - prev_x1;
              if (cx > 1 && r.x1 - prev_x1 != first_step)
-@@ -705,10 +825,12 @@ with tempfile.TemporaryDirectory(prefix='ixray-cell-grid-') as directory:
+@@ -706,10 +826,12 @@ with tempfile.TemporaryDirectory(prefix='ixray-cell-grid-') as directory:
      subprocess.run([str(binary)], check=True,
                     env=dict(os.environ, ASAN_OPTIONS=os.environ.get('ASAN_OPTIONS', 'detect_leaks=0')))
  
@@ -2243,7 +2244,7 @@ index 484d031f5210841bface5102f32f1fb97a5f6a0e..53fe0c040325876ffc4a258e72cfa9fb
          m_cellSizeRaw.set(0, 0);
          m_cellSpacingRaw.set(0, 0);
 diff --git a/tests/inventory-drop/test_drop_preview.py b/tests/inventory-drop/test_drop_preview.py
-index caa7825f015eaa893ac82bf97def2cfb50907491..192834dc43100b99948fdd324ffba3a0edf67091 100644
+index 63d94f75ef486af758a663e6d951d1b7a451cd9f..d85a3567007f8f34b4fc20549a364e9ee4e11b84 100644
 --- a/tests/inventory-drop/test_drop_preview.py
 +++ b/tests/inventory-drop/test_drop_preview.py
 @@ -27,7 +27,6 @@ drag_drop = (root / 'src/xrGame/ui/UIDragDropListEx.cpp').read_text()
@@ -2262,7 +2263,7 @@ index caa7825f015eaa893ac82bf97def2cfb50907491..192834dc43100b99948fdd324ffba3a0
  }
  
  code = r'''
-@@ -164,6 +164,9 @@ CONSTANTS
+@@ -165,6 +165,9 @@ CONSTANTS
  IC int screen_cell_len(int ui_len, float scale)
  SCREEN_LEN_BODY
  
@@ -2272,7 +2273,7 @@ index caa7825f015eaa893ac82bf97def2cfb50907491..192834dc43100b99948fdd324ffba3a0
  struct CUICellContainer;
  struct CUICellItem;
  
-@@ -231,6 +234,7 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
+@@ -232,6 +235,7 @@ typedef UI_CELLS_VEC::iterator UI_CELLS_VEC_IT;
  struct CUICellContainer
  {
      CUIDragDropListEx* m_pParentDragDropList = nullptr;
@@ -2281,7 +2282,7 @@ index caa7825f015eaa893ac82bf97def2cfb50907491..192834dc43100b99948fdd324ffba3a0
      Ivector2 m_cellSizeRaw{0, 0}, m_cellSpacingRaw{0, 0};
      Ivector2 m_cellSizeScreen{0, 0}, m_cellSpacingScreen{0, 0};
 
-From 2b665a2b03df95af5b8aa4f24f399cb2c7c2d6ea Mon Sep 17 00:00:00 2001
+From 88d04a085f4925ec4afa2616c0cc4f3a1fc39819 Mon Sep 17 00:00:00 2001
 From: tmz <styczu@gmail.com>
 Date: Mon, 14 Sep 2026 20:17:30 +0200
 Subject: [PATCH 3/4] =?UTF-8?q?Pasek=20przewijania=20tylko=20wtedy,=20gdy?=
@@ -2352,7 +2353,7 @@ Claude-Session: https://claude.ai/code/session_01RxySzhoKaG8quQJnGaYkjH
  4 files changed, 174 insertions(+), 19 deletions(-)
 
 diff --git a/src/xrGame/ui/UIDragDropListEx.cpp b/src/xrGame/ui/UIDragDropListEx.cpp
-index af5fd5712749709e62d916fe3e331085ccd95d4b..c853c092e4eebc148f6d6c666fb46e6ab002f1de 100644
+index 3527afd4203bdeec44b22b62426bb77364ef8b5b..b5643e120624430dc45a1c29a58e072a7b66e1ad 100644
 --- a/src/xrGame/ui/UIDragDropListEx.cpp
 +++ b/src/xrGame/ui/UIDragDropListEx.cpp
 @@ -141,11 +141,11 @@ void CUIDragDropListEx::SendMessage(CUIWindow* pWnd, s16 msg, void* pData)
@@ -2402,7 +2403,7 @@ index af5fd5712749709e62d916fe3e331085ccd95d4b..c853c092e4eebc148f6d6c666fb46e6a
  		m_vScrollBar->SetStepSize	(iFloor(CellSize().y/3.0f));
  		m_vScrollBar->SetPageSize	( 1/*CellSize().y*/ );
 diff --git a/src/xrGame/ui/UIDragDropListEx.h b/src/xrGame/ui/UIDragDropListEx.h
-index 7245596ec337cd4c6e5c31c03babcb459d816a9e..a491ab557dad8446bf262b51f91abcc2af272d4e 100644
+index 1f85c55a9f62ddd3e163a41fd788b6bee05fde40..19cf3f20ad36f63a2ab5a07654649410ead3cf6a 100644
 --- a/src/xrGame/ui/UIDragDropListEx.h
 +++ b/src/xrGame/ui/UIDragDropListEx.h
 @@ -72,7 +72,10 @@ public:
@@ -2436,7 +2437,7 @@ index 431fc7ced86f6b202a6a9a94f142e74e45fd286a..515034778ffd97610c341b3f2f7ec14f
  	Ivector2 w_cell_sz, w_cells, w_cell_sp;
  
 diff --git a/tests/inventory-drop/test_cell_grid.py b/tests/inventory-drop/test_cell_grid.py
-index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489ec64b8eef 100644
+index 67288b269a00809b644eefcf7987337d9d9ba673..15b8127435c6821fe383519b3232cffa59920e8f 100644
 --- a/tests/inventory-drop/test_cell_grid.py
 +++ b/tests/inventory-drop/test_cell_grid.py
 @@ -41,6 +41,7 @@ bodies = {
@@ -2513,8 +2514,8 @@ index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489e
 +    Fvector2 origin{0.0f, 0.0f}, wnd_size{0.0f, 0.0f}, wnd_pos{0.0f, 0.0f};
      bool m_isInventoryGridDisabled = true;
      ui_shader hShader;
-     UI_CELLS_VEC m_cells, m_cells_to_draw;
-@@ -251,6 +287,8 @@ struct CUICellContainer
+     ui_shader hPreviewShader;
+@@ -252,6 +288,8 @@ struct CUICellContainer
  
      void GetAbsolutePos(Fvector2& p) { p = origin; }
      void SetWndSize(const Fvector2& s) { wnd_size = s; }
@@ -2523,7 +2524,7 @@ index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489e
      const Fvector2& CellSize() { return m_cellSize; }
      const Fvector2& CellsSpacing() { return m_cellSpacing; }
      const Ivector2& CellsCapacity() { return m_cellsCapacity; }
-@@ -296,6 +334,8 @@ struct CUICellContainer
+@@ -297,6 +335,8 @@ struct CUICellContainer
  };
  
  const Ivector2& CUIDragDropListEx::CellsCapacity() { return m_container->m_cellsCapacity; }
@@ -2532,7 +2533,7 @@ index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489e
  
  // --- the rasterizer, modelled -----------------------------------------------------
  // With flSnapToScreenPixels CUIStaticItem::RenderInternal takes both corners from the
-@@ -377,6 +417,31 @@ static Rasterized grid_quad(const std::vector<Point>& pts, const Fvector2& tp)
+@@ -378,6 +418,31 @@ static Rasterized grid_quad(const std::vector<Point>& pts, const Fvector2& tp)
      return Rasterized{0.0f, 0.0f, 0.0f, 0.0f};
  }
  
@@ -2564,7 +2565,7 @@ index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489e
  struct Mode { float sx, sy; const char* name; };
  
  int main()
-@@ -806,6 +871,84 @@ int main()
+@@ -807,6 +872,84 @@ int main()
          assert(s.box.PickCell(last) == want);
      }
  
@@ -2649,7 +2650,7 @@ index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489e
      std::printf("ok\n");
      return 0;
  }
-@@ -833,4 +976,7 @@ print('PASS: production UpdateCellMetrics, SetScreenCellSize, CellOffsetUI, SetI
+@@ -834,4 +977,7 @@ print('PASS: production UpdateCellMetrics, SetScreenCellSize, CellOffsetUI, SetI
        'one constant step for ten list shapes over six scales, neighbouring icon edges on the '
        'same pixel, grid background on the same pixels, PickCell over 64 points per cell, a '
        'scrolled list, a scale change, a refused zero scale, vertical placement, the pre-fix '
@@ -2659,7 +2660,7 @@ index 3d3259ae4d4adae5e07e5157d84bb6f233ed63f1..9227f5b638cf8b63e0fd0a8c18ce489e
 +      'the bag still scrolls at 1080p and always_show_scroll still wins; eight 75 px '
 +      'columns inside the client area a 6 unit bar leaves; ASan/UBSan')
 
-From 02915a7da253990a6c8e4eade2c348c4bfb0b75d Mon Sep 17 00:00:00 2001
+From 7ce0fdf74936d8ddd8f6538b9088a5bafff91b87 Mon Sep 17 00:00:00 2001
 From: tmz <styczu@gmail.com>
 Date: Mon, 14 Sep 2026 22:03:21 +0200
 Subject: [PATCH 4/4] =?UTF-8?q?Brakuj=C4=85cy=20profil=20paska=20przewijan?=
