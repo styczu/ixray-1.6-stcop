@@ -43,6 +43,7 @@ protected:
 	Fvector2				m_custom_mark_pos;
 
 	virtual void			UpdateItemText			();
+			void			PlaceCountText			();
 			void			init					();
 public:
 							CUICellItem				();
