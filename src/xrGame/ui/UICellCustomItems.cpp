@@ -126,18 +126,10 @@ void CUIInventoryCellItem::UpdateItemText()
 		m_text->TextItemControl()->SetText	( str );
 		m_text->Show					( true );
 
-		// Discreet background: only worth showing once the digits start
-		// crowding the corner. AdjustWidthToText keeps it snug around
-		// whatever the count actually is instead of a fixed pill size.
-		m_text->AdjustWidthToText		();
-		float pad						= 4.0f;
-		UI().ClientToScreenScaledWidth	( pad );
-		m_text->SetWidth				( m_text->GetWidth() + pad );
-
-		if ( count >= 10 )
-			m_text->TextureOn			();
-		else
-			m_text->TextureOff			();
+		// No plate behind the number at any digit count: the bare figure in the
+		// corner reads well enough over the icons and does not cover them.
+		m_text->TextureOff				();
+		PlaceCountText					();
 	}
 	else
 	{
@@ -192,6 +184,10 @@ void CUIAmmoCellItem::UpdateItemText()
 		xr_sprintf			(str, "%d", total);
 		m_text->TextItemControl()->SetText(str);
 		m_text->Show		(true);
+		// Ammo never toggled the label texture, so it kept the fixed plate the XML
+		// gives it even for a single digit. Same bare number as every other stack.
+		m_text->TextureOff	();
+		PlaceCountText		();
 	}
 }
 
