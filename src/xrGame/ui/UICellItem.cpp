@@ -10,6 +10,13 @@
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../eatable_item.h"
 
+namespace
+{
+// Gap between the count and the icon edges, in base units, matching the inset the
+// XML gives the label in its old top left spot.
+constexpr float kCountTextMargin = 1.0f;
+}
+
 #include "CustomOutfit.h"
 
 namespace
@@ -175,13 +182,9 @@ void CUICellItem::Update()
 //		Fvector2 size      = GetWndSize();
 //		Fvector2 up_size = m_upgrade->GetWndSize();
 //		pos.x = size.x - up_size.x - 4.0f;
-		Fvector2 pos;
-		pos.set( m_upgrade_pos );
-		if ( ChildsCount() )
-		{
-			pos.x += m_text->GetWndSize().x + 2.0f;
-		}
-		m_upgrade->SetWndPos( pos );
+		// The count no longer sits in the top left corner, so the upgrade arrow keeps
+		// its own place instead of being pushed aside by the label.
+		m_upgrade->SetWndPos( m_upgrade_pos );
 	}
 	m_upgrade->Show( m_has_upgrade );
 	UpdateCustomMarksAndText();
@@ -447,6 +450,21 @@ void CUICellItem::UpdateItemText()
 		m_text->TextItemControl()->SetText( "" );
 		m_text->Show( false );
 	}
+}
+
+// The count sits in the bottom right corner of the icon and hugs its own text, so
+// stacks of one, two and three digits all end on the same column. Called after the
+// text is set, because the width follows the string.
+void CUICellItem::PlaceCountText()
+{
+	m_text->AdjustWidthToText	();
+
+	const Fvector2 size			= GetWndSize();
+	const Fvector2 text_size	= m_text->GetWndSize();
+
+	Fvector2 pos;
+	pos.set						(size.x - text_size.x - kCountTextMargin, size.y - text_size.y - kCountTextMargin);
+	m_text->SetWndPos			(pos);
 }
 
 void CUICellItem::Mark( bool status )
