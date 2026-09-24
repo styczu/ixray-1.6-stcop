@@ -22,8 +22,11 @@ struct is_helper_pred
 // Optional per-weapon icon of an addon overlay: <prefix>_icons_texture, _grid_x, _grid_y,
 // _grid_width, _grid_height and _inv_scale in the weapon's (or scope's) section. Every key
 // falls back on its own to the addon's section and the weapon's atlas, so without any of
-// them the overlay is the legacy one. _weapon_shift_x/_y move the whole icon.
-IC void read_addon_icon_layout(LPCSTR icon_section, LPCSTR prefix, LPCSTR addon_section, SAddonIconLayout& l)
+// them the overlay is the legacy one. _weapon_offset_x/_y move the whole icon.
+// Offsets are pixels at scale 1 (50 per cell); with scaled_offsets (the weapon's
+// addon_offsets_use_inv_scale) they are pixels of the weapon's own atlas instead, so
+// they are divided by its inv_scale.
+IC void read_addon_icon_layout(LPCSTR icon_section, LPCSTR prefix, LPCSTR addon_section, bool scaled_offsets, float weapon_scale, SAddonIconLayout& l)
 {
 	string128 key;
 	auto own = [&](LPCSTR suffix)
@@ -62,17 +65,21 @@ IC void read_addon_icon_layout(LPCSTR icon_section, LPCSTR prefix, LPCSTR addon_
 	else
 		l.scale = READ_IF_EXISTS(pSettings, r_float, addon_section, "inv_scale", 1.0f);
 
+	const float unit = scaled_offsets ? weapon_scale : 1.0f;
+	if (scaled_offsets)
+		l.custom = true;
+
 	l.offset.set(0.0f, 0.0f);
 	if (l.custom)
 	{
 		xr_sprintf(key, "%s_x", prefix);
-		l.offset.x = float(pSettings->r_s32(icon_section, key));
+		l.offset.x = float(pSettings->r_s32(icon_section, key)) / unit;
 		xr_sprintf(key, "%s_y", prefix);
-		l.offset.y = float(pSettings->r_s32(icon_section, key));
+		l.offset.y = float(pSettings->r_s32(icon_section, key)) / unit;
 	}
 
-	l.shift.x = own("weapon_shift_x") ? pSettings->r_float(icon_section, key) : 0.0f;
-	l.shift.y = own("weapon_shift_y") ? pSettings->r_float(icon_section, key) : 0.0f;
+	l.shift.x = own("weapon_offset_x") ? pSettings->r_float(icon_section, key) / unit : 0.0f;
+	l.shift.y = own("weapon_offset_y") ? pSettings->r_float(icon_section, key) / unit : 0.0f;
 }
 
 // Where the weapon's own sprite goes for a shift in logical units (50 per cell). A headed
@@ -268,6 +275,10 @@ CUIWeaponCellItem::CUIWeaponCellItem(CWeapon* itm)
 	m_addons[eScope]		= nullptr;
 	m_addons[eLauncher]		= nullptr;
 
+	// One switch for the whole weapon, variants inherit it: every addon offset of the
+	// icon is in pixels of the weapon's atlas rather than at scale 1.
+	m_scaled_offsets		= !!READ_IF_EXISTS(pSettings, r_bool, itm->cNameSect(), "addon_offsets_use_inv_scale", false);
+
 	if(itm->SilencerAttachable())
 	{
 		m_addon_offset[eSilencer].set(object()->GetSilencerX(), object()->GetSilencerY());
@@ -361,7 +372,7 @@ const SAddonIconLayout& CUIWeaponCellItem::RefreshLayout(eAddonType t)
 	SAddonIconLayout& l = m_layout[t];
 	if (!l.addon_section.size() || l.icon_section != icon_section || l.addon_section != addon_section)
 	{
-		read_addon_icon_layout(*icon_section, prefix, *addon_section, l);
+		read_addon_icon_layout(*icon_section, prefix, *addon_section, m_scaled_offsets, object()->ScaleIcon, l);
 		l.icon_section	= icon_section;
 		l.addon_section	= addon_section;
 	}
