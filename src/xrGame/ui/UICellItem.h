@@ -79,6 +79,12 @@ public:
 	virtual		bool		EqualTo					(CUICellItem* itm);
 	IC const	Ivector2&	GetGridSize				()						{return m_grid_size;}; //size in grid
 	void SetGridSize(const Ivector2& Size);
+	// The grid size the list should give this cell; a weapon grows with its addons.
+	// Changed only while the cell is out of the list's cells (see CUIDragDropListEx).
+	// Unlike SetGridSize above (the 3D icon editor), the texture rect stays: a grown
+	// weapon cell draws its sprite at the base size.
+	virtual		Ivector2	DesiredGridSize			(CUIDragDropListEx* list)	{return m_grid_size;}
+				void		SetListGridSize			(const Ivector2& size)		{m_grid_size = size;}
 	IC			void		SetAccelerator			(int dik)				{m_accelerator=dik;};
 	IC			int			GetAccelerator			()		const			{return m_accelerator;};
 
