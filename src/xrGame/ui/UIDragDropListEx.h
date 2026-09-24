@@ -147,6 +147,12 @@ public:
 			virtual void	SetItem				(CUICellItem* itm); //auto
 			virtual bool	SetItem				(CUICellItem* itm, Fvector2 abs_pos);  // start at cursor pos
 			virtual void	SetItem				(CUICellItem* itm, Ivector2 cell_pos); // start at cell
+			// A cell entering the list takes the grid size it asks for here; true if it
+			// changed.
+			bool			FitGridSize			(CUICellItem* itm);
+			// Puts a placed cell back with the grid size it asks for now: where it was if
+			// it still fits, else in the first free place.
+			void			RefitItem			(CUICellItem* itm);
 	virtual EDropPreview	PredictDrop			(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
 					bool	CanSetItem			(CUICellItem* itm);
 			
