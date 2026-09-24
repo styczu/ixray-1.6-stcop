@@ -505,6 +505,25 @@ void CUIDragDropListEx::Update()
 {
 	inherited::Update			();
 
+	// A cell whose wanted size changed where it lies (a weapon got or lost an addon)
+	// goes back in with it. Collected first: moving one changes the child list.
+	xr_vector<CUICellItem*>		refit;
+	{
+		xrCriticalSectionGuard	guard(m_container->csUi);
+		for (CUIWindow* child : m_container->GetChildWndList())
+		{
+			CUICellItem* itm	= child->ui_cast_cell_item();
+			if (m_drag_item && m_drag_item->ParentItem() == itm)
+				continue;
+
+			const Ivector2 size	= itm->DesiredGridSize(this);
+			if (size.x != itm->GetGridSize().x || size.y != itm->GetGridSize().y)
+				refit.push_back	(itm);
+		}
+	}
+	for (CUICellItem* itm : refit)
+		RefitItem				(itm);
+
 	if( m_drag_item ){
 		Frect	wndRect;
 		GetAbsoluteRect(wndRect);
@@ -616,8 +635,42 @@ int CUIDragDropListEx::ScrollPos()
 	return m_vScrollBar->GetScrollPos();
 }
 
+bool CUIDragDropListEx::FitGridSize(CUICellItem* itm)
+{
+	const Ivector2 size			= itm->DesiredGridSize(this);
+	if (size.x == itm->GetGridSize().x && size.y == itm->GetGridSize().y)
+		return false;
+
+	itm->SetGridSize			(size);
+	return true;
+}
+
+void CUIDragDropListEx::RefitItem(CUICellItem* itm)
+{
+	const Ivector2 old_size		= itm->GetGridSize();
+	Ivector2 pos				= m_container->GetItemPos(itm);
+
+	// RemoveItem clears the cells of the size the item has, so the old one.
+	m_container->RemoveItem		(itm, true);
+	itm->SetGridSize			(itm->DesiredGridSize(this));
+
+	if (!m_container->IsRoomFree(pos, itm->GetGridSize()))
+	{
+		// FindFreeCell compacts a full fixed list, which would reorder it from here.
+		if (IsAutoGrow() || m_container->HasFreeSpace(itm->GetGridSize()))
+			pos					= m_container->FindFreeCell(itm->GetGridSize());
+		else
+			itm->SetGridSize	(old_size);
+	}
+
+	m_container->PlaceItemAtPos	(itm, pos);
+	itm->SetOwnerList			(this);
+}
+
 void CUIDragDropListEx::SetItem(CUICellItem* itm) //auto
 {
+	FitGridSize					(itm);
+
 	if(m_container->AddSimilar(itm)){
 		return;
 	}
@@ -629,6 +682,9 @@ void CUIDragDropListEx::SetItem(CUICellItem* itm) //auto
 
 bool CUIDragDropListEx::SetItem(CUICellItem* itm, Fvector2 abs_pos) // start at cursor pos
 {
+	// Before PredictDrop, which decides with the item's size.
+	FitGridSize					(itm);
+
 	Irect dest_cells;
 
 	switch (PredictDrop(itm, abs_pos, dest_cells))
@@ -691,6 +747,13 @@ EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& ab
 void CUIDragDropListEx::SetItem(CUICellItem* itm, Ivector2 cell_pos) // start at cell
 {
 	if(m_container->AddSimilar(itm))	return;
+
+	// A cell that grew for this list may no longer fit where the caller put it.
+	if (FitGridSize(itm) && !m_container->IsRoomFree(cell_pos, itm->GetGridSize()))
+	{
+		SetItem					(itm);
+		return;
+	}
 	R_ASSERT						(m_container->IsRoomFree(cell_pos, itm->GetGridSize()));
 
 	m_container->PlaceItemAtPos	(itm, cell_pos);
