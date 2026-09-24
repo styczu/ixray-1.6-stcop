@@ -53,6 +53,8 @@ struct SAddonIconLayout
 	Fvector2	offset{};		// <prefix>_x/_y in logical units (50 per cell), used when custom
 	Fvector2	shift{};		// <prefix>_weapon_offset_x/_y in logical units: moves the
 								// whole icon while the addon is on
+	Ivector2	extra{};		// <prefix>_weapon_extra_width/_height: cells the weapon's
+								// cell grows by while the addon is on
 	bool		custom = false;	// an icon key or addon_offsets_use_inv_scale is set: the
 								// offset above is used instead of the legacy one
 };
@@ -68,6 +70,7 @@ protected:
 	SAddonIconLayout			m_layout					[eMaxAddon];
 	Fvector2					m_shift{};
 	bool						m_scaled_offsets = false;	// addon_offsets_use_inv_scale
+	Ivector2					m_base_grid;				// inv_grid_width/height
 	bool mScopeBack = false;
 	void						CreateIcon					(eAddonType);
 	void						DestroyIcon					(eAddonType);
@@ -75,6 +78,7 @@ protected:
 	const SAddonIconLayout&		RefreshLayout				(eAddonType);
 	LPCSTR						AddonIconsTexture			(eAddonType);
 	Fvector2					AttachedAddonsShift			();
+	Ivector2					AttachedAddonsExtra			();
 	void						ApplyWeaponShift			();
 	CUIStatic*					GetIcon						(eAddonType);
 	void						InitAddon					(CUIStatic* s, eAddonType t, bool use_heading);
@@ -86,7 +90,9 @@ public:
 				virtual			~CUIWeaponCellItem			();
 	virtual		void			Update						();
 	virtual		void			Draw						();
+	virtual		void			DrawTexture					();
 	virtual		void			SetTextureColor				(u32 color);
+	virtual		Ivector2		DesiredGridSize				(CUIDragDropListEx* list);
 
 				CWeapon*		object						() {return (CWeapon*)m_pData;}
 	virtual		void			OnAfterChild				(CUIDragDropListEx* parent_list);
