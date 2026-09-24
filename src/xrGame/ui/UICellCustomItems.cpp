@@ -80,6 +80,23 @@ IC void read_addon_icon_layout(LPCSTR icon_section, LPCSTR prefix, LPCSTR addon_
 
 	l.shift.x = own("weapon_offset_x") ? pSettings->r_float(icon_section, key) / unit : 0.0f;
 	l.shift.y = own("weapon_offset_y") ? pSettings->r_float(icon_section, key) / unit : 0.0f;
+
+	l.extra.x = own("weapon_extra_width") ? int(pSettings->r_u32(icon_section, key)) : 0;
+	l.extra.y = own("weapon_extra_height") ? int(pSettings->r_u32(icon_section, key)) : 0;
+}
+
+// One side of a weapon's cell: its own length plus what the addons add, but never longer
+// than the list, which has to hold it (a list with no room left ends in R_ASSERT).
+IC int weapon_grid_len(int base, int extra, int capacity)
+{
+	return _max(base, _min(base + extra, capacity));
+}
+
+// The part of a grown cell the weapon's own sprite takes: its size in the top left
+// corner, as the addon overlays and offsets are placed from there.
+IC Fvector2 weapon_sprite_size(const Fvector2& wnd, const Ivector2& grid, const Ivector2& base)
+{
+	return Fvector2().set(wnd.x * base.x / grid.x, wnd.y * base.y / grid.y);
 }
 
 // Where the weapon's own sprite goes for a shift in logical units (50 per cell). A headed
@@ -278,6 +295,7 @@ CUIWeaponCellItem::CUIWeaponCellItem(CWeapon* itm)
 	// One switch for the whole weapon, variants inherit it: every addon offset of the
 	// icon is in pixels of the weapon's atlas rather than at scale 1.
 	m_scaled_offsets		= !!READ_IF_EXISTS(pSettings, r_bool, itm->cNameSect(), "addon_offsets_use_inv_scale", false);
+	m_base_grid				= m_grid_size;
 
 	if(itm->SilencerAttachable())
 	{
@@ -398,6 +416,52 @@ Fvector2 CUIWeaponCellItem::AttachedAddonsShift()
 	if (is_launcher())
 		res.add(RefreshLayout(eLauncher).shift);
 	return res;
+}
+
+// Cells the addons that are on add to the weapon's cell, summed like the offsets.
+Ivector2 CUIWeaponCellItem::AttachedAddonsExtra()
+{
+	Ivector2 res;
+	res.set(0, 0);
+	if (is_silencer())
+		res.add(RefreshLayout(eSilencer).extra);
+	if (is_scope())
+		res.add(RefreshLayout(eScope).extra);
+	if (is_launcher())
+		res.add(RefreshLayout(eLauncher).extra);
+	return res;
+}
+
+// Base size plus <p>_weapon_extra_width/_height of the addons that are on, never beyond
+// the list's columns, nor its rows unless it grows. Vertical lists (the weapon slots)
+// keep the base size.
+Ivector2 CUIWeaponCellItem::DesiredGridSize(CUIDragDropListEx* list)
+{
+	Ivector2 size = m_base_grid;
+	if (!list || list->GetVerticalPlacement())
+		return size;
+
+	const Ivector2 extra		= AttachedAddonsExtra();
+	const Ivector2& capacity	= list->CellsCapacity();
+	size.x						= weapon_grid_len(m_base_grid.x, extra.x, capacity.x);
+	size.y						= list->IsAutoGrow() ? m_base_grid.y + extra.y
+									: weapon_grid_len(m_base_grid.y, extra.y, capacity.y);
+	return size;
+}
+
+// A cell grown for its addons draws the weapon at its own size instead of stretching it.
+void CUIWeaponCellItem::DrawTexture()
+{
+	if (Heading() || (m_grid_size.x == m_base_grid.x && m_grid_size.y == m_base_grid.y))
+	{
+		inherited::DrawTexture();
+		return;
+	}
+
+	const Fvector2 full = GetWndSize();
+	SetWndSize(weapon_sprite_size(full, m_grid_size, m_base_grid));
+	inherited::DrawTexture();
+	SetWndSize(full);
 }
 
 // Moves only the drawn sprite: the cell, its hit area, count, condition bar and upgrade
@@ -632,6 +696,8 @@ CUIDragItem* CUIWeaponCellItem::CreateDragItem()
 	{
 		const Fvector2 offset = weapon_shift_offset(m_shift, i->wnd()->GetWndSize(), m_grid_size, false, UI().get_current_kx());
 		i->wnd()->SetTextureOffset(offset.x, offset.y);
+		if (!Heading())
+			i->wnd()->SetWndSize(weapon_sprite_size(i->wnd()->GetWndSize(), m_grid_size, m_base_grid));
 	}
 
 	if(GetIcon(eSilencer))
