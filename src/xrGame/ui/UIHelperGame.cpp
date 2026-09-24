@@ -63,6 +63,10 @@ bool CUIXmlInitGame::InitDragDropListEx(CUIXml& xml_doc, LPCSTR path, int index,
 	// cell keeps coming from cell_width / cell_height in UI base units.
 	pWnd->SetScreenCellSize(xml_doc.ReadAttribInt(path, index, "screen_cell_size", 0));
 
+	// Optional: no scroll bar, the wheel alone scrolls. Read before the capacity, whose
+	// ReinitScroll is the first to show or hide the bar.
+	pWnd->SetHideScrollBar(xml_doc.ReadAttribInt(path, index, "hide_scroll_bar", 0) != 0);
+
 	pWnd->SetCellSize(w_cell_sz);
 	pWnd->SetCellsSpacing(w_cell_sp);
 	pWnd->SetStartCellsCapacity(w_cells);
