@@ -278,7 +278,7 @@ protected:
 	void LoadCurrentScopeParams(LPCSTR section);
 	const shared_str& GetSilencerName			() const{return m_sSilencerName;}
 	// Sections the optional inventory icon keys of each addon (<addon>_icons_texture,
-	// _grid_*, _inv_scale, _weapon_shift_*) are read from: the ones that gave its _x/_y.
+	// _grid_*, _inv_scale, _weapon_offset_*) are read from: the ones that gave its _x/_y.
 	const shared_str& GetSilencerIconSection		() const{return m_sSilencerIconSection;}
 	const shared_str& GetGrenadeLauncherIconSection	() const{return m_sGrenadeLauncherIconSection;}
 	shared_str GetScopeIconSection();
