@@ -51,8 +51,10 @@ struct SAddonIconLayout
 	Fvector2	grid_size{};	// in atlas cells
 	float		scale = 1.0f;	// atlas cell is 50 * scale px
 	Fvector2	offset{};		// <prefix>_x/_y in logical units (50 per cell), used when custom
-	Fvector2	shift{};		// logical units, moves the whole icon while the addon is on
-	bool		custom = false;	// an icon key is set: offsets are taken in logical units
+	Fvector2	shift{};		// <prefix>_weapon_offset_x/_y in logical units: moves the
+								// whole icon while the addon is on
+	bool		custom = false;	// an icon key or addon_offsets_use_inv_scale is set: the
+								// offset above is used instead of the legacy one
 };
 
 class CUIWeaponCellItem :public CUIInventoryCellItem
@@ -65,6 +67,7 @@ protected:
 	Fvector2					m_addon_offset				[eMaxAddon];
 	SAddonIconLayout			m_layout					[eMaxAddon];
 	Fvector2					m_shift{};
+	bool						m_scaled_offsets = false;	// addon_offsets_use_inv_scale
 	bool mScopeBack = false;
 	void						CreateIcon					(eAddonType);
 	void						DestroyIcon					(eAddonType);
