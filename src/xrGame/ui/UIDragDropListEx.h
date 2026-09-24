@@ -47,8 +47,11 @@ private:
 		flVerticalPlacement	=	(1<<3),
 		flAlwaysShowScroll	=	(1<<4),
 		flVirtualCells		=	(1<<5),
+		// No scroll bar at all: not drawn, not clickable and not taking width from the
+		// cells. The wheel still scrolls the list whenever there is a range to scroll.
+		flHideScrollBar		=	(1<<6),
 	};
-	Flags8					m_flags;
+	Flags16					m_flags;
 	Ivector2				m_orig_cell_capacity;
 	Ivector2				m_virtual_cells_alignment;
 	bool					m_bConditionProgBarVisible;
@@ -121,6 +124,7 @@ public:
 			void			SetVerticalPlacement(bool b);
 			bool			GetVerticalPlacement();
 			void			SetAlwaysShowScroll	(bool b);
+			void			SetHideScrollBar	(bool b);
 			bool			GetVirtualCells		();
 			void			SetVirtualCells		(bool b);
 
