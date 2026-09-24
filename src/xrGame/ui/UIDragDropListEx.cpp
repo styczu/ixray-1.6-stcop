@@ -39,6 +39,75 @@ IC int screen_cell_len(int ui_len, float scale)
 
 	return _max(1, iFloor(float(ui_len) * scale + 0.5f));
 }
+
+// A fitted list never gets fewer columns than this: the widest item in the game is
+// six cells wide (inv_grid_width=6), and FindFreeCell cannot place an item wider
+// than a row - an unlimited list grows forever looking for room, a fixed one asserts.
+constexpr int kFitMinColumns = 6;
+
+// screen_cell_sizes="1080:50 1440:75 2160:100": pairs of screen height and square
+// cell in screen pixels, separated by spaces or commas. A malformed pair is logged
+// and skipped, so one typo costs one resolution and not the whole table.
+IC void parse_screen_cell_sizes(LPCSTR src, xr_vector<std::pair<int, int>>& out)
+{
+	out.clear();
+	if(!src)
+		return;
+
+	auto is_sep = [](char c) { return c==' ' || c==',' || c=='\t'; };
+	const char* p = src;
+	while(*p)
+	{
+		while(*p && is_sep(*p))
+			++p;
+		if(!*p)
+			break;
+
+		char* end		= nullptr;
+		const long h	= strtol(p, &end, 10);
+		long px			= 0;
+		bool good		= (end!=p && *end==':');
+		if(good)
+		{
+			const char* px_start = end+1;
+			px			= strtol(px_start, &end, 10);
+			good		= (end!=px_start && h>0 && px>0 && (!*end || is_sep(*end)));
+		}
+
+		if(good)
+		{
+			out.push_back(std::make_pair(int(h), int(px)));
+			p			= end;
+		}
+		else
+		{
+			Msg("! [%s]: bad entry in screen_cell_sizes [%s]", __FUNCTION__, src);
+			while(*p && !is_sep(*p))
+				++p;
+		}
+	}
+}
+
+// How many whole cells of cell_px, sp_px apart, fit into len_px. Only whole ones: a
+// cell cut by the window edge is a cell nobody can see into.
+IC int fit_cells_count(float len_px, int cell_px, int sp_px)
+{
+	if(cell_px + sp_px <= 0)
+		return 0;
+
+	return _max(0, iFloor((len_px + float(sp_px)) / float(cell_px + sp_px)));
+}
+
+// Left margin, in whole screen pixels, that centres cells cells of cell_px, sp_px
+// apart, in len_px. The step stays whole, so the grid keeps its pixel edges.
+IC int centre_offset_px(float len_px, int cells, int cell_px, int sp_px)
+{
+	if(cells <= 0)
+		return 0;
+
+	const float slack = len_px - float(cells*cell_px + (cells-1)*sp_px);
+	return (slack > 0.0f) ? iFloor(slack * 0.5f) : 0;
+}
 }
 
 void CUICell::Clear()
@@ -124,6 +193,66 @@ void CUIDragDropListEx::SetAlwaysShowScroll(bool b)
 void CUIDragDropListEx::SetHideScrollBar(bool b)
 {
 	m_flags.set(flHideScrollBar,b);
+}
+
+void CUIDragDropListEx::SetFitCellSizes(LPCSTR table)
+{
+	parse_screen_cell_sizes	(table, m_fit_cell_sizes);
+	m_flags.set				(flFitCells, table && *table);
+}
+
+// The cell is a whole number of screen pixels picked for the screen height, and the
+// capacity is whatever of it fits the window: columns across, rows down, so the grid
+// covers the window at every supported resolution instead of running off its edge.
+// Runs once, from the XML init: a resolution change rebuilds the whole actor menu
+// (CHUDManager::OnScreenResolutionChanged), so there is no stale capacity to redo.
+void CUIDragDropListEx::FitCellsToWindow()
+{
+	// vertical_placement squares its cells its own way and virtual_cells centres a
+	// single item; neither is a grid to fit.
+	if(!m_flags.test(flFitCells) || GetVerticalPlacement() || GetVirtualCells())
+		return;
+
+	m_container->UpdateCellMetrics	();
+	const Fvector2 scale			= m_container->m_metricsScale;
+	const int screen_h				= iFloor(UI_BASE_HEIGHT * scale.y + 0.5f);
+
+	// The same path screen_cell_size takes. A height the table does not list keeps
+	// screen_cell_size from the layout; the capacity below still fits it.
+	for(const std::pair<int, int>& entry : m_fit_cell_sizes)
+		if(entry.first == screen_h)
+		{
+			SetScreenCellSize		(entry.second);
+			break;
+		}
+
+	Frect client;
+	GetClientArea					(client);
+
+	const Ivector2& cell			= m_container->CellSizeScreen();
+	const Ivector2& sp				= m_container->CellsSpacingScreen();
+
+	Ivector2 cap;
+	cap.x							= _max(kFitMinColumns, fit_cells_count(client.width() * scale.x, cell.x, sp.x));
+	cap.y							= _max(m_orig_cell_capacity.y, fit_cells_count(client.height() * scale.y, cell.y, sp.y));
+	SetStartCellsCapacity			(cap);
+}
+
+Fvector2 CUIDragDropListEx::ContainerOrigin()
+{
+	Fvector2 res;
+	res.set							(0.0f, 0.0f);
+	if(!m_flags.test(flFitCells) || GetVerticalPlacement() || GetVirtualCells())
+		return res;
+
+	Frect client;
+	GetClientArea					(client);
+
+	const Fvector2 scale			= m_container->m_metricsScale;
+	const int offset_px				= centre_offset_px(client.width() * scale.x, CellsCapacity().x,
+														m_container->CellSizeScreen().x, m_container->CellsSpacingScreen().x);
+	res.x							= float(offset_px) / scale.x;
+	return res;
 }
 
 bool CUIDragDropListEx::GetVerticalPlacement()
@@ -339,7 +468,7 @@ void CUIDragDropListEx::ClearAll(bool bDestroy, xr_vector<u16> IgnoredItemsIds)
 	DestroyDragItem			();
 	m_container->ClearAll	(bDestroy, IgnoredItemsIds); // FFx0001
 	m_selected_item			= nullptr;
-	m_container->SetWndPos	(Fvector2().set(0,0));
+	m_container->SetWndPos	(ContainerOrigin());
 	ResetCellsCapacity		();
 }
 
@@ -422,7 +551,7 @@ void CUIDragDropListEx::ReinitScroll()
 		m_vScrollBar->SetStepSize	(iFloor(CellSize().y/3.0f));
 		m_vScrollBar->SetPageSize	( 1/*CellSize().y*/ );
 		m_vScrollBar->SetWndSize({ m_vScrollBar->GetWndSize().x, h2 });
-		m_container->SetWndPos		(Fvector2().set(0,0));
+		m_container->SetWndPos		(ContainerOrigin());
 }
 
 bool CUIDragDropListEx::OnMouseAction(float x, float y, EUIMessages mouse_action)
