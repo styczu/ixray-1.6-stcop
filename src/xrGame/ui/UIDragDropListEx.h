@@ -50,9 +50,14 @@ private:
 		// No scroll bar at all: not drawn, not clickable and not taking width from the
 		// cells. The wheel still scrolls the list whenever there is a range to scroll.
 		flHideScrollBar		=	(1<<6),
+		// The cell comes from the screen height and the capacity from the window,
+		// see FitCellsToWindow.
+		flFitCells			=	(1<<7),
 	};
 	Flags16					m_flags;
 	Ivector2				m_orig_cell_capacity;
+	// screen_cell_sizes: screen height -> square cell in screen pixels.
+	xr_vector<std::pair<int, int>>	m_fit_cell_sizes;
 	Ivector2				m_virtual_cells_alignment;
 	bool					m_bConditionProgBarVisible;
 protected:
@@ -125,6 +130,13 @@ public:
 			bool			GetVerticalPlacement();
 			void			SetAlwaysShowScroll	(bool b);
 			void			SetHideScrollBar	(bool b);
+			// Enables fitting with a "height:px height:px" table; FitCellsToWindow
+			// applies it once the rest of the list is set up.
+			void			SetFitCellSizes		(LPCSTR table);
+			void			FitCellsToWindow	();
+			// Where the container sits in the list: centred across for a fitted list,
+			// the top left corner otherwise.
+			Fvector2		ContainerOrigin		();
 			bool			GetVirtualCells		();
 			void			SetVirtualCells		(bool b);
 
