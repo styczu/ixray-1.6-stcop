@@ -67,6 +67,11 @@ bool CUIXmlInitGame::InitDragDropListEx(CUIXml& xml_doc, LPCSTR path, int index,
 	// ReinitScroll is the first to show or hide the bar.
 	pWnd->SetHideScrollBar(xml_doc.ReadAttribInt(path, index, "hide_scroll_bar", 0) != 0);
 
+	// Optional: "height:px ..." pairs that pick the cell for the screen height and
+	// size the grid to the window; cols_num, rows_num and screen_cell_size stay as the
+	// fallback. Applied by FitCellsToWindow at the end, once every flag is known.
+	pWnd->SetFitCellSizes(xml_doc.ReadAttrib(path, index, "screen_cell_sizes", ""));
+
 	pWnd->SetCellSize(w_cell_sz);
 	pWnd->SetCellsSpacing(w_cell_sp);
 	pWnd->SetStartCellsCapacity(w_cells);
@@ -97,6 +102,8 @@ bool CUIXmlInitGame::InitDragDropListEx(CUIXml& xml_doc, LPCSTR path, int index,
 		xr_string vc_horiz_align = xml_doc.ReadAttrib(path, index, "vc_horiz_align", "");
 		pWnd->SetCellsHorizAlignment(vc_horiz_align);
 	}
+
+	pWnd->FitCellsToWindow();
 
 
 	pWnd->back_color = CUIXmlInit::GetColor(xml_doc, path, index, 0xFFFFFFFF);
