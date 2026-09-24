@@ -121,6 +121,11 @@ void CUIDragDropListEx::SetAlwaysShowScroll(bool b)
 	m_flags.set(flAlwaysShowScroll,b);
 }
 
+void CUIDragDropListEx::SetHideScrollBar(bool b)
+{
+	m_flags.set(flHideScrollBar,b);
+}
+
 bool CUIDragDropListEx::GetVerticalPlacement()
 {
 	return !!m_flags.test(flVerticalPlacement);
@@ -322,6 +327,8 @@ void CUIDragDropListEx::OnItemLButtonClick(CUIWindow* w, void* pData)
 void CUIDragDropListEx::GetClientArea(Frect& r)
 {
 	GetAbsoluteRect				(r);
+	if(m_flags.test(flHideScrollBar))
+		return;
 	if(m_vScrollBar->GetVisible() || m_flags.test(flAlwaysShowScroll))
 		r.x2 -= m_vScrollBar->GetWidth	();
 }
@@ -401,6 +408,15 @@ void CUIDragDropListEx::ReinitScroll()
 		int range = (dh > 0) ? iFloor(dh) : 0;
 		m_vScrollBar->Show			( (range > 0) || m_flags.test(flAlwaysShowScroll) );
 		m_vScrollBar->Enable		( (range > 0) || m_flags.test(flAlwaysShowScroll) );
+		// Hidden is not enough: a child window takes clicks and the wheel as long as it
+		// is enabled, visible or not. The bar keeps its range, so the wheel below still
+		// has something to scroll, and it wins over always_show_scroll, which a layout
+		// keeps for engines without this flag.
+		if(m_flags.test(flHideScrollBar))
+		{
+			m_vScrollBar->Show		(false);
+			m_vScrollBar->Enable	(false);
+		}
 		m_vScrollBar->SetRange		(0, range);
 		m_vScrollBar->SetScrollPos	(0);
 		m_vScrollBar->SetStepSize	(iFloor(CellSize().y/3.0f));
@@ -413,7 +429,9 @@ bool CUIDragDropListEx::OnMouseAction(float x, float y, EUIMessages mouse_action
 {
 	bool b = inherited::OnMouseAction		(x,y,mouse_action);
 
-	if(m_vScrollBar->IsShown())
+	// A hidden bar scrolls exactly as far as its range: UpdateScrollBar only pads the
+	// range by one for a bar on screen, so a list that fits cannot be nudged.
+	if(m_vScrollBar->IsShown() || (m_flags.test(flHideScrollBar) && m_vScrollBar->GetMaxRange() > 0))
 	{
 		switch(mouse_action){
 		case WINDOW_MOUSE_WHEEL_DOWN:
