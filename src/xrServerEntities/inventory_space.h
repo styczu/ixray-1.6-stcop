@@ -31,6 +31,11 @@ enum
 	CUSTOM_SLOT_9,
 	CUSTOM_SLOT_10,
 	LAST_SLOT = CUSTOM_SLOT_10,
+
+	// The actor's pistol slot: the first custom slot, in use once [inventory]
+	// configures it (slot_persistent_14, slot_active_14). Pistols keep INV_SLOT_2 as
+	// their base slot and may still lie in the two weapon slots.
+	PISTOL_SLOT = CUSTOM_SLOT_1,
 };
 
 #define RUCK_HEIGHT			280
