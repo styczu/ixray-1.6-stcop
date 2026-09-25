@@ -48,6 +48,12 @@ public:
 
 	IC u16					FirstSlot			() const {return KNIFE_SLOT;}
 	IC u16					LastSlot			() const {return m_last_slot;} // not "end"
+	// [inventory] configures PISTOL_SLOT.
+	IC bool					PistolSlotEnabled	() const {return m_last_slot >= PISTOL_SLOT;}
+	// The slot key 1 brings up: the pistol, the knife once the pistol is (being) drawn.
+	u16						KnifeKeySlot		() const;
+	// An item of the actor that takes the pistol slot before its base slot.
+	bool					TakesPistolSlot		(PIItem pIItem) const;
 	IC bool					SlotIsPersistent	(u16 slot_id) { return m_slots[slot_id].m_bPersistent; }
 	bool					Slot				(u16 slot_id, PIItem pIItem, bool bNotActivate = false, bool strict_placement=false);	
 	bool					Belt				(PIItem pIItem, bool strict_placement=false);
