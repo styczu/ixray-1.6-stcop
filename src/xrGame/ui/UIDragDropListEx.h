@@ -135,8 +135,9 @@ public:
 			void			SetFitCellSizes		(LPCSTR table);
 			void			FitCellsToWindow	();
 			// Where the container sits in the list: centred across for a fitted list,
-			// the top left corner otherwise.
+			// and down as well when its capacity is fixed; the top left corner otherwise.
 			Fvector2		ContainerOrigin		();
+			bool			GetFitCells			() {return !!m_flags.test(flFitCells);};
 			bool			GetVirtualCells		();
 			void			SetVirtualCells		(bool b);
 
