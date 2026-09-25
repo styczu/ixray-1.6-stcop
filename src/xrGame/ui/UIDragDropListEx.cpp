@@ -204,13 +204,14 @@ void CUIDragDropListEx::SetFitCellSizes(LPCSTR table)
 // The cell is a whole number of screen pixels picked for the screen height, and the
 // capacity is whatever of it fits the window: columns across, rows down, so the grid
 // covers the window at every supported resolution instead of running off its edge.
+// A list of fixed capacity (a slot, the belt, the quick slots) takes the cell only
+// and keeps the cells its layout counts.
 // Runs once, from the XML init: a resolution change rebuilds the whole actor menu
 // (CHUDManager::OnScreenResolutionChanged), so there is no stale capacity to redo.
 void CUIDragDropListEx::FitCellsToWindow()
 {
-	// vertical_placement squares its cells its own way and virtual_cells centres a
-	// single item; neither is a grid to fit.
-	if(!m_flags.test(flFitCells) || GetVerticalPlacement() || GetVirtualCells())
+	// vertical_placement squares its cells its own way.
+	if(!m_flags.test(flFitCells) || GetVerticalPlacement())
 		return;
 
 	m_container->UpdateCellMetrics	();
@@ -226,6 +227,9 @@ void CUIDragDropListEx::FitCellsToWindow()
 			break;
 		}
 
+	if(!IsAutoGrow())
+		return;
+
 	Frect client;
 	GetClientArea					(client);
 
@@ -233,7 +237,9 @@ void CUIDragDropListEx::FitCellsToWindow()
 	const Ivector2& sp				= m_container->CellsSpacingScreen();
 
 	Ivector2 cap;
-	cap.x							= _max(kFitMinColumns, fit_cells_count(client.width() * scale.x, cell.x, sp.x));
+	// cols_num from the layout is the most columns the list takes: the window has room
+	// for another one on screens the table gives a smaller cell than the layout's scale.
+	cap.x							= _max(kFitMinColumns, _min(m_orig_cell_capacity.x, fit_cells_count(client.width() * scale.x, cell.x, sp.x)));
 	cap.y							= _max(m_orig_cell_capacity.y, fit_cells_count(client.height() * scale.y, cell.y, sp.y));
 	SetStartCellsCapacity			(cap);
 }
@@ -242,7 +248,7 @@ Fvector2 CUIDragDropListEx::ContainerOrigin()
 {
 	Fvector2 res;
 	res.set							(0.0f, 0.0f);
-	if(!m_flags.test(flFitCells) || GetVerticalPlacement() || GetVirtualCells())
+	if(!m_flags.test(flFitCells) || GetVerticalPlacement())
 		return res;
 
 	Frect client;
@@ -252,6 +258,15 @@ Fvector2 CUIDragDropListEx::ContainerOrigin()
 	const int offset_px				= centre_offset_px(client.width() * scale.x, CellsCapacity().x,
 														m_container->CellSizeScreen().x, m_container->CellsSpacingScreen().x);
 	res.x							= float(offset_px) / scale.x;
+
+	// A fixed list is centred down as well: its cells are all there is, and the window
+	// around them is room for what sticks out of an icon.
+	if(!IsAutoGrow())
+	{
+		const int offset_y_px		= centre_offset_px(client.height() * scale.y, CellsCapacity().y,
+														m_container->CellSizeScreen().y, m_container->CellsSpacingScreen().y);
+		res.y						= float(offset_y_px) / scale.y;
+	}
 	return res;
 }
 
@@ -285,7 +300,7 @@ void CUIDragDropListEx::InitDragDropList(Fvector2 pos, Fvector2 size, LPCSTR scr
 
 void CUIDragDropListEx::OnScrollV(CUIWindow* w, void* pData)
 {
-	m_container->SetWndPos		(Fvector2().set(m_container->GetWndPos().x, float(-m_vScrollBar->GetScrollPos())));
+	m_container->SetWndPos		(Fvector2().set(m_container->GetWndPos().x, ContainerOrigin().y - float(m_vScrollBar->GetScrollPos())));
 }
 
 void CUIDragDropListEx::CreateDragItem(CUICellItem* itm)
@@ -963,6 +978,19 @@ void CUICellContainer::SetItemGeometry(CUICellItem* itm, const Ivector2& cell_po
 	if (!m_pParentDragDropList->GetVirtualCells()) {
 		itm->SetWndPos(CellOffsetUI(cell_pos));
 	}
+	else if (m_pParentDragDropList->GetFitCells())
+	{
+		// The grid is centred in the window (ContainerOrigin), so centring the item on
+		// the grid centres it in the window too, and an item as big as the grid lies
+		// exactly on its cells.
+		const int grid_x	= m_cellsCapacity.x * m_cellSizeScreen.x + (m_cellsCapacity.x - 1) * m_cellSpacingScreen.x;
+		const int grid_y	= m_cellsCapacity.y * m_cellSizeScreen.y + (m_cellsCapacity.y - 1) * m_cellSpacingScreen.y;
+		const int item_x	= cs.x * m_cellSizeScreen.x;
+		const int item_y	= cs.y * m_cellSizeScreen.y;
+
+		itm->SetWndPos(Fvector2().set(float(iFloor(float(grid_x - item_x) * 0.5f)) / m_metricsScale.x,
+									  float(iFloor(float(grid_y - item_y) * 0.5f)) / m_metricsScale.y));
+	}
 	else
 	{
 		Fvector2 AlignPos = m_pParentDragDropList->GetWndSize();;
@@ -1461,6 +1489,10 @@ void CUICellContainer::Draw()
 
 	GetCellsInRange(tgt_cells,m_cells_to_draw);
 
+	// A centred item does not lie on the cells it takes, so tinting them would mark
+	// cells beside its icon.
+	const bool centred_item = m_pParentDragDropList->GetVirtualCells() && m_pParentDragDropList->GetFitCells();
+
 	// fill cell buffer
 	u32 max_prim_cnt = ((tgt_cells.width()+1)*(tgt_cells.height()+1)*6);
 	UIRender->StartPrimitive	(max_prim_cnt, IUIRender::ptTriList, UI().m_currentPointType);
@@ -1479,7 +1511,7 @@ void CUICellContainer::Draw()
 			CUICell& ui_cell = GetCellAt( cpos );
 			
 			u8 select_mode = 0;
-			if ( !ui_cell.Empty() )
+			if ( !ui_cell.Empty() && !centred_item )
 			{
 				if ( ui_cell.m_item->m_cur_mark )
 				{
