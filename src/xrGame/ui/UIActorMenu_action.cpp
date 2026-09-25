@@ -272,11 +272,11 @@ bool CUIActorMenu::OnItemDbClick(CUICellItem* itm)
 					break;
 				}
 				PIItem iitem_to_place = (PIItem)itm->m_pData;
-				if ( !ToSlot( itm, false, iitem_to_place->BaseSlot() ) )
+				if ( !ToSlot( itm, false, SlotForItem(iitem_to_place) ) )
 				{
 					if ( !ToBelt( itm, false ) )
 					{
-						ToSlot( itm, true, iitem_to_place->BaseSlot() );
+						ToSlot( itm, true, SlotForItem(iitem_to_place) );
 					}
 				}
 				break;
