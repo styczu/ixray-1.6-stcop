@@ -261,6 +261,11 @@ protected:
 	CUIDragDropListEx*			GetListByType				(EDDListType t);
 	CUIDragDropListEx*			GetSlotList					(u16 slot_idx);
 	bool						CanSetItemToList			(PIItem item, CUIDragDropListEx* l, u16& ret_slot);
+	// The pistol slot is on screen and configured.
+	bool						PistolSlotUsable			() const;
+	// The slot "to slot" puts an item in: a pistol goes to the pistol slot while it is
+	// free, and when the two weapon slots are full as well.
+	u16							SlotForItem					(PIItem item) const;
 	
 	xr_vector<EDDListType>		m_allowed_drops				[iListTypeMax];
 	bool						AllowItemDrops				(EDDListType from, EDDListType to);
