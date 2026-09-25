@@ -189,6 +189,10 @@ void CInventory::Take(CGameObject *pObj, bool bNotActivate, bool strict_placemen
 	{
 		if( !pIItem->RuckDefault() )
 		{
+			if( TakesPistolSlot(pIItem) && CanPutInSlot(pIItem, PISTOL_SLOT) )
+			{
+				result						= Slot(PISTOL_SLOT, pIItem, bNotActivate,strict_placement); VERIFY(result);
+			}else
 			if( CanPutInSlot(pIItem, pIItem->BaseSlot()) )
 			{
 				result						= Slot(pIItem->BaseSlot(), pIItem, bNotActivate,strict_placement); VERIFY(result);
@@ -733,6 +737,8 @@ bool CInventory::Action(u16 cmd, u32 flags)
 			if (cmd == kWPN_6 && !IsGameTypeSingleCompatible()) return false;
 			
 			u16 slot = u16(cmd - kWPN_1 + 1);
+			if ( cmd == kWPN_1 )
+				slot = KnifeKeySlot();
 			if ( flags & CMD_START )
 			{
 				ActiveWeapon( slot );
@@ -803,6 +809,25 @@ bool CInventory::Action(u16 cmd, u32 flags)
 	}
 
 	return false;
+}
+
+// Key 1 with a pistol in the pistol slot: the pistol first, the knife on the next
+// press - also while the pistol is still being drawn - and the pistol again from the
+// knife. With the pistol slot empty or not configured it is the knife, as before.
+u16 CInventory::KnifeKeySlot() const
+{
+	if (!PistolSlotEnabled() || !ItemFromSlot(PISTOL_SLOT))
+		return KNIFE_SLOT;
+
+	if (GetNextActiveSlot() == PISTOL_SLOT && ItemFromSlot(KNIFE_SLOT))
+		return KNIFE_SLOT;
+
+	return PISTOL_SLOT;
+}
+
+bool CInventory::TakesPistolSlot(PIItem pIItem) const
+{
+	return PistolSlotEnabled() && m_pOwner && m_pOwner->cast_actor() && pIItem->BaseSlot() == INV_SLOT_2;
 }
 
 void CInventory::ActiveWeapon( u16 slot )
