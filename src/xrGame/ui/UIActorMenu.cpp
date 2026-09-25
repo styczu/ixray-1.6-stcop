@@ -582,6 +582,11 @@ void CUIActorMenu::highlight_item_slot(CUICellItem* cell_item)
 	}
 
 	u16 slot_id = item->BaseSlot();
+	if (slot_id == INV_SLOT_2 && PistolSlotUsable() && m_pInvSlotHighlight[PISTOL_SLOT])
+	{
+		m_pInvSlotHighlight[PISTOL_SLOT]->Show(true);
+	}
+
 	const static bool pistolsOnly = EngineExternal()[EEngineExternalGame::EnableInventoryPistolSlot];
 	if ((slot_id == INV_SLOT_2 || slot_id == INV_SLOT_3) && !pistolsOnly)
 	{
@@ -1013,7 +1018,34 @@ bool CUIActorMenu::CanSetItemToList(PIItem item, CUIDragDropListEx* l, u16& ret_
 		return		true;
 	}
 
+	if (item_slot == INV_SLOT_2 && l == m_pInvList[PISTOL_SLOT] && PistolSlotUsable())
+	{
+		ret_slot	= PISTOL_SLOT;
+		return		true;
+	}
+
 	return false;
+}
+
+bool CUIActorMenu::PistolSlotUsable() const
+{
+	return m_pInvList[PISTOL_SLOT] && m_pActorInvOwner && m_pActorInvOwner->inventory().PistolSlotEnabled();
+}
+
+u16 CUIActorMenu::SlotForItem(PIItem item) const
+{
+	const u16 base = item->BaseSlot();
+	if (base != INV_SLOT_2 || !PistolSlotUsable())
+		return base;
+
+	const CInventory& inv = m_pActorInvOwner->inventory();
+	if (inv.CanPutInSlot(item, PISTOL_SLOT))
+		return PISTOL_SLOT;
+
+	if (inv.CanPutInSlot(item, INV_SLOT_2) || inv.CanPutInSlot(item, INV_SLOT_3))
+		return base;
+
+	return PISTOL_SLOT;
 }
 void CUIActorMenu::UpdateConditionProgressBars()
 {

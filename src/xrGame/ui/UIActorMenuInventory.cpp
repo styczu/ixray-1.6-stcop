@@ -1008,7 +1008,7 @@ void CUIActorMenu::PropertiesBoxForSlots(PIItem item, bool& b_show)
 		return;
 	}
 
-	if (!pOutfit && !pHelmet && !pBackpack && cur_slot != NO_ACTIVE_SLOT && !inv.SlotIsPersistent(cur_slot) && inv.CanPutInSlot(item, cur_slot))
+	if (!pOutfit && !pHelmet && !pBackpack && cur_slot != NO_ACTIVE_SLOT && !inv.SlotIsPersistent(cur_slot) && inv.CanPutInSlot(item, SlotForItem(item)))
 	{
 		m_UIPropertiesBox->AddItem("st_move_to_slot", nullptr, INVENTORY_TO_SLOT_ACTION);
 		b_show = true;
@@ -1145,14 +1145,22 @@ void CUIActorMenu::PropertiesBoxForAddon(PIItem item, bool& b_show)
 
 	PIItem item_in_slot_2 = inv.ItemFromSlot(INV_SLOT_2);
 	PIItem item_in_slot_3 = inv.ItemFromSlot(INV_SLOT_3);
+	PIItem item_in_pistol_slot = PistolSlotUsable() ? inv.ItemFromSlot(PISTOL_SLOT) : nullptr;
 
-	if (!item_in_slot_2 && !item_in_slot_3)
+	if (!item_in_slot_2 && !item_in_slot_3 && !item_in_pistol_slot)
 	{
 		return;
 	}
 
 	if (pScope)
 	{
+		if (item_in_pistol_slot && item_in_pistol_slot->CanAttach(pScope))
+		{
+			shared_str str = g_pStringTable->translate("st_attach_scope_to_pistol");
+			str.printf("%s %s", str.c_str(), item_in_pistol_slot->m_name.c_str());
+			m_UIPropertiesBox->AddItem(str.c_str(), (void*)item_in_pistol_slot, INVENTORY_ATTACH_ADDON);
+			b_show = true;
+		}
 		if (item_in_slot_2 && item_in_slot_2->CanAttach(pScope))
 		{
 			shared_str str = g_pStringTable->translate("st_attach_scope_to_pistol");
@@ -1172,6 +1180,13 @@ void CUIActorMenu::PropertiesBoxForAddon(PIItem item, bool& b_show)
 
 	if (pSilencer)
 	{
+		if (item_in_pistol_slot && item_in_pistol_slot->CanAttach(pSilencer))
+		{
+			shared_str str = g_pStringTable->translate("st_attach_silencer_to_pistol");
+			str.printf("%s %s", str.c_str(), item_in_pistol_slot->m_name.c_str());
+			m_UIPropertiesBox->AddItem(str.c_str(), (void*)item_in_pistol_slot, INVENTORY_ATTACH_ADDON);
+			b_show = true;
+		}
 		if (item_in_slot_2 && item_in_slot_2->CanAttach(pSilencer))
 		{
 			shared_str str = g_pStringTable->translate("st_attach_silencer_to_pistol");
@@ -1366,7 +1381,7 @@ void CUIActorMenu::ProcessPropertiesBoxClicked(CUIWindow* w, void* d)
 
 	switch ( m_UIPropertiesBox->GetClickedItem()->GetTAG() )
 	{
-	case INVENTORY_TO_SLOT_ACTION:	ToSlot( cell_item, true, item->BaseSlot() );		break;
+	case INVENTORY_TO_SLOT_ACTION:	ToSlot( cell_item, true, SlotForItem(item) );		break;
 	case INVENTORY_TO_BELT_ACTION:	ToBelt( cell_item, false );		break;
 	case INVENTORY_TO_BAG_ACTION:	ToBag ( cell_item, false );		break;
 	case INVENTORY_DONATE_ACTION:
