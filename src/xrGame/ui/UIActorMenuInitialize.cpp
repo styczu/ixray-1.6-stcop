@@ -280,6 +280,10 @@ void CUIActorMenu::Construct()
 		pos.y += dy;
 	}
 
+	m_belt_over_active = uiXml.ReadAttribInt("belt_list_over", 0, "active", 0) != 0;
+	if (m_belt_over_active)
+		PutBeltOverUnderList();
+
 	if (uiXml.NavigateToNode("helmet_over"))
 	{
 		m_HelmetOver = UIHelper::CreateStatic(uiXml, "helmet_over", this);
