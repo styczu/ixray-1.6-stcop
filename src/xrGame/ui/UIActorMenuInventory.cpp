@@ -1658,6 +1658,7 @@ void CUIActorMenu::UpdateOutfit()
 	}
 
 	u32 af_count = m_pActorInvOwner->inventory().BeltWidth();
+	m_pInventoryBeltList->SetUsableCells( int(af_count) );
 	//VERIFY( 0 <= af_count && af_count <= 5 );
 
 	VERIFY( m_pInventoryBeltList );
