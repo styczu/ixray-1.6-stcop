@@ -54,6 +54,8 @@ protected:
 	CUIDragDropListEx*			m_pTradePartnerList;
 	CUIDragDropListEx*			m_pDeadBodyBagList;
 
+	// belt_list_over active="1": the statics mark the usable slots, under the belt list
+	bool						m_belt_over_active = false;
 	CUIStatic*					m_HelmetOver;
 	
 	CUIStatic*					m_LeftBackground = nullptr;
@@ -185,6 +187,7 @@ protected:
 	void						SetActorInfoMP();
 	void						UpdateActorMoneyMP();
 	virtual void				UpdateOutfit						();
+	void						PutBeltOverUnderList				();
 	void						TryDisassembleItem					(CUIWindow* w, void* d);
 	
 
