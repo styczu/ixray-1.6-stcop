@@ -159,6 +159,11 @@ public:
 			
 			u32				ItemsCount			();
 			CUICellItem*	GetItemIdx			(u32 idx);
+			// Cells from this row-major index on refuse an item put at the cursor and draw
+			// no drop preview; -1 leaves every cell usable. Automatic placement still takes
+			// them, so a list with more items than usable cells keeps them all. Items in
+			// such cells move to a free usable one when there is one.
+			void			SetUsableCells		(int count);
 	virtual CUICellItem*	RemoveItem			(CUICellItem* itm, bool force_root);
 			void			CreateDragItem		(CUICellItem* itm);
 
@@ -257,6 +262,8 @@ protected:
 				Ivector2		FindFreeCell		(const Ivector2& size);
 				bool			HasFreeSpace		(const Ivector2& size);
 				bool			IsRoomFree			(const Ivector2& pos, const Ivector2& size, const CUICellItem* ignore = nullptr);
+				bool			IsRoomUsable		(const Ivector2& pos, const Ivector2& size) const;
+				int				m_usableCells = -1;	// see CUIDragDropListEx::SetUsableCells
 				
 				bool			AddSimilar			(CUICellItem* itm);
 				CUICellItem*	FindSimilar			(CUICellItem* itm, CUICellItem* skip = nullptr);
