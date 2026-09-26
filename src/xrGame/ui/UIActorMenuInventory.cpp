@@ -1654,7 +1654,7 @@ void CUIActorMenu::UpdateOutfit()
 {
 	for ( u8 i = 0; i < m_ArtefactSlotsCount; ++i )
 	{
-		m_belt_list_over[i]->SetVisible( true );
+		m_belt_list_over[i]->SetVisible( !m_belt_over_active );
 	}
 
 	u32 af_count = m_pActorInvOwner->inventory().BeltWidth();
@@ -1681,7 +1681,19 @@ void CUIActorMenu::UpdateOutfit()
 
 	for ( u8 i = 0; i < af_count; ++i )
 	{
-		m_belt_list_over[i]->SetVisible( false );
+		m_belt_list_over[i]->SetVisible( m_belt_over_active );
+	}
+}
+
+// The overlays mark the usable slots: drawn before the belt list, so the artefacts stay on top.
+void CUIActorMenu::PutBeltOverUnderList()
+{
+	WINDOW_LIST& children = GetChildWndList();
+	for (CUIStatic* over : m_belt_list_over)
+	{
+		over->SetVisible(false);
+		children.erase(std::find(children.begin(), children.end(), over));
+		children.insert(std::find(children.begin(), children.end(), m_pInventoryBeltList), over);
 	}
 }
 
