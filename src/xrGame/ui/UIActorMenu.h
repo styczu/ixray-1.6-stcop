@@ -102,6 +102,8 @@ protected:
 
 	int							m_ArtefactSlotsCount = 5;
 	xr_vector<CUIStatic*>		m_belt_list_over;
+	// belt_list_over active="1": the statics mark the usable slots, under the belt list
+	bool						m_belt_over_active = false;
 	CUIStatic*					m_HelmetOver;
 
 	u8							m_slot_count;
@@ -324,6 +326,7 @@ protected:
 	void						UpdateActorMoneyMP();
 	void						UpdateOutfit				();
 	void						MoveArtefactsToBag			();
+	void						PutBeltOverUnderList		();
 	bool						TryActiveSlot				(CUICellItem* itm);
 	void						TryRepairItem				(CUIWindow* w, void* d);
 	void						TryDisassembleItem			(CUIWindow* w, void* d);
