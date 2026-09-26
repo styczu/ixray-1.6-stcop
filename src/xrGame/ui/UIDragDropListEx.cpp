@@ -754,9 +754,49 @@ EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& ab
 	if (GetVerticalPlacement())
 		std::swap(size.x, size.y);
 
+	// A locked cell is not there to point at: no preview, automatic placement.
+	if (!m_container->IsRoomUsable(dest_cell_pos, itm->GetGridSize()))
+		return dpAuto;
+
 	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
 
 	return m_container->IsRoomFree(dest_cell_pos, itm->GetGridSize(), skip) ? dpPlace : dpAuto;
+}
+
+void CUIDragDropListEx::SetUsableCells(int count)
+{
+	m_container->m_usableCells	= count;
+
+	xr_vector<CUICellItem*> locked;
+	{
+		xrCriticalSectionGuard guard(m_container->csUi);
+		for (CUIWindow* child : m_container->GetChildWndList())
+		{
+			CUICellItem* itm	= child->ui_cast_cell_item();
+			if (!m_container->IsRoomUsable(m_container->GetItemPos(itm), itm->GetGridSize()))
+				locked.push_back(itm);
+		}
+	}
+
+	const Ivector2 cap			= m_container->CellsCapacity();
+	for (CUICellItem* itm : locked)
+	{
+		Ivector2 pos;
+		for (pos.y = 0; pos.y < cap.y; ++pos.y)
+		{
+			for (pos.x = 0; pos.x < cap.x; ++pos.x)
+			{
+				if (!m_container->IsRoomUsable(pos, itm->GetGridSize()) || !m_container->IsRoomFree(pos, itm->GetGridSize(), itm))
+					continue;
+
+				m_container->RemoveItem		(itm, true);
+				m_container->PlaceItemAtPos	(itm, pos);
+				itm->SetOwnerList			(this);
+				pos.y						= cap.y;
+				break;
+			}
+		}
+	}
 }
 
 void CUIDragDropListEx::SetItem(CUICellItem* itm, Ivector2 cell_pos) // start at cell
@@ -1322,6 +1362,20 @@ void CUICellContainer::Shrink()
 bool CUICellContainer::ValidCell(const Ivector2& pos) const
 {
 	return !(pos.x<0 || pos.y<0 || pos.x>=m_cellsCapacity.x || pos.y>=m_cellsCapacity.y);
+}
+
+bool CUICellContainer::IsRoomUsable(const Ivector2& pos, const Ivector2& _size) const
+{
+	if (m_usableCells < 0)
+		return true;
+
+	Ivector2 size = _size;
+	if (m_pParentDragDropList->GetVerticalPlacement())
+		std::swap(size.x, size.y);
+
+	// The last cell of the room in row-major order is its highest index.
+	const int last = (pos.y + size.y - 1) * m_cellsCapacity.x + (pos.x + size.x - 1);
+	return last < m_usableCells;
 }
 
 // FFx0001 add support ignore items by ids
