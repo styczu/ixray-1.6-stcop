@@ -36,6 +36,7 @@ CUIHudStatesWnd::CUIHudStatesWnd()
 	for ( int i = 0; i < ALife::infl_max_count; ++i )
 	{
 		m_zone_cur_power[i] = 0.0f;
+		m_zone_burst[i] = false;
 //--		m_zone_max_power[i] = 1.0f;
 		m_zone_feel_radius[i] = 1.0f;
 	}
@@ -535,6 +536,7 @@ void CUIHudStatesWnd::UpdateZones()
 	if ( m_zone_cur_power[ALife::infl_rad] < power )
 	{
 		m_zone_cur_power[ALife::infl_rad] = power;
+		m_zone_burst[ALife::infl_rad] = false;
 	}
 	m_radia_hit = m_zone_cur_power[ALife::infl_rad];
 
@@ -615,6 +617,7 @@ void CUIHudStatesWnd::UpdateZones()
 		if ( (z_type!=ALife::infl_max_count) && (m_zone_cur_power[z_type] < power) ) //max
 		{
 			m_zone_cur_power[z_type] = power;
+			m_zone_burst[z_type] = smart_cast<CRadioactiveZone*>(pZone) == nullptr;
 		}
 
 		if ( dist_to_zone < rad_zone + 0.9f * ((z_type==ALife::infl_max_count)?5.0f:m_zone_feel_radius[z_type]) )
@@ -723,6 +726,11 @@ void CUIHudStatesWnd::UpdateIndicatorType( CActor* actor, ALife::EInfluenceType 
 	CHelmet* helmet = actor->GetHelmet();
 	float protect = (outfit) ? outfit->GetDefHitTypeProtection( hit_type ) : 0.0f;
 	protect += (helmet) ? helmet->GetDefHitTypeProtection(hit_type) : 0.0f;
+	// A burst zone hits once with its whole power and the armour takes off a
+	// tenth of its protection per hit (HitThroughArmor). A field hits a tenth
+	// of its power every 0.1 s, which matches the full protection.
+	if ( m_zone_burst[type] )
+		protect *= 0.1f;
 
 	CEntityCondition::BOOSTER_MAP& cur_booster_influences = actor->conditions().GetCurBoosterInfluences();
 	CEntityCondition::BOOSTER_MAP::const_iterator it;
