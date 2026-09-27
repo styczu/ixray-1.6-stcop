@@ -170,6 +170,8 @@ namespace
 	static LPCSTR kColValue = "%c[255,232,178,84]";
 	static LPCSTR kColUnit  = "%c[255,132,140,144]";
 	static LPCSTR kColClass = "%c[255,200,208,212]";
+	static LPCSTR kColGain  = "%c[255,110,190,115]";
+	static LPCSTR kColLoss  = "%c[255,210,50,50]";
 
 	// CUILines lamie linie na dwuznaku BACKSLASH+N, nie na znaku nowej linii
 	// (UILine.cpp: ProcessNewLines szuka "\\n", tak samo galaz multibyte
@@ -591,10 +593,11 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
                 hint += kColTitle;
             hint += value;
         };
+        // Components carry a sign; zero is printed as "0 pkt".
         const auto pointsLine = [&](LPCSTR key, float power, bool indent = false)
         {
             string64 value;
-            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(power, maximum), false, true);
+            ConditionUi::FormatProtectionPoints(value, Protection::DisplayRatio(power, maximum), indent, power != 0.0f);
             line(key, value, indent);
         };
         const auto thresholdLine = [&](LPCSTR key, const Protection::ThresholdReading& threshold)
@@ -634,28 +637,56 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
             if (light.attainable != effective.attainable || light.power != effective.power)
                 thresholdLine("ui_uip_protection_effective_light_burn", light);
         }
+        // Base threshold x artefact influence = effective threshold (nonnegative layers).
         hint += kBreak;
-        pointsLine("ui_uip_protection_total", outfitThreshold + helmetThreshold);
-        if (outfitThreshold > 0.0f)
+        pointsLine("ui_uip_protection_total", outfitThreshold + helmetThreshold + flatBoost);
+        if (outfitThreshold != 0.0f)
             pointsLine("ui_uip_protection_outfit", outfitThreshold, true);
-        if (helmetThreshold > 0.0f)
+        if (helmetThreshold != 0.0f)
             pointsLine("ui_uip_protection_helmet", helmetThreshold, true);
-        if (flatBoost > 0.0f)
+        if (flatBoost != 0.0f)
             pointsLine("ui_uip_protection_temporary", flatBoost, true);
-
-        if (artifactMultiplier != 1.0f)
         {
-            hint += kBreak;
-            percentLine("ui_uip_protection_artifact_effect", (1.0f - artifactMultiplier) * 100.0f, false);
+            const float influence = Protection::ArtefactInfluence(artifactMultiplier);
+            const int direction = Protection::InfluenceDirection(influence);
+            string32 number;
+            string64 value;
+            ConditionUi::FormatNumber(number, influence, ConditionUi::DecimalSeparator(), false, 2);
+            xr_strconcat(value, direction > 0 ? kColGain : (direction < 0 ? kColLoss : kColTitle), "x", number);
+            line("ui_uip_protection_artifact_effect", value, false);
+        }
+
+        // Raw belt coefficients x100; the reduction comes from the game's own hit multiplier.
+        hint += kBreak;
+        separator();
+        const float absorption = actor->GetProtection_ArtefactsOnBelt(type);
+        {
+            string32 number;
+            string64 value;
+            // Round first so a tiny malus never prints as "-0%".
+            const float reduction = absorption != 0.0f ? std::round((1.0f - artifactMultiplier) * 1000.0f) / 10.0f : 0.0f;
+            ConditionUi::FormatNumber(number, reduction, ConditionUi::DecimalSeparator(), false, 1);
+            xr_strconcat(value, number, "%");
+            line("ui_uip_protection_reduction", value, false);
+        }
+        if (absorption != 0.0f)
+        {
+            string64 value;
+            ConditionUi::FormatAbsorption(value, absorption, false, true);
+            line("ui_uip_protection_absorption", value, false);
             for (const PIItem item : actor->inventory().m_belt)
             {
                 CArtefact* artefact = item->cast_artefact();
-                if (artefact && artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() != 0.0f)
+                const float coefficient = artefact ? artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() : 0.0f;
+                if (coefficient != 0.0f)
                 {
+                    ConditionUi::FormatAbsorption(value, coefficient, true, true);
                     hint += kBreak;
                     hint += kColComponent;
                     hint += "  ";
                     hint += artefact->NameItem();
+                    hint += ": ";
+                    hint += value;
                 }
             }
         }
