@@ -53,6 +53,13 @@ namespace ConditionUi
         xr_strconcat(out, number, " ", translated ? unit.c_str() : "pt");
     }
 
+    // Wspolczynnik absorpcji artefaktu: surowe *_immunity x stan x100, bez
+    // jednostki. Nie zalezy od przelicznika sily artefaktow w mechanice.
+    inline void FormatAbsorption(string64& out, float immunity, bool showSign = true, bool fixedDecimals = false)
+    {
+        FormatNumber(out, immunity * 100.0f, DecimalSeparator(), showSign, 2, fixedDecimals);
+    }
+
     // Sama liczba calkowita ochrony: bez znaku, bez jednostki, 0 miejsc po
     // przecinku. Uzywa tego samego %.0f co auto_static panelu postaci
     // (decimals="0"), zeby wartosc w tooltipie i na panelu nigdy sie nie
