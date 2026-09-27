@@ -426,6 +426,8 @@ void CActor::Load	(LPCSTR section )
 
 	m_fWalk_StrafeFactor		= READ_IF_EXISTS(pSettings, r_float, section, "walk_strafe_coef", 1.0f);
 	m_fRun_StrafeFactor			= READ_IF_EXISTS(pSettings, r_float, section, "run_strafe_coef", 1.0f);
+	m_artefact_zone_immunity_scale	= READ_IF_EXISTS(pSettings, r_float, section, "artefact_zone_immunity_scale", 1.0f);
+	R_ASSERT2(m_artefact_zone_immunity_scale >= 0.0f, "artefact_zone_immunity_scale must not be negative");
 
 
 	m_fCamHeightFactor			= pSettings->r_float(section,"camera_height_factor");
@@ -2651,6 +2653,22 @@ float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 		{
 			sum += (artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type) * artefact->GetCondition());
 		}
+	}
+
+	// Balance: zone immunities are scaled before the clamp and the nonlinear curve.
+	// Combat immunities (wound, strike, explosion, fire wound) keep their values.
+	switch (hit_type)
+	{
+	case ALife::eHitTypeBurn:
+	case ALife::eHitTypeLightBurn:
+	case ALife::eHitTypeShock:
+	case ALife::eHitTypeChemicalBurn:
+	case ALife::eHitTypeRadiation:
+	case ALife::eHitTypeTelepatic:
+		sum *= m_artefact_zone_immunity_scale;
+		break;
+	default:
+		break;
 	}
 
 	if (sum == 0.0f)
