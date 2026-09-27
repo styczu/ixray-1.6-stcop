@@ -204,7 +204,7 @@ void CUIBoosterInfo::SetInfo( shared_str const& section )
                 const bool power = type == eBoostPowerRestore;
                 m_booster_items[i]->SetCaption(g_pStringTable->translate(power
                     ? "ui_uip_item_reg_power" : "ui_uip_item_reg_health").c_str());
-                m_booster_items[i]->SetRegenerationRate(val, power);
+                m_booster_items[i]->SetRegenerationRate(val);
             }
             else if (type == eBoostRadiationRestore && ConditionUi::RadiationUnitsEnabled())
 			{
@@ -398,13 +398,12 @@ void UIBoosterInfoItem::SetRadiationRate(float value)
 		m_caption->InitTexture(value > 0.0f ? m_texture_minus.c_str() : m_texture_plus.c_str());
 }
 
-void UIBoosterInfoItem::SetRegenerationRate(float value, bool satietyDependent)
+// The item's own (nominal) rate. The panel shows the effect scaled by satiety;
+// the tooltip stays fixed and the regeneration note says it depends on satiety.
+void UIBoosterInfoItem::SetRegenerationRate(float value)
 {
     m_regeneration_rate = value;
     m_has_regeneration_rate = true;
-    m_satiety_dependent = satietyDependent;
-    if (satietyDependent && Actor())
-        value = Actor()->conditions().PowerRestoreEffect(value);
     string64 text;
     ConditionUi::FormatRegenerationRate(text, value);
     m_value->SetText(text);
@@ -429,7 +428,7 @@ void UIBoosterInfoItem::SetDuration(float seconds)
 void UIBoosterInfoItem::Update()
 {
     if (m_has_regeneration_rate)
-        SetRegenerationRate(m_regeneration_rate, m_satiety_dependent);
+        SetRegenerationRate(m_regeneration_rate);
     if (m_duration)
         SetDuration(m_duration_seconds);
     CUIWindow::Update();
