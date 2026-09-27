@@ -55,6 +55,21 @@ namespace Protection
         return std::isfinite(power) ? ThresholdReading{power, true} : ThresholdReading{};
     }
 
+    // UI only: how many times the belt raises the threshold, 1 / HitArtefactsOnBelt(1).
+    // For nonnegative layers EffectiveThreshold = base threshold x influence.
+    inline float ArtefactInfluence(float hitMultiplier)
+    {
+        return hitMultiplier > 0.0f && std::isfinite(hitMultiplier) ? 1.0f / hitMultiplier : 1.0f;
+    }
+
+    // UI only: colour direction of the influence as shown with two decimals,
+    // so a value printed as x1 is never coloured. 1 = gain, -1 = loss, 0 = none.
+    inline int InfluenceDirection(float influence)
+    {
+        const float shown = std::round(influence * 100.0f);
+        return shown > 100.0f ? 1 : (shown < 100.0f ? -1 : 0);
+    }
+
     // Presentation scale, not a percentage reduction of an arbitrary hit.
     // Keep values above 1 and below 0; only the graphical fill is clamped.
     inline float Ratio(float protection, float zoneMaxPower)
