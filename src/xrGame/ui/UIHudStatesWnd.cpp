@@ -723,7 +723,6 @@ void CUIHudStatesWnd::UpdateIndicatorType( CActor* actor, ALife::EInfluenceType 
 	CHelmet* helmet = actor->GetHelmet();
 	float protect = (outfit) ? outfit->GetDefHitTypeProtection( hit_type ) : 0.0f;
 	protect += (helmet) ? helmet->GetDefHitTypeProtection(hit_type) : 0.0f;
-	protect += actor->GetProtection_ArtefactsOnBelt( hit_type );
 
 	CEntityCondition::BOOSTER_MAP& cur_booster_influences = actor->conditions().GetCurBoosterInfluences();
 	CEntityCondition::BOOSTER_MAP::const_iterator it;
@@ -771,6 +770,11 @@ void CUIHudStatesWnd::UpdateIndicatorType( CActor* actor, ALife::EInfluenceType 
 		actor->conditions().SetZoneDanger(0.0f, type);
 		return;
 	}
+
+	// Artefacts on the belt multiply the incoming hit before the armour, as in
+	// CActor::Hit; their raw coefficients are not armour. The zone presence
+	// check above stays on the unreduced power.
+	hit_power *= actor->HitArtefactsOnBelt(1.0f, hit_type);
 
 	m_indik[type]->Show(true);
 	if ( hit_power <= protect )
