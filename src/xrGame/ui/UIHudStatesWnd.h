@@ -51,6 +51,9 @@ private:
 //--	float				m_zone_max_power[hud_it_max];//<-- CActorCondition
 	float				m_zone_feel_radius[ALife::infl_max_count ];
 	ALife::EHitType		m_zone_hit_type[ALife::infl_max_count ];
+	// The strongest zone of the type hits once with its whole power
+	// (CMosquitoBald and heirs), not a tenth every 0.1 s (CRadioactiveZone).
+	bool				m_zone_burst[ALife::infl_max_count ];
 	float				m_zone_threshold[ALife::infl_max_count ];
 
 	float				m_zone_feel_radius_max;
