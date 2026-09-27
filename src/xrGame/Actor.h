@@ -528,6 +528,10 @@ public:
 	float					m_fWalk_StrafeFactor;
 	float					m_fRun_StrafeFactor;
 
+	// Mnoznik sumy odpornosci strefowych artefaktow z pasa przed krzywa
+	// HitArtefactsOnBelt; 1 = oryginal, wartosc ustawia addon balansu.
+	float					m_artefact_zone_immunity_scale = 1.0f;
+
 	bool					bBlockSprint;
 	u32						m_iKeyFlags = 0;
 
