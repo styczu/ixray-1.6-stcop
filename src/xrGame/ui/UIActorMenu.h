@@ -268,6 +268,9 @@ protected:
 	// The slot "to slot" puts an item in: a pistol goes to the pistol slot while it is
 	// free, and when the two weapon slots are full as well.
 	u16							SlotForItem					(PIItem item) const;
+	// The weapon in slot takes the addon. The pistol slot counts only while usable and
+	// never for a grenade launcher, as in the context menu.
+	bool						AddonFitsSlotWeapon			(PIItem addon, u16 slot) const;
 	
 	xr_vector<EDDListType>		m_allowed_drops				[iListTypeMax];
 	bool						AllowItemDrops				(EDDListType from, EDDListType to);
