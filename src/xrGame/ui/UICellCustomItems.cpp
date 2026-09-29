@@ -116,8 +116,9 @@ IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, cons
 // A layer section of a weapon's inv_layers:
 // - icons_texture (the weapon's atlas when missing), inv_grid_x/_y/_width/_height
 //   (required), inv_scale (the weapon's when on its atlas, else 1);
-// - x, y: where it goes on the weapon's sprite, weapon_offset_x/_y: shift of the whole
-//   icon, both in the units of the addons' <prefix>_x/_y with icon keys;
+// - inv_layer_x, inv_layer_y: where it goes on the weapon's sprite, weapon_offset_x/_y:
+//   shift of the whole icon, both in the units of the addons' <prefix>_x/_y with icon
+//   keys;
 // - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...) and
 //   no_addons (silencer, scope, grenade_launcher).
 // False with the reason in error when the layer can't be used.
@@ -187,8 +188,8 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 	icon.grid_size.set(float(pSettings->r_u32(section, "inv_grid_width")), float(pSettings->r_u32(section, "inv_grid_height")));
 
 	const float unit = scaled_offsets ? weapon_scale : 1.0f;
-	icon.offset.set(READ_IF_EXISTS(pSettings, r_float, section, "x", 0.0f) / unit,
-					READ_IF_EXISTS(pSettings, r_float, section, "y", 0.0f) / unit);
+	icon.offset.set(READ_IF_EXISTS(pSettings, r_float, section, "inv_layer_x", 0.0f) / unit,
+					READ_IF_EXISTS(pSettings, r_float, section, "inv_layer_y", 0.0f) / unit);
 	icon.shift.set(READ_IF_EXISTS(pSettings, r_float, section, "weapon_offset_x", 0.0f) / unit,
 				   READ_IF_EXISTS(pSettings, r_float, section, "weapon_offset_y", 0.0f) / unit);
 	icon.extra.set(0, 0);
