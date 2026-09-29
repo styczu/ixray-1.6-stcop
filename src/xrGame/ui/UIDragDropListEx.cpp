@@ -18,6 +18,7 @@ constexpr float kInventoryCellUSpanGridDisabled = 0.23f;
 // vertex color with hPreviewShader, so the alpha here is the final opacity.
 constexpr u32 kDropPreviewFree		= color_rgba(140, 220, 140, 40);
 constexpr u32 kDropPreviewBlocked	= color_rgba(220, 120, 120, 40);
+constexpr u32 kDropPreviewAttach	= color_rgba(110, 160, 235, 40);
 
 // A grid vertex, rounded the way CUICellItem's own rectangle is rounded
 // (CUIStaticItem::flSnapToScreenPixels), so the background of a cell and the icon on
@@ -761,6 +762,32 @@ EDropPreview CUIDragDropListEx::PredictDrop(CUICellItem* itm, const Fvector2& ab
 	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
 
 	return m_container->IsRoomFree(dest_cell_pos, itm->GetGridSize(), skip) ? dpPlace : dpAuto;
+}
+
+CUICellItem* CUIDragDropListEx::AttachTarget(CUICellItem* itm, Irect& out_cells)
+{
+	out_cells.set(0, 0, -1, -1);
+
+	// Only within the list: an item from elsewhere is moved in, as before.
+	if (!m_f_item_attach || itm->OwnerList() != this)
+		return nullptr;
+
+	// The cursor, not the drop position: that one is the dragged item's corner.
+	const Ivector2 pos = m_container->PickCell(GetUICursor().GetCursorPosition());
+	if (!m_container->ValidCell(pos))
+		return nullptr;
+
+	CUICellItem* target = m_container->GetCellAt(pos).m_item;
+	if (!target || target == itm || !m_f_item_attach(itm, target))
+		return nullptr;
+
+	const Ivector2 lt = m_container->GetItemPos(target);
+	Ivector2 size = target->GetGridSize();
+	if (GetVerticalPlacement())
+		std::swap(size.x, size.y);
+
+	out_cells.set(lt.x, lt.y, lt.x + size.x - 1, lt.y + size.y - 1);
+	return target;
 }
 
 void CUIDragDropListEx::SetUsableCells(int count)
@@ -1645,12 +1672,15 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	if (m_pParentDragDropList->GetVirtualCells() || (m_cellsCapacity.x <= 1 && m_cellsCapacity.y <= 1))
 		return;
 
+	// Onto an item that takes it, e.g. an addon onto a weapon: that item's cells.
+	Irect cells;
+	const bool attach = m_pParentDragDropList->AttachTarget(itm, cells) != nullptr;
+
 	// OnItemDrop ignores a move inside a list that does not allow custom placement.
-	if (itm->OwnerList() == m_pParentDragDropList && !m_pParentDragDropList->GetCustomPlacement())
+	if (!attach && itm->OwnerList() == m_pParentDragDropList && !m_pParentDragDropList->GetCustomPlacement())
 		return;
 
-	Irect cells;
-	const EDropPreview preview = m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), cells, itm);
+	const EDropPreview preview = attach ? dpPlace : m_pParentDragDropList->PredictDrop(itm, drag_item->GetPosition(), cells, itm);
 
 	Irect shown;
 	shown.x1 = _max(cells.x1, tgt_cells.x1);
@@ -1667,7 +1697,7 @@ void CUICellContainer::DrawDropPreview(const Irect& tgt_cells, const Fvector2& d
 	const Fvector2 uvs[6] =		{{0.0f,0.0f},{texUSpan,0.0f},{texUSpan,1.0f},
 								 {0.0f,0.0f},{texUSpan,1.0f},{0.0f,1.0f}};
 
-	const u32 color = (preview==dpAuto) ? kDropPreviewBlocked : kDropPreviewFree;
+	const u32 color = attach ? kDropPreviewAttach : (preview==dpAuto) ? kDropPreviewBlocked : kDropPreviewFree;
 
 	UIRender->StartPrimitive	(u32((shown.width()+1)*(shown.height()+1)*6), IUIRender::ptTriList, UI().m_currentPointType);
 
