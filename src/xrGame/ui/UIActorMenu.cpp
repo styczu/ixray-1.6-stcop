@@ -581,6 +581,19 @@ void CUIActorMenu::highlight_item_slot(CUICellItem* cell_item)
 		return;
 	}
 
+	// An addon lights up the weapon slots whose weapon takes it.
+	if (item->cast_addon_scope() || item->cast_addon_silencer() || item->cast_addon_grenade_launcher())
+	{
+		for (const u16 slot : { u16(INV_SLOT_2), u16(INV_SLOT_3), u16(PISTOL_SLOT) })
+		{
+			if (m_pInvSlotHighlight[slot] && AddonFitsSlotWeapon(item, slot))
+			{
+				m_pInvSlotHighlight[slot]->Show(true);
+			}
+		}
+		return;
+	}
+
 	u16 slot_id = item->BaseSlot();
 	if (slot_id == INV_SLOT_2 && PistolSlotUsable() && m_pInvSlotHighlight[PISTOL_SLOT])
 	{
@@ -896,7 +909,7 @@ void CUIActorMenu::highlight_weapons_for_addon(PIItem addon_item, CUIDragDropLis
 			continue;
 		}
 
-		if (pScope && weapon->ScopeAttachable() && weapon->ScopeFit(pScope))
+		if (pScope && weapon->CanAttach(pScope))
 		{
 			ci->m_select_armament = true;
 			continue;
@@ -1030,6 +1043,15 @@ bool CUIActorMenu::CanSetItemToList(PIItem item, CUIDragDropListEx* l, u16& ret_
 bool CUIActorMenu::PistolSlotUsable() const
 {
 	return m_pInvList[PISTOL_SLOT] && m_pActorInvOwner && m_pActorInvOwner->inventory().PistolSlotEnabled();
+}
+
+bool CUIActorMenu::AddonFitsSlotWeapon(PIItem addon, u16 slot) const
+{
+	if (slot == PISTOL_SLOT && (!PistolSlotUsable() || addon->cast_addon_grenade_launcher()))
+		return false;
+
+	PIItem weapon = m_pActorInvOwner ? m_pActorInvOwner->inventory().ItemFromSlot(slot) : nullptr;
+	return weapon && weapon->CanAttach(addon);
 }
 
 u16 CUIActorMenu::SlotForItem(PIItem item) const
