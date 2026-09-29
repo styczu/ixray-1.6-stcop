@@ -91,6 +91,14 @@ bool CUIActorMenu::OnItemDrop(CUICellItem* itm)
 	}
 	
 	if (old_owner == new_owner){
+
+		// Dropped onto a weapon in the backpack that takes it: attach, do not move.
+		Irect cells;
+		if (CUICellItem* target = new_owner->AttachTarget(itm, cells))
+		{
+			AttachAddon((PIItem)target->m_pData);
+			return true;
+		}
 		
 		if (m_isItemDropped)
 		{

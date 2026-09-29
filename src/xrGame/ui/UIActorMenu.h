@@ -276,6 +276,9 @@ protected:
 	bool						AllowItemDrops				(EDDListType from, EDDListType to);
 
 	bool				OnItemDrop					(CUICellItem* itm);
+	// The backpack's m_f_item_attach: the dragged addon goes onto the weapon under the
+	// cursor when the weapon takes it, as it would in a slot.
+	bool				CanAttachOnto				(CUICellItem* itm, CUICellItem* target);
 	bool				OnItemStartDrag				(CUICellItem* itm);
 	bool				OnItemDbClick				(CUICellItem* itm);
 	bool				OnItemSelected				(CUICellItem* itm);
