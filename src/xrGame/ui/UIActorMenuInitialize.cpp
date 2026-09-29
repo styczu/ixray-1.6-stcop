@@ -385,6 +385,7 @@ void CUIActorMenu::Construct()
 
 	BindDragDropListEvents(m_pInventoryBeltList);
 	BindDragDropListEvents(m_pInventoryBagList);
+	m_pInventoryBagList->m_f_item_attach = CUIDragDropListEx::DRAG_ATTACH_EVENT(this, &CUIActorMenu::CanAttachOnto);
 	BindDragDropListEvents(m_pTradeActorBagList);
 	BindDragDropListEvents(m_pTradeActorList);
 	BindDragDropListEvents(m_pTradePartnerBagList);
