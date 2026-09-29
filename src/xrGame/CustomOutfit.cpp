@@ -380,6 +380,10 @@ bool CCustomOutfit::install_upgrade_impl( LPCSTR section, bool test )
 	bool result = inherited::install_upgrade_impl( section, test );
 
 	result |= process_if_exists( section, "burn_protection",          &CInifile::r_float, m_HitTypeProtection[ALife::eHitTypeBurn]        , test );
+	// Anomalies burn with light_burn. Load copies burn_protection into it,
+	// so an upgrade has to as well, or it never protects against them.
+	if ( !test )
+		m_HitTypeProtection[ALife::eHitTypeLightBurn] = m_HitTypeProtection[ALife::eHitTypeBurn];
 	result |= process_if_exists( section, "shock_protection",         &CInifile::r_float, m_HitTypeProtection[ALife::eHitTypeShock]       , test );
 	result |= process_if_exists( section, "strike_protection",        &CInifile::r_float, m_HitTypeProtection[ALife::eHitTypeStrike]      , test );
 	result |= process_if_exists( section, "wound_protection",         &CInifile::r_float, m_HitTypeProtection[ALife::eHitTypeWound]       , test );
