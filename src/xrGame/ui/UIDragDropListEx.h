@@ -99,6 +99,11 @@ public:
 	DRAG_CELL_EVENT			m_f_item_focused_update;
 	DRAG_ITEM_EVENT			m_f_drag_event;
 
+	typedef					xr_delegate<bool(CUICellItem*, CUICellItem*)>	DRAG_ATTACH_EVENT;
+	// Whether the dragged item (first) goes onto the item under the cursor (second)
+	// instead of into the list. Unset on a list: never.
+	DRAG_ATTACH_EVENT		m_f_item_attach;
+
 	u32						back_color;
 
 	const	Ivector2&		CellsCapacity		();
@@ -156,6 +161,10 @@ public:
 			void			RefitItem			(CUICellItem* itm);
 	virtual EDropPreview	PredictDrop			(CUICellItem* itm, const Fvector2& abs_pos, Irect& out_cells, CUICellItem* skip = nullptr);
 					bool	CanSetItem			(CUICellItem* itm);
+			// The item under the cursor that m_f_item_attach takes itm, an item of this
+			// list, onto, and the cells it covers; nullptr and empty cells when there is
+			// none. The drop and the preview both ask this.
+			CUICellItem*	AttachTarget		(CUICellItem* itm, Irect& out_cells);
 			
 			u32				ItemsCount			();
 			CUICellItem*	GetItemIdx			(u32 idx);

@@ -908,6 +908,13 @@ bool CUIActorMenu::ToQuickSlot(CUICellItem* itm)
 }
 
 
+bool CUIActorMenu::CanAttachOnto(CUICellItem* itm, CUICellItem* target)
+{
+	PIItem addon	= (PIItem)itm->m_pData;
+	PIItem weapon	= (PIItem)target->m_pData;
+	return addon && weapon && weapon->CanAttach(addon);
+}
+
 bool CUIActorMenu::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
 {
 	CUICellItem*	_citem	= (new_owner->ItemsCount()==1) ? new_owner->GetItemIdx(0) : nullptr;
