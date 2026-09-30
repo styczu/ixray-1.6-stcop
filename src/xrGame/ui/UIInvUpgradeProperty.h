@@ -47,6 +47,7 @@ public:
     ALife::EHitType protection_type() const;
     bool is_protection() const;
     void fit_full_width_row(float width);
+	bool show_physical(LPCSTR values);
 	bool show_result(LPCSTR values);
 
 	virtual CUIWindow* ui_cast_window() { return this; }
