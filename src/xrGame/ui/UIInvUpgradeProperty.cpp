@@ -159,8 +159,87 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	return false;
 }
 
+// Wiersze fizyczne okna ulepszen liczone z kluczy sekcji efektow, jak ochrony
+// srodowiskowe w compute_value (skrypt pokazuje jedna etykiete value na
+// ulepszenie, wspolna dla wszystkich jego wlasciwosci).
+// prop_damage: przyrost progow rozszarpania, uderzenia i wybuchu x100, skala
+// panelu postaci; rowne przyrosty to jedna liczba, rozne to trzy w tej
+// kolejnosci. prop_damage_absorption (nazwa sortuje sie zaraz po prop_damage):
+// absorpcja kuli zatrzymanej przez pancerz w punktach procentowych,
+// -100 x suma hit_fraction_actor.
+bool UIProperty::show_physical(LPCSTR values)
+{
+    const bool mechanical = xr_strcmp(m_property_id.c_str(), "prop_damage") == 0;
+    const bool impact = xr_strcmp(m_property_id.c_str(), "prop_damage_absorption") == 0;
+    if ((!mechanical && !impact) || !get_property())
+        return false;
+
+    static const LPCSTR mechanical_keys[] = { "wound_protection", "strike_protection", "explosion_protection" };
+    float sums[3] = {};
+    bool found = false;
+    string256 section;
+    const int count = _GetItemCount(values);
+    for (int i = 0; i < count; ++i)
+    {
+        _GetItem(values, i, section);
+        float value;
+        if (impact)
+        {
+            if (read_value_from_section(section, "hit_fraction_actor", value))
+            {
+                sums[0] -= value;
+                found = true;
+            }
+            continue;
+        }
+        for (int k = 0; k < 3; ++k)
+        {
+            if (read_value_from_section(section, mechanical_keys[k], value))
+            {
+                sums[k] += value;
+                found = true;
+            }
+        }
+    }
+    if (!found)
+        return false;
+
+    // Jednostka z tekstow addonu, bez tlumaczenia skrot jak w FormatProtectionPoints.
+    auto unit = [](LPCSTR id, LPCSTR fallback)
+    {
+        const shared_str text = g_pStringTable->translate(id);
+        return text.size() && xr_strcmp(text.c_str(), id) != 0 ? text : shared_str(fallback);
+    };
+    const char separator = ConditionUi::DecimalSeparator();
+    string64 points;
+    string32 numbers[3];
+    if (impact)
+    {
+        ConditionUi::FormatNumber(numbers[0], sums[0] * 100.0f, separator, true);
+        xr_strconcat(points, numbers[0], " ", unit("ui_uip_unit_pp", "pp").c_str());
+    }
+    else if (fsimilar(sums[0], sums[1], 0.0001f) && fsimilar(sums[0], sums[2], 0.0001f))
+    {
+        ConditionUi::FormatProtectionPoints(points, sums[0]);
+    }
+    else
+    {
+        for (int k = 0; k < 3; ++k)
+            ConditionUi::FormatNumber(numbers[k], sums[k] * 100.0f, separator, true);
+        xr_strconcat(points, numbers[0], " / ", numbers[1], " / ", numbers[2], " ",
+            unit("ui_uip_unit_protection", "pt").c_str());
+    }
+    xr_strconcat(m_text, get_property()->name(), ": ", points);
+    m_ui_text->SetText(m_text);
+    return true;
+}
+
 bool UIProperty::show_result(LPCSTR values)
 {
+	if (show_physical(values))
+	{
+		return true;
+	}
 	if (get_property() && get_property()->run_functor(values, m_text))
 	{
 		m_ui_text->SetText(m_text);
