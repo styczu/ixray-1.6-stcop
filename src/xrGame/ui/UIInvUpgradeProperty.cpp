@@ -14,6 +14,8 @@
 #include "../ProtectionValues.h"
 #include "../Actor.h"
 #include "../ActorCondition.h"
+#include "../CustomOutfit.h"
+#include "../ActorHelmet.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/xrUIXmlParser.h"
@@ -159,6 +161,31 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	return false;
 }
 
+void UIProperty::set_item_context(CInventoryItem* item, bool installed)
+{
+    m_has_item = false;
+    m_upgrades_installed = installed;
+    if (CCustomOutfit* outfit = item ? item->cast_outfit() : nullptr)
+    {
+        m_item_hit_fraction = outfit->GetHitFractionActor();
+        m_has_item = true;
+    }
+    else if (CHelmet* helmet = item ? item->cast_helmet() : nullptr)
+    {
+        m_item_hit_fraction = helmet->GetHitFractionActor();
+        m_has_item = true;
+    }
+}
+
+// Liczba calkowita, ktora panel postaci pokazuje w "Balistyczna" dla danej
+// ochrony (ta sama funkcja formatujaca), zeby roznica zgadzala sie z ekranem.
+static int PanelPercent(float protection)
+{
+    string64 text;
+    ConditionUi::FormatProtectionPointsPlain(text, protection);
+    return atoi(text);
+}
+
 // Wiersze fizyczne okna ulepszen liczone z kluczy sekcji efektow, jak ochrony
 // srodowiskowe w compute_value (skrypt pokazuje jedna etykiete value na
 // ulepszenie, wspolna dla wszystkich jego wlasciwosci).
@@ -166,7 +193,10 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 // panelu postaci; rowne przyrosty to jedna liczba, rozne to trzy w tej
 // kolejnosci. prop_damage_absorption (nazwa sortuje sie zaraz po prop_damage):
 // absorpcja kuli zatrzymanej przez pancerz w punktach procentowych,
-// -100 x suma hit_fraction_actor.
+// -100 x suma hit_fraction_actor. Z kontekstem przedmiotu absorpcja
+// uwzglednia mnoznik trudnosci (fire_wound_immunity) i jest roznica dwoch
+// wartosci panelu "Balistyczna" (1 - hit_fraction x mnoznik) przed i po
+// ulepszeniach, wiec zgadza sie z panelem takze w zaokragleniu.
 bool UIProperty::show_physical(LPCSTR values)
 {
     const bool mechanical = xr_strcmp(m_property_id.c_str(), "prop_damage") == 0;
@@ -215,7 +245,17 @@ bool UIProperty::show_physical(LPCSTR values)
     string32 numbers[3];
     if (impact)
     {
-        ConditionUi::FormatNumber(numbers[0], sums[0] * 100.0f, separator, true);
+        float percent = sums[0] * 100.0f;
+        CActor* actor = Level().CurrentViewEntity() ? Level().CurrentViewEntity()->cast_actor() : nullptr;
+        if (m_has_item && actor)
+        {
+            const float mult = actor->conditions().GetHitImmunity(ALife::eHitTypeFireWound);
+            const float change = -sums[0];  // suma hit_fraction_actor ulepszen
+            const float after = m_upgrades_installed ? m_item_hit_fraction : m_item_hit_fraction + change;
+            const float before = m_upgrades_installed ? m_item_hit_fraction - change : m_item_hit_fraction;
+            percent = float(PanelPercent(1.0f - after * mult) - PanelPercent(1.0f - before * mult));
+        }
+        ConditionUi::FormatNumber(numbers[0], percent, separator, true);
         xr_strconcat(points, numbers[0], " ", unit("ui_uip_unit_pp", "pp").c_str());
     }
     else if (fsimilar(sums[0], sums[1], 0.0001f) && fsimilar(sums[0], sums[2], 0.0001f))
@@ -339,7 +379,8 @@ void UIInvUpgPropertiesWnd::init_from_xml(LPCSTR xml_name)
 	ui_xml.SetLocalRoot(stored_root);
 }
 
-void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration)
+void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration,
+	CInventoryItem* item, bool installed)
 {
     float h = m_Upgr_line ? m_Upgr_line->GetHeight() + 3.0f : 0.0f;
     float rowHeight = 0.0f;
@@ -350,6 +391,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
         property->Show(false);
         if (property->is_regeneration() && !supports_regeneration)
             continue;
+        property->set_item_context(item, installed);
         if (!property->compute_value(item_upgrades))
             continue;
         if (property->is_regeneration() || property->is_protection() || property->is_physical())
@@ -381,7 +423,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
     SetHeight(h + (rightColumn ? rowHeight : 0.0f));
 }
 
-void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration)
+void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration, CInventoryItem* item)
 {
 	if (!upgrade.is_known())
 	{
@@ -391,12 +433,12 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool support
 
 	m_temp_upgrade_vector.resize(0);
 	m_temp_upgrade_vector.push_back(upgrade.id());
-	set_info(m_temp_upgrade_vector, supports_regeneration);
+	set_info(m_temp_upgrade_vector, supports_regeneration, item, item && item->has_upgrade(upgrade.id()));
 }
 
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
-	set_info(item.upgardes(), item.cast_helmet() == nullptr);
+	set_info(item.upgardes(), item.cast_helmet() == nullptr, &item, true);
 }
 
 // Wiersze show_physical maja tekst jak ochrony srodowiskowe ("Nazwa: +N pkt"),
