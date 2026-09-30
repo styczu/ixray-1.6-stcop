@@ -34,12 +34,6 @@ protected:
 	CUITextWnd* m_ui_text = nullptr;
 	string256 m_text = {};
 
-	// Kontekst przedmiotu dla wiersza absorpcji (show_physical): biezacy
-	// hit_fraction_actor i czy liczone ulepszenia sa juz zainstalowane.
-	bool m_has_item = false;
-	float m_item_hit_fraction = 1.0f;
-	bool m_upgrades_installed = true;
-
 public:
 	UIProperty() = default;
 	virtual	~UIProperty() = default;
@@ -54,7 +48,6 @@ public:
     bool is_protection() const;
     bool is_physical() const;
     void fit_full_width_row(float width);
-	void set_item_context(CInventoryItem* item, bool installed);
 	bool show_physical(LPCSTR values);
 	bool show_result(LPCSTR values);
 
@@ -85,14 +78,13 @@ public:
 	virtual	~UIInvUpgPropertiesWnd();
 	void init_from_xml(LPCSTR xml_name);
 
-	void set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration = true, CInventoryItem* item = nullptr);
+	void set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration = true);
 	void set_item_info(CInventoryItem& item);
 	void UpdateStatsPos(float& h, Fvector2& pos, UIProperty* pWnd, int& counter) const;
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 protected:
-	void set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration = true,
-		CInventoryItem* item = nullptr, bool installed = true);
+	void set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration = true);
 
 }; // class UIInvUpgPropertiesWnd
