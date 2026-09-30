@@ -113,6 +113,23 @@ const char* af_actor_param_names[] =
 static_assert(std::size(af_restore) == ALife::eRestoreTypeMax,
     "All restore types should be listed in the tuple above.");
 
+// Artefakt nie podnosi progu jak kombinezon, tylko procentowo zmniejsza sile
+// zrodla, ktora do progu dociera - dlatego piec wierszy stref ma wlasne nazwy
+// ("Redukcja termiczna" obok "Ochrony termicznej" kombinezonu). Bez tekstu
+// w tablicy stringow zostaje nazwa z af_immunity.
+static const char* AfReductionCaption(ALife::EHitType hit_type)
+{
+	switch (hit_type)
+	{
+	case ALife::eHitTypeRadiation:		return "ui_uip_af_radiation_reduction";
+	case ALife::eHitTypeBurn:			return "ui_uip_af_burn_reduction";
+	case ALife::eHitTypeChemicalBurn:	return "ui_uip_af_chemical_burn_reduction";
+	case ALife::eHitTypeTelepatic:		return "ui_uip_af_telepatic_reduction";
+	case ALife::eHitTypeShock:			return "ui_uip_af_shock_reduction";
+	default:							return nullptr;
+	}
+}
+
 const char* af_params = "af_params";
 void CUIArtefactParams::InitFromXml( CUIXml& xml )
 {
@@ -139,6 +156,13 @@ void CUIArtefactParams::InitFromXml( CUIXml& xml )
    	for (auto [id, section, caption, magnitude, sign_inverse, unit] : af_immunity)
     {
         m_immunity_item[id] = CreateItem(xml, section, magnitude, sign_inverse, unit, caption);
+        const char* reduction_id = AfReductionCaption(id);
+        if (m_immunity_item[id] && reduction_id)
+        {
+            const shared_str reduction = g_pStringTable->translate(reduction_id);
+            if (xr_strcmp(reduction.c_str(), reduction_id) != 0)
+                m_immunity_item[id]->SetCaption(reduction.c_str());
+        }
     }
     for (auto [id, section, caption, magnitude, sign_inverse, unit] : af_restore)
     {
