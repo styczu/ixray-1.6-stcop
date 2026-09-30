@@ -85,6 +85,19 @@ LPCSTR af_immunity_caption[] =  // ALife::EInfluenceType
 	"ui_inv_outfit_strike_protection",			// "(strike_imm)",
 };
 
+// Artefakt nie podnosi progu jak kombinezon, tylko procentowo zmniejsza sile
+// zrodla, ktora do progu dociera - dlatego piec wierszy stref ma wlasne nazwy
+// ("Redukcja termiczna" obok "Ochrony termicznej" kombinezonu). Bez tekstu
+// w tablicy stringow zostaje nazwa z af_immunity_caption.
+LPCSTR af_immunity_reduction_caption[] =  // ALife::EInfluenceType
+{
+	"ui_uip_af_radiation_reduction",
+	"ui_uip_af_burn_reduction",
+	"ui_uip_af_chemical_burn_reduction",
+	"ui_uip_af_telepatic_reduction",
+	"ui_uip_af_shock_reduction",
+};
+
 LPCSTR af_restore_caption[] =  // ALife::EConditionRestoreType
 {
 	"ui_inv_health",
@@ -131,8 +144,14 @@ void CUIArtefactParams::InitFromXml( CUIXml& xml )
 		{
 			m_immunity_item[i]->SetAutoDelete(false);
 
-			name = g_pStringTable->translate(af_immunity_caption[i]).c_str();
-			m_immunity_item[i]->SetCaption(name);
+			shared_str caption = g_pStringTable->translate(af_immunity_caption[i]);
+			if (i < sizeof(af_immunity_reduction_caption) / sizeof(af_immunity_reduction_caption[0]))
+			{
+				const shared_str reduction = g_pStringTable->translate(af_immunity_reduction_caption[i]);
+				if (xr_strcmp(reduction.c_str(), af_immunity_reduction_caption[i]) != 0)
+					caption = reduction;
+			}
+			m_immunity_item[i]->SetCaption(caption.c_str());
 
 			xml.SetLocalRoot(base_node);
 		}
