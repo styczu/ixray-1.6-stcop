@@ -200,10 +200,11 @@ namespace
 	// a kazda warstwa mnozy moc przez swoj hit_fraction_actor wylacznie na
 	// kosciach, dla ktorych ma pancerz (HitThroughArmor pomija kosc
 	// z GetBoneArmor < 0). Strefe opisuje wiec jej reprezentatywna kosc; bez
-	// tej kosci w modelu liczy sie sama obecnosc warstwy. Skladniki sumuja sie
-	// do efektywnej ochrony: absorpcja 1 - hf, wplyw trudnosci hf * (1 - mnoznik).
+	// tej kosci w modelu liczy sie sama obecnosc warstwy. Absorpcja = 1 - hf,
+	// bez mnoznika trudnosci (decyzja uzytkownika: trudnosc nie jest cecha
+	// pancerza i dziala tez po przebiciu).
 	void AppendStoppedBulletZone(xr_string& hint, LPCSTR zoneKey, IKinematics* ikv, LPCSTR bone,
-		CCustomOutfit* outfit, CHelmet* helmet, float mult)
+		CCustomOutfit* outfit, CHelmet* helmet)
 	{
 		const u16 boneId = ikv ? ikv->LL_BoneID(bone) : BI_NONE;
 		const bool byOutfit = outfit && (boneId == BI_NONE || outfit->GetBoneArmor((s16)boneId) >= 0.0f);
@@ -227,31 +228,16 @@ namespace
 
 		const float hitFraction = (byOutfit ? outfit->GetHitFractionActor() : 1.0f)
 			* (byHelmet ? helmet->GetHitFractionActor() : 1.0f);
-		const float absorb     = 1.0f - hitFraction;          // Absorpcja pancerza
-		const float difficulty = hitFraction * (1.0f - mult); // Wplyw trudnosci
-		const float effective  = absorb + difficulty;         // = 1 - hf * mnoznik
 
-		const shared_str s_pct = g_pStringTable->translate("ui_uip_unit_percent");
-		const shared_str s_pp  = g_pStringTable->translate("ui_uip_unit_pp");
-		auto line = [&](LPCSTR key, float frac, bool component, bool points)
-		{
-			string64 v;
-			ConditionUi::FormatDetailNumber(v, frac * 100.0f, ConditionUi::DecimalSeparator(), points, 2);
-			hint += kBreak;
-			hint += component ? kColComponent : kColLabel;
-			if (component)
-				hint += "  ";
-			hint += g_pStringTable->translate(key).c_str();
-			hint += ": ";
-			hint += component ? kColComponent : kColTitle;
-			hint += v;
-			if (points)
-				hint += " ";
-			hint += points ? s_pp.c_str() : s_pct.c_str();
-		};
-		line("ui_uip_prot_effective", effective, false, false);
-		line("ui_uip_prot_armor_absorption", absorb, true, false);
-		line("ui_uip_prot_difficulty_influence", difficulty, true, true);
+		string64 v;
+		ConditionUi::FormatDetailNumber(v, (1.0f - hitFraction) * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+		hint += kBreak;
+		hint += kColLabel;
+		hint += g_pStringTable->translate("ui_uip_prot_armor_absorption").c_str();
+		hint += ": ";
+		hint += kColTitle;
+		hint += v;
+		hint += g_pStringTable->translate("ui_uip_unit_percent").c_str();
 	}
 }
 
@@ -767,9 +753,9 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
 // trafienia (kombinezon+helm, kazdy *condition) plus nieliniowa redukcja
 // artefaktow na pasie; "Efektywny prog" = prog / (1 - f). Skala pkt = wartosc
 // x100, pelny pasek przy 1.00, trojkat powyzej. Balistyka: liczba i pasek to
-// kombinezon (1 - hit_fraction_actor * mnoznik trudnosci, skala %); dymek
-// "Absorpcja impaktu" rozbija zatrzymany pocisk na tulow i glowe
-// (AppendStoppedBulletZone).
+// absorpcja kombinezonu (1 - hit_fraction_actor, skala %, bez mnoznika
+// trudnosci); dymek "Absorpcja impaktu" rozbija zatrzymany pocisk na tulow
+// i glowe (AppendStoppedBulletZone).
 void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet)
 {
     // Panel (liczba/pasek/trojkat) liczy sie zawsze; bogaty tooltip wymaga
@@ -902,14 +888,11 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
     mechanical(stt_main,  ALife::eHitTypeStrike,    "ui_uip_prot_strike_title", "ui_uip_prot_effect_strike");
     mechanical(stt_sleep, ALife::eHitTypeExplosion, "ui_uip_prot_explo_title",  "ui_uip_prot_effect_explo");
 
-    // ---- balistyka (absorpcja pancerza + mnoznik trudnosci, skala %) ----
+    // ---- balistyka (absorpcja pancerza, skala %) ----
     {
         ui_actor_state_item* item = m_state[stt_fire_wound];
         if (item)
         {
-            // Mnoznik OBRAZEN z poziomu trudnosci (actor_immunities_<diff>).
-            // Efekty czasowe (m_fBoost*Immunity) sa zerowe w bazowej grze i tu pominiete.
-            const float mult = actor->conditions().GetHitImmunity(ALife::eHitTypeFireWound);
             if (!outfit)
             {
                 item->set_value_text("-");
@@ -918,15 +901,14 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
             }
             else
             {
-                const float hitFraction = outfit->GetHitFractionActor(); // czesc przechodzaca
-                const float effStopped  = 1.0f - hitFraction * mult;     // Efektywna ochrona (zatrzymany)
+                const float absorb = 1.0f - outfit->GetHitFractionActor(); // Absorpcja pancerza
                 string64 num;
-                ConditionUi::FormatProtectionPointsPlain(num, effStopped);
+                ConditionUi::FormatProtectionPointsPlain(num, absorb);
                 xr_strcat(num, unitPct);
                 item->set_value_text(num);
                 if (item->m_progress)
                 {
-                    float fill = effStopped;
+                    float fill = absorb;
                     clamp(fill, 0.0f, 1.0f);
                     item->m_progress->SetProgressPosImmediate(fill);
                 }
@@ -946,12 +928,14 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
                 hint += kBreak;
                 hint += kColSep;
                 hint += dotted;
-                AppendStoppedBulletZone(hint, "ui_uip_prot_zone_body", ikv, "bip01_spine1", outfit, wornHelmet, mult);
+                AppendStoppedBulletZone(hint, "ui_uip_prot_zone_body", ikv, "bip01_spine1", outfit, wornHelmet);
                 hint += kBreak;
                 hint += kColSep;
                 hint += dotted;
-                AppendStoppedBulletZone(hint, "ui_uip_prot_zone_head", ikv, "bip01_head", outfit, wornHelmet, mult);
+                AppendStoppedBulletZone(hint, "ui_uip_prot_zone_head", ikv, "bip01_head", outfit, wornHelmet);
                 hint += kBreak;
+                hint += kColSep;
+                hint += dotted;
                 hint += kBreak;
                 hint += kColLabel;
                 hint += g_pStringTable->translate("ui_uip_prot_stopped_no_bleeding").c_str();
