@@ -190,9 +190,10 @@ static int PanelPercent(float protection)
 // srodowiskowe w compute_value (skrypt pokazuje jedna etykiete value na
 // ulepszenie, wspolna dla wszystkich jego wlasciwosci).
 // prop_damage: przyrost progow rozszarpania, uderzenia i wybuchu x100, skala
-// panelu postaci; rowne przyrosty to jedna liczba, rozne to trzy w tej
-// kolejnosci. prop_damage_absorption (nazwa sortuje sie zaraz po prop_damage):
-// absorpcja kuli zatrzymanej przez pancerz w punktach procentowych,
+// panelu postaci; jedna liczba = przyrost sredniej trzech progow, jak
+// "Ochrona mechaniczna" w dymku przedmiotu. prop_damage_absorption (nazwa
+// sortuje sie zaraz po prop_damage): absorpcja kuli zatrzymanej przez
+// pancerz w punktach procentowych,
 // -100 x suma hit_fraction_actor. Z kontekstem przedmiotu absorpcja
 // uwzglednia mnoznik trudnosci (fire_wound_immunity) i jest roznica dwoch
 // wartosci panelu "Balistyczna" (1 - hit_fraction x mnoznik) przed i po
@@ -242,7 +243,7 @@ bool UIProperty::show_physical(LPCSTR values)
     };
     const char separator = ConditionUi::DecimalSeparator();
     string64 points;
-    string32 numbers[3];
+    string32 number;
     if (impact)
     {
         float percent = sums[0] * 100.0f;
@@ -255,19 +256,14 @@ bool UIProperty::show_physical(LPCSTR values)
             const float before = m_upgrades_installed ? m_item_hit_fraction - change : m_item_hit_fraction;
             percent = float(PanelPercent(1.0f - after * mult) - PanelPercent(1.0f - before * mult));
         }
-        ConditionUi::FormatNumber(numbers[0], percent, separator, true);
-        xr_strconcat(points, numbers[0], " ", unit("ui_uip_unit_pp", "pp").c_str());
-    }
-    else if (fsimilar(sums[0], sums[1], 0.0001f) && fsimilar(sums[0], sums[2], 0.0001f))
-    {
-        ConditionUi::FormatProtectionPoints(points, sums[0]);
+        ConditionUi::FormatNumber(number, percent, separator, true);
+        xr_strconcat(points, number, " ", unit("ui_uip_unit_pp", "pp").c_str());
     }
     else
     {
-        for (int k = 0; k < 3; ++k)
-            ConditionUi::FormatNumber(numbers[k], sums[k] * 100.0f, separator, true);
-        xr_strconcat(points, numbers[0], " / ", numbers[1], " / ", numbers[2], " ",
-            unit("ui_uip_unit_protection", "pt").c_str());
+        // Przyrost sredniej trzech progow, jak "Ochrona mechaniczna" w dymku
+        // przedmiotu (przy rownych przyrostach to po prostu ten przyrost).
+        ConditionUi::FormatProtectionPoints(points, Protection::MechanicalMean(sums[0], sums[1], sums[2]));
     }
     xr_strconcat(m_text, get_property()->name(), ": ", points);
     m_ui_text->SetText(m_text);
