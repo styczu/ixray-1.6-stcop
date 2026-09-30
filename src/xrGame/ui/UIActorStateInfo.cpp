@@ -83,43 +83,14 @@ LPCSTR Protection::ArmorClassName(float value)
 
 namespace
 {
-	// Grupy kosci pokazywane w tooltipie klasy pancerza. Dlonie i stopy sa
-	// swiadomie pominiete - maja wszedzie wartosci szczatkowe. Twarz jest
-	// osobno, bo bywa slabsza od czaszki i w jednej grupie z glowa znikalaby
-	// pod maksimum.
-	//
-	// "section" dzieli tabele na dwie czesci pokazywane w tooltipie osobno:
-	// 0 = to, co kryje glowe (helm ALBO zintegrowany kaptur kombinezonu),
-	// 1 = reszta sylwetki. Z maksimum kazdej sekcji bierze sie para liczb
-	// przy pasku, wiec liczba po lewej nie zalezy od tego, czy w slocie helmu
-	// cos siedzi - exoszkielet ma oslone glowy we wlasnym bones_koeff_protection.
-	struct SArmorGroup
-	{
-		int		section;
-		LPCSTR	label_key;
-		LPCSTR	bones[8];
-	};
-
-	static const SArmorGroup kArmorGroups[] =
-	{
-		{ 0, "ui_armor_tt_head",  { "bip01_head", nullptr } },
-		{ 0, "ui_armor_tt_face",  { "eyelid_1", "eye_left", "eye_right", "jaw_1", nullptr } },
-		{ 0, "ui_armor_tt_neck",  { "bip01_neck", nullptr } },
-		{ 1, "ui_armor_tt_torso", { "bip01_pelvis", "bip01_spine", "bip01_spine1", "bip01_spine2",
-								   "bip01_l_clavicle", "bip01_r_clavicle", nullptr } },
-		{ 1, "ui_armor_tt_arms",  { "bip01_l_upperarm", "bip01_r_upperarm",
-								   "bip01_l_forearm", "bip01_r_forearm", nullptr } },
-		{ 1, "ui_armor_tt_legs",  { "bip01_l_thigh", "bip01_r_thigh",
-								   "bip01_l_calf", "bip01_r_calf", nullptr } },
-	};
-
-	static const u32 kArmorGroupCount = sizeof(kArmorGroups) / sizeof(kArmorGroups[0]);
+	// Tabela grup kosci jest w Protection::ArmorGroups (ProtectionValues.h),
+	// wspolna z wierszem "Pancerz" okna ulepszen.
 
 	// ArmorClassName wyprowadzono do Protection:: (definicja nad ta przestrzenia).
 
 	// Najwyzszy efektywny prog przebicia w grupie. -1 = zadna kosc grupy
 	// nie jest kryta przez zadna warstwe.
-	float GroupArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, const SArmorGroup& group)
+	float GroupArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, const Protection::ArmorGroup& group)
 	{
 		float best = -1.0f;
 		for (u32 i = 0; group.bones[i] != nullptr; ++i)
@@ -149,12 +120,12 @@ namespace
 	float SectionArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, int section)
 	{
 		float best = -1.0f;
-		for (u32 g = 0; g < kArmorGroupCount; ++g)
+		for (u32 g = 0; g < Protection::ArmorGroupCount; ++g)
 		{
-			if (kArmorGroups[g].section != section)
+			if (Protection::ArmorGroups[g].section != section)
 				continue;
 
-			const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
+			const float a = GroupArmor(ikv, outfit, helmet, Protection::ArmorGroups[g]);
 			if (a > best)
 				best = a;
 		}
@@ -480,18 +451,18 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 	hint += kBreak;
 
 	int last_section = -1;
-	for (u32 g = 0; g < kArmorGroupCount; ++g)
+	for (u32 g = 0; g < Protection::ArmorGroupCount; ++g)
 	{
-		if (kArmorGroups[g].section != last_section)
+		if (Protection::ArmorGroups[g].section != last_section)
 		{
-			last_section = kArmorGroups[g].section;
+			last_section = Protection::ArmorGroups[g].section;
 			hint += kColSep;
 			hint += s_sep.c_str();
 			hint += kBreak;
 		}
 
-		const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
-		const shared_str s_label = g_pStringTable->translate(kArmorGroups[g].label_key);
+		const float a = GroupArmor(ikv, outfit, helmet, Protection::ArmorGroups[g]);
+		const shared_str s_label = g_pStringTable->translate(Protection::ArmorGroups[g].label_key);
 
 		// Kolumny trzymaja sie tylko przy foncie o stalej szerokosci - hint_wnd
 		// panelu uzywa [ui_font_panel_tt] (consola). Strony kodowe 1250/1251/1252
