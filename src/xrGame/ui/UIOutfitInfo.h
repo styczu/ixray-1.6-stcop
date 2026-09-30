@@ -24,6 +24,9 @@ public:
 			void	SetProgressValue	( float cur, float comp );
 			// Nadpisuje sam tekst wartosci (np. nazwa klasy pancerza zamiast liczby).
 			void	SetValueText		( LPCSTR text );
+			// Wartosc w punktach panelu (x100, liczba calkowita) z paskiem pelnym
+			// przy bar_max i trojkatem przepelnienia powyzej (wezly overflow).
+			void	SetPointsValue		( float cur, float comp, float bar_max );
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -35,6 +38,8 @@ protected:
 	CUIStatic				m_name; // texture + name
 	CUIDoubleProgressBar	m_progress;
 	CUITextWnd*				m_value; // 100%
+	CUIStatic*				m_overflow = nullptr;
+	CUIStatic*				m_overflow_fill = nullptr;
 	float					m_magnitude;
     bool m_zone_protection = false;
 	shared_str				m_unit_str;
