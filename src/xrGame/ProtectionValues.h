@@ -128,4 +128,39 @@ namespace Protection
     // ponizej pierwszego progu (np. -1 = brak krytej kosci). Definicja w
     // UIActorStateInfo.cpp; progi sa parsowane i cache'owane raz.
     const char* ArmorClassName(float value);
+
+    // Grupy kosci pancerza: tooltip klasy pancerza na panelu postaci i wiersz
+    // "Pancerz" okna ulepszen. Dlonie i stopy sa swiadomie pominiete - maja
+    // wszedzie wartosci szczatkowe. Twarz jest osobno, bo bywa slabsza od
+    // czaszki i w jednej grupie z glowa znikalaby pod maksimum.
+    //
+    // "section" dzieli tabele na dwie czesci pokazywane w tooltipie osobno:
+    // 0 = to, co kryje glowe (helm ALBO zintegrowany kaptur kombinezonu),
+    // 1 = reszta sylwetki. Z maksimum kazdej sekcji bierze sie para liczb
+    // przy pasku, wiec liczba po lewej nie zalezy od tego, czy w slocie helmu
+    // cos siedzi - exoszkielet ma oslone glowy we wlasnym bones_koeff_protection.
+    // label_key to podpis w tooltipie panelu, zone_key nazwa strefy w zdaniu
+    // wiersza okna ulepszen ("tulow +8 pkt").
+    struct ArmorGroup
+    {
+        int         section;
+        const char* label_key;
+        const char* zone_key;
+        const char* bones[8];
+    };
+
+    static constexpr ArmorGroup ArmorGroups[] =
+    {
+        { 0, "ui_armor_tt_head",  "ui_uip_upg_zone_head",  { "bip01_head", nullptr } },
+        { 0, "ui_armor_tt_face",  "ui_uip_upg_zone_face",  { "eyelid_1", "eye_left", "eye_right", "jaw_1", nullptr } },
+        { 0, "ui_armor_tt_neck",  "ui_uip_upg_zone_neck",  { "bip01_neck", nullptr } },
+        { 1, "ui_armor_tt_torso", "ui_uip_upg_zone_torso", { "bip01_pelvis", "bip01_spine", "bip01_spine1", "bip01_spine2",
+                                                             "bip01_l_clavicle", "bip01_r_clavicle", nullptr } },
+        { 1, "ui_armor_tt_arms",  "ui_uip_upg_zone_arms",  { "bip01_l_upperarm", "bip01_r_upperarm",
+                                                             "bip01_l_forearm", "bip01_r_forearm", nullptr } },
+        { 1, "ui_armor_tt_legs",  "ui_uip_upg_zone_legs",  { "bip01_l_thigh", "bip01_r_thigh",
+                                                             "bip01_l_calf", "bip01_r_calf", nullptr } },
+    };
+
+    static constexpr unsigned ArmorGroupCount = sizeof(ArmorGroups) / sizeof(ArmorGroups[0]);
 }
