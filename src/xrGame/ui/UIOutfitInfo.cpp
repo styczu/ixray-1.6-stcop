@@ -352,10 +352,8 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 
 	if ( m_impact_absorption )
 	{
-		// Z mnoznikiem trudnosci, jak "Balistyczna" w panelu postaci.
-		const float mult = actor->conditions().GetHitImmunity( ALife::eHitTypeFireWound );
-		float cur  = 1.0f - cur_outfit->GetHitFractionActor() * mult;
-		float slot = slot_outfit ? 1.0f - slot_outfit->GetHitFractionActor() * mult : cur;
+		float cur  = 1.0f - cur_outfit->GetHitFractionActor();
+		float slot = slot_outfit ? 1.0f - slot_outfit->GetHitFractionActor() : cur;
 		clamp( cur, 0.0f, 1.0f );
 		clamp( slot, 0.0f, 1.0f );
 		m_impact_absorption->SetProgressValue( cur, slot );
@@ -429,10 +427,8 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 
 	if ( m_impact_absorption )
 	{
-		// Z mnoznikiem trudnosci, jak "Balistyczna" w panelu postaci.
-		const float mult = actor->conditions().GetHitImmunity( ALife::eHitTypeFireWound );
-		float cur  = 1.0f - cur_helmet->GetHitFractionActor() * mult;
-		float slot = slot_helmet ? 1.0f - slot_helmet->GetHitFractionActor() * mult : cur;
+		float cur  = 1.0f - cur_helmet->GetHitFractionActor();
+		float slot = slot_helmet ? 1.0f - slot_helmet->GetHitFractionActor() : cur;
 		clamp( cur, 0.0f, 1.0f );
 		clamp( slot, 0.0f, 1.0f );
 		m_impact_absorption->SetProgressValue( cur, slot );
