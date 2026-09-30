@@ -352,7 +352,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
             continue;
         if (!property->compute_value(item_upgrades))
             continue;
-        if (property->is_regeneration() || property->is_protection())
+        if (property->is_regeneration() || property->is_protection() || property->is_physical())
         {
             if (rightColumn)
             {
@@ -397,6 +397,14 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool support
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
 	set_info(item.upgardes(), item.cast_helmet() == nullptr);
+}
+
+// Wiersze show_physical maja tekst jak ochrony srodowiskowe ("Nazwa: +N pkt"),
+// wiec zajmuja cala szerokosc zamiast polowy kolumny.
+bool UIProperty::is_physical() const
+{
+    return xr_strcmp(m_property_id.c_str(), "prop_damage") == 0 ||
+        xr_strcmp(m_property_id.c_str(), "prop_damage_absorption") == 0;
 }
 
 bool UIProperty::is_regeneration() const
