@@ -48,6 +48,7 @@ public:
     bool is_protection() const;
     bool is_physical() const;
     void fit_full_width_row(float width);
+	bool show_armor(LPCSTR values);
 	bool show_physical(LPCSTR values);
 	bool show_result(LPCSTR values);
 
