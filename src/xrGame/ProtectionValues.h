@@ -77,6 +77,16 @@ namespace Protection
         return zoneMaxPower > 0.0f ? protection / zoneMaxPower : 0.0f;
     }
 
+    // UI only: the item tooltip's single "mechanical protection" value, the
+    // mean of the three thresholds mechanical upgrades raise equally (x100 =
+    // character panel points). Its bar is full at MechanicalBarMax (50 points);
+    // stronger armour overflows with the panel's triangle.
+    inline float MechanicalMean(float wound, float strike, float explosion)
+    {
+        return (wound + strike + explosion) / 3.0f;
+    }
+    constexpr float MechanicalBarMax = 0.5f;
+
     // UI only: 100 points = one tenth of the configured zone reference.
     // A linear score preserves addition and differences between items.
     // It is not a percentage of damage absorbed or an immunity threshold.
