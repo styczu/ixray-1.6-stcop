@@ -12,6 +12,8 @@
 #include "inventory_item.h"
 #include "inventory_upgrade_property.h"
 
+class CCustomOutfit;
+
 namespace inventory::upgrade
 {
 	class Upgrade;
@@ -34,6 +36,11 @@ protected:
 	CUITextWnd* m_ui_text = nullptr;
 	string256 m_text = {};
 
+	// Kontekst przedmiotu dla wiersza "Pancerz" (show_armor): kombinezon
+	// i czy liczone ulepszenia sa juz na nim zainstalowane.
+	CCustomOutfit* m_armor_outfit = nullptr;
+	bool m_armor_installed = true;
+
 public:
 	UIProperty() = default;
 	virtual	~UIProperty() = default;
@@ -48,6 +55,7 @@ public:
     bool is_protection() const;
     bool is_physical() const;
     void fit_full_width_row(float width);
+	void set_armor_context(CInventoryItem* item, bool installed);
 	bool show_armor(LPCSTR values);
 	bool show_physical(LPCSTR values);
 	bool show_result(LPCSTR values);
@@ -79,13 +87,14 @@ public:
 	virtual	~UIInvUpgPropertiesWnd();
 	void init_from_xml(LPCSTR xml_name);
 
-	void set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration = true);
+	void set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration = true, CInventoryItem* item = nullptr);
 	void set_item_info(CInventoryItem& item);
 	void UpdateStatsPos(float& h, Fvector2& pos, UIProperty* pWnd, int& counter) const;
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 protected:
-	void set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration = true);
+	void set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration = true,
+		CInventoryItem* item = nullptr, bool installed = true);
 
 }; // class UIInvUpgPropertiesWnd
