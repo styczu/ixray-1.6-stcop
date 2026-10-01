@@ -160,6 +160,8 @@ public:
 	float m_fOverweightHardStopK;
 	float m_fOverweightCostK[eOverloadModeCount];		// k we wzorze 1 / (1 - k x)
 	float m_fOverweightHardStopSpeed;					// mnoznik predkosci tuz przed hard stopem
+	float m_fOverweightSpeedStartK;						// poczatek spowolnienia, ulamek udzwigu
+	float m_fOverweightSpeedCurve;						// wykladnik ksztaltu spadku (1 = liniowo)
 	float m_fAccelK;
 	float m_fSprintK;
 	
