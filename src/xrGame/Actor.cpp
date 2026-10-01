@@ -1881,6 +1881,15 @@ void CActor::UpdateConditionArtefacts()
 
 	_tmr = Device.dwTimeGlobal + 2000;
 
+	// Hard stop przeciazenia bez udzwigu artefaktow z pasa: artefakt z
+	// dodatkowym udzwigiem zuzywa sie, gdy to on trzyma postac w ruchu
+	// (dotad nadwyzka ponad max_walk_weight + additional_inventory_weight2).
+	float artefacts_weight = 0.0f;
+	for (PIItem item : inventory().m_belt)
+		if (CArtefact* artefact = item->cast_artefact())
+			artefacts_weight += artefact->AdditionalInventoryWeight() * artefact->GetCondition();
+	const float hard_stop_without_artefacts = (MaxCarryWeight() - artefacts_weight) * conditions().GetOverloadHardStopK();
+
 	for (PIItem item : inventory().m_belt)
 	{
 		CArtefact* artefact = item->cast_artefact();
@@ -1934,7 +1943,7 @@ void CActor::UpdateConditionArtefacts()
 			val = artefact->AdditionalInventoryWeight();
 			if (val > 0.0f)
 			{
-				float diff = inventory().TotalWeight() - conditions().MaxWalkWeight() - (GetOutfit() ? GetOutfit()->m_additional_weight2 : 0.0f) - (GetBackpack() ? GetBackpack()->m_additional_weight2 : 0.0f);
+				float diff = inventory().TotalWeight() - hard_stop_without_artefacts;
 				if (diff > 0.0f)
 					cond_loss += ((diff * 0.0001f) / val);
 			}
