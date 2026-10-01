@@ -946,31 +946,62 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		}
 	};
 
-	// Kondycja: koszt sprintu (%/s realnej sekundy) i podskoku (% za skok),
-	// czerwone przy przeciazeniu. Wzory w CActorCondition (te same co ruch).
+	// Kondycja: zuzycie w kazdym trybie ruchu (%/s realnej sekundy) i za
+	// podskok (% za skok), czerwone przy przeciazeniu; pod
+	// spodem wzrost zuzycia w % od obciazenia (wzgledem kosztu bez ladunku)
+	// i od kombinezonu (wzgledem postaci bez niego). Regeneracja jest osobno
+	// w "Reg. kondycji" i dziala takze w ruchu. Wzory w CActorCondition, te
+	// same co ConditionWalk/ConditionJump.
 	if (m_state[stt_stamina] != nullptr)
 	{
-		const bool overloaded = actor->conditions().IsOverloaded();
+		const CActorCondition& cond = actor->conditions();
+		const bool overloaded = cond.IsOverloaded();
 		LPCSTR costColor = overloaded ? "%c[255,210,80,65]" : kColValue;
 
 		xr_string hint = kColTitle;
 		hint += g_pStringTable->translate("ui_uip_tt_stamina").c_str();
-
-		auto cost_line = [&hint, costColor](LPCSTR label, float value, LPCSTR unit)
+		auto separator = [&hint]()
 		{
-			string32 num;
-			FormatRate(num, value, 1);
+			hint += kBreak; hint += kColSep;
+			hint += g_pStringTable->translate("ui_armor_tt_sep").c_str();
+		};
+		// Koszt "0,2 %/s" ze spacja jak dotad, wzrost "+520%" bez.
+		auto value_line = [&hint](LPCSTR label, LPCSTR number, LPCSTR unit, bool spaced, LPCSTR valueColor)
+		{
 			hint += kBreak; hint += kColLabel;
 			hint += g_pStringTable->translate(label).c_str();
-			hint += " "; hint += costColor; hint += num;
-			hint += " "; hint += g_pStringTable->translate(unit).c_str();
+			hint += " "; hint += valueColor; hint += number;
+			if (spaced)
+				hint += " ";
+			hint += g_pStringTable->translate(unit).c_str();
 		};
-		cost_line("ui_uip_cost_sprint",
-			actor->conditions().GetSprintPowerCostPerGameSec() * real_time_factor * 100.0f,
-			"ui_uip_unit_percent_s");
-		cost_line("ui_uip_cost_jump",
-			actor->conditions().GetJumpPowerCost() * 100.0f,
-			"ui_uip_unit_percent");
+		// Chod i bieg kosztuja setne czesci procenta na sekunde - dwa miejsca.
+		auto cost_line = [&](LPCSTR label, float value, int decimals, LPCSTR unit)
+		{
+			string32 num;
+			FormatRate(num, value, decimals);
+			value_line(label, num, unit, true, costColor);
+		};
+		auto increase_line = [&](LPCSTR label, float increase, LPCSTR valueColor)
+		{
+			string32 num;
+			ConditionUi::FormatNumber(num, increase * 100.0f, ConditionUi::DecimalSeparator(), true, 0);
+			value_line(label, num, "ui_uip_unit_percent", false, valueColor);
+		};
+
+		separator();
+		const float per_second = real_time_factor * 100.0f;
+		cost_line("ui_uip_cost_walk", cond.GetMovePowerCostPerGameSec(1.0f) * per_second, 2, "ui_uip_unit_percent_s");
+		cost_line("ui_uip_cost_run", cond.GetMovePowerCostPerGameSec(cond.GetRunK()) * per_second, 2, "ui_uip_unit_percent_s");
+		cost_line("ui_uip_cost_sprint", cond.GetMovePowerCostPerGameSec(cond.GetSprintK()) * per_second, 1, "ui_uip_unit_percent_s");
+		cost_line("ui_uip_cost_jump", cond.GetJumpPowerCost() * 100.0f, 1, "ui_uip_unit_percent");
+
+		separator();
+		hint += kBreak; hint += kColTitle;
+		hint += g_pStringTable->translate("ui_uip_stamina_increase").c_str();
+		increase_line("ui_uip_stamina_load_move", cond.GetLoadPowerCostIncrease(false), costColor);
+		increase_line("ui_uip_stamina_load_jump", cond.GetLoadPowerCostIncrease(true), costColor);
+		increase_line("ui_uip_stamina_outfit", cond.GetOutfitPowerCostIncrease(), kColValue);
 		m_state[stt_stamina]->set_hint_text(hint.c_str());
 	}
 
