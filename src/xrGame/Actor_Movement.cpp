@@ -297,9 +297,8 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 						scale *= m_fWalk_StrafeFactor;
 				}
 
-				// Przeciazenie: plynny spadek predkosci do zera na hard stopie.
-				scale *= conditions().GetOverloadSpeedK((mstate_real & mcSprint) ? CActorCondition::eOverloadSprint
-					: bAccelerated ? CActorCondition::eOverloadRun : CActorCondition::eOverloadWalk);
+				// Przeciazenie: liniowy spadek predkosci do overweight_hard_stop_speed.
+				scale *= conditions().GetOverloadSpeedK();
 
 				vControlAccel.mul			(scale);
 			}//scale>EPS
