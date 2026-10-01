@@ -107,13 +107,14 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 	m_fOverweightJumpK			= pSettings->r_float(section,"overweight_jump_k");
 
 	// Przeciazenie (actor-overload-curve): hard stop = udzwig x k, koszt
-	// 1 / (1 - k x) na tryb (sprint k = 1 - definicja hard stopu), predkosc
+	// 1 / (1 - k x) na tryb (sprint domyslnie k = 1, klucz od
+	// actor-overload-tuning), predkosc
 	// liniowo od 1 do overweight_hard_stop_speed. Domyslne wartosci sa
 	// modelem; klucze tylko je zmieniaja.
 	m_fOverweightHardStopK							= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_k", 1.5f);
 	m_fOverweightCostK[eOverloadWalk]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_walk_cost_k", 0.75f);
 	m_fOverweightCostK[eOverloadRun]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_run_cost_k", 0.90f);
-	m_fOverweightCostK[eOverloadSprint]				= 1.0f;
+	m_fOverweightCostK[eOverloadSprint]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_sprint_cost_k", 1.0f);
 	m_fOverweightCostK[eOverloadJump]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_jump_cost_k", 0.90f);
 	m_fOverweightHardStopSpeed						= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_speed", 0.5f);
 	clamp(m_fOverweightHardStopSpeed, 0.0f, 1.0f);
