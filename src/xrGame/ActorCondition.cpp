@@ -682,10 +682,33 @@ bool CActorCondition::IsOverloaded() const
 
 float CActorCondition::GetSprintPowerCostPerGameSec() const
 {
+	return GetMovePowerCostPerGameSec( m_fSprintK );
+}
+
+float CActorCondition::GetMovePowerCostPerGameSec(float modeK) const
+{
 	const float w = ActorLoadRatio( object() );
 	float power = m_fWalkPower + m_fWalkWeightPower * w * (w > 1.f ? m_fOverweightWalkK : 1.f);
-	power *= m_fSprintK; // bez m_fDeltaTime => na sekunde gry
+	power *= modeK; // bez m_fDeltaTime => na sekunde gry
 	return power * ActorPowerLoss( object() );
+}
+
+// Czesc kosztu od wagi wzgledem kosztu bez ladunku (walk_power, jump_power):
+// tryb ruchu i kombinezon mnoza obie czesci, wiec sie skracaja.
+float CActorCondition::GetLoadPowerCostIncrease(bool jump) const
+{
+	const float w = ActorLoadRatio( object() );
+	const float base = jump ? m_fJumpPower : m_fWalkPower;
+	const float weight = (jump ? m_fJumpWeightPower : m_fWalkWeightPower) * w
+		* (w > 1.f ? (jump ? m_fOverweightJumpK : m_fOverweightWalkK) : 1.f);
+	return base > 0.0f ? weight / base : 0.0f;
+}
+
+// power_loss kombinezonu wzgledem postaci bez niego (HitPowerEffect: x0.5);
+// to 1 - "Komfort ruchu" z dymka kombinezonu ((1 - power_loss) x 2).
+float CActorCondition::GetOutfitPowerCostIncrease() const
+{
+	return ActorPowerLoss( object() ) / 0.5f - 1.0f;
 }
 
 float CActorCondition::GetJumpPowerCost() const
