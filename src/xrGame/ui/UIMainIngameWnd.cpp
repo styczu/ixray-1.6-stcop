@@ -1007,13 +1007,14 @@ void CUIMainIngameWnd::UpdateMainIndicators()
 // Overweight icon
 	if (m_ind_overweight)
 	{
-		float cur_weight = pActor->inventory().TotalWeight();
-		float max_weight = pActor->MaxWalkWeight();
+		// Od udzwigu (x > 0) zolty, czerwony, gdy zostalo <= 20% zakresu do
+		// hard stopu; dotad od max_walk_weight - 10 kg.
+		const float overload = pActor->conditions().GetOverloadFactor();
 		m_ind_overweight->Show(false);
-		if (cur_weight >= max_weight - 10.0f && IsGameTypeSingleCompatible())
+		if (overload > 0.0f && IsGameTypeSingleCompatible())
 		{
 			m_ind_overweight->Show(true);
-			if (cur_weight > max_weight)
+			if (overload >= 0.8f)
 				m_ind_overweight->InitTexture("ui_inGame2_circle_Overweight_red");
 			//else if(cur_weight>max_weight-10.0f)
 			//	m_ind_overweight->InitTexture("ui_inGame2_circle_Overweight_yellow");
