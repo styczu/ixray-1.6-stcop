@@ -439,7 +439,7 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 	if (body_armor < 0.0f)
 		xr_strcpy(body_txt, sizeof(body_txt), dash);
 	else
-		xr_sprintf(body_txt, sizeof(body_txt), "%d", iFloor(body_armor * 100.0f + 0.5f));
+		xr_sprintf(body_txt, sizeof(body_txt), "%d", Protection::ArmorPoints(body_armor));
 
 	item->set_text_str(body_txt);
 
@@ -478,7 +478,7 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 		{
 			LPCSTR cls = Protection::ArmorClassName(a);
 			xr_sprintf(line, sizeof(line), "%s%-8s %s%3d  %s%s %s%s",
-				kColLabel, s_label.c_str(), kColValue, iFloor(a * 100.0f + 0.5f),
+				kColLabel, s_label.c_str(), kColValue, Protection::ArmorPoints(a),
 				kColUnit, s_class.c_str(), kColClass, cls ? cls : dash);
 		}
 
