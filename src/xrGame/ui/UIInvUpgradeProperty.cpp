@@ -14,6 +14,8 @@
 #include "../ProtectionValues.h"
 #include "../Actor.h"
 #include "../ActorCondition.h"
+#include "../CustomOutfit.h"
+#include "../../Include/xrRender/Kinematics.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/xrUIXmlParser.h"
@@ -166,6 +168,12 @@ static shared_str TranslatedOr(LPCSTR id, LPCSTR fallback)
     return text.size() && xr_strcmp(text.c_str(), id) != 0 ? text : shared_str(fallback);
 }
 
+void UIProperty::set_armor_context(CInventoryItem* item, bool installed)
+{
+    m_armor_outfit = item ? item->cast_outfit() : nullptr;
+    m_armor_installed = installed;
+}
+
 // prop_armor "Pancerz": skrypt pokazywal etykiete value ("Klasa pancerza
 // +10%"), a ulepszenie podnosi progi przebicia kosci o pole armor sekcji
 // bones_koeff_protection_add (SBoneProtections::add; Swit 0,41 -> 0,49).
@@ -174,6 +182,11 @@ static shared_str TranslatedOr(LPCSTR id, LPCSTR fallback)
 // sylwetka, potem glowa, w strefie najwiekszy przyrost jej kosci, strefy bez
 // zmiany pominiete. fire_wound_protection sekcji nie wchodzi - strzal w aktora
 // liczy tylko progi kosci.
+// r8: z kombinezonem w kontekscie strefa to roznica liczb panelu (maksimum
+// kosci z progiem >= 0, ArmorPoints) przed i po ulepszeniach, liczona na
+// zywych progach przedmiotu: egzo 99 -> 99 na korpusie (obojczyki 0,99, a
+// ulepszenie podnosi kregoslup 0,98 -> 0,99) nie trafia do wiersza. Bez stanu
+// przedmiotu, jak inne wiersze okna. Bez kontekstu zostaje przyrost kosci.
 bool UIProperty::show_armor(LPCSTR values)
 {
     if (!get_property())
@@ -209,6 +222,10 @@ bool UIProperty::show_armor(LPCSTR values)
     if (!found)
         return false;
 
+    IKinematics* kinematics = nullptr;
+    if (m_armor_outfit && Level().CurrentViewEntity())
+        kinematics = smart_cast<IKinematics*>(Level().CurrentViewEntity()->Visual());
+
     const char separator = ConditionUi::DecimalSeparator();
     string256 zones = "";
     for (int part = 1; part >= 0; --part)
@@ -219,10 +236,30 @@ bool UIProperty::show_armor(LPCSTR values)
             if (group.section != part)
                 continue;
             float best = 0.0f;
-            for (int b = 0; group.bones[b] != nullptr; ++b)
+            if (kinematics)
             {
-                if (std::fabs(sums[g][b]) > std::fabs(best))
-                    best = sums[g][b];
+                float before = -1.0f;
+                float after = -1.0f;
+                for (int b = 0; group.bones[b] != nullptr; ++b)
+                {
+                    const u16 bone_id = kinematics->LL_BoneID(group.bones[b]);
+                    if (BI_NONE == bone_id)
+                        continue;
+                    const float live = m_armor_outfit->GetBoneArmor((s16)bone_id);
+                    const float base = m_armor_installed ? live - sums[g][b] : live;
+                    before = _max(before, base);
+                    after = _max(after, base + sums[g][b]);
+                }
+                // Strefa bez oslonietej kosci (-1, takze -1 + 0,11) liczy sie jako 0.
+                best = 0.01f * (float)(Protection::ArmorPoints(_max(after, 0.0f)) - Protection::ArmorPoints(_max(before, 0.0f)));
+            }
+            else
+            {
+                for (int b = 0; group.bones[b] != nullptr; ++b)
+                {
+                    if (std::fabs(sums[g][b]) > std::fabs(best))
+                        best = sums[g][b];
+                }
             }
             // Zero po zaokragleniu do dwoch miejsc (FormatNumber) = strefa bez zmiany.
             if (std::fabs(best * 100.0f) < 0.005f)
@@ -418,7 +455,8 @@ void UIInvUpgPropertiesWnd::init_from_xml(LPCSTR xml_name)
 	ui_xml.SetLocalRoot(stored_root);
 }
 
-void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration)
+void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, bool supports_regeneration,
+	CInventoryItem* item, bool installed)
 {
     float h = m_Upgr_line ? m_Upgr_line->GetHeight() + 3.0f : 0.0f;
     float rowHeight = 0.0f;
@@ -429,6 +467,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
         property->Show(false);
         if (property->is_regeneration() && !supports_regeneration)
             continue;
+        property->set_armor_context(item, installed);
         if (!property->compute_value(item_upgrades))
             continue;
         if (property->is_regeneration() || property->is_protection() || property->is_physical())
@@ -460,7 +499,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, boo
     SetHeight(h + (rightColumn ? rowHeight : 0.0f));
 }
 
-void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration)
+void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool supports_regeneration, CInventoryItem* item)
 {
 	if (!upgrade.is_known())
 	{
@@ -470,12 +509,12 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, bool support
 
 	m_temp_upgrade_vector.resize(0);
 	m_temp_upgrade_vector.push_back(upgrade.id());
-	set_info(m_temp_upgrade_vector, supports_regeneration);
+	set_info(m_temp_upgrade_vector, supports_regeneration, item, item && item->has_upgrade(upgrade.id()));
 }
 
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
-	set_info(item.upgardes(), item.cast_helmet() == nullptr);
+	set_info(item.upgardes(), item.cast_helmet() == nullptr, &item, true);
 }
 
 // Wiersze show_physical maja tekst jak ochrony srodowiskowe ("Nazwa: +N pkt"),
