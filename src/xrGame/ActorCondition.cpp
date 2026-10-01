@@ -682,25 +682,28 @@ bool CActorCondition::IsOverloaded() const
 
 float CActorCondition::GetSprintPowerCostPerGameSec() const
 {
-	return GetMovePowerCostPerGameSec( m_fSprintK );
+	return GetMovePowerCostPerGameSec( eOverloadSprint );
 }
 
-float CActorCondition::GetMovePowerCostPerGameSec(float modeK) const
+// Wzor ConditionWalk bez m_fDeltaTime (na sekunde gry): liniowa czesc wagowa,
+// tryb, przeciazenie trybu, power_loss na koncu.
+float CActorCondition::GetMovePowerCostPerGameSec(EOverloadMode mode) const
 {
 	const float w = ActorLoadRatio( object() );
-	float power = m_fWalkPower + m_fWalkWeightPower * w * (w > 1.f ? m_fOverweightWalkK : 1.f);
-	power *= modeK; // bez m_fDeltaTime => na sekunde gry
+	float power = m_fWalkPower + m_fWalkWeightPower * w;
+	power *= mode == eOverloadSprint ? m_fSprintK : (mode == eOverloadRun ? m_fAccelK : 1.f);
+	power *= GetOverloadCostK( mode );
 	return power * ActorPowerLoss( object() );
 }
 
-// Czesc kosztu od wagi wzgledem kosztu bez ladunku (walk_power, jump_power):
-// tryb ruchu i kombinezon mnoza obie czesci, wiec sie skracaja.
+// Liniowa czesc kosztu od wagi wzgledem kosztu bez ladunku (walk_power,
+// jump_power): tryb, przeciazenie i kombinezon mnoza obie czesci, wiec sie
+// skracaja. Przeciazenie pokazuje osobno GetOverloadCostK.
 float CActorCondition::GetLoadPowerCostIncrease(bool jump) const
 {
 	const float w = ActorLoadRatio( object() );
 	const float base = jump ? m_fJumpPower : m_fWalkPower;
-	const float weight = (jump ? m_fJumpWeightPower : m_fWalkWeightPower) * w
-		* (w > 1.f ? (jump ? m_fOverweightJumpK : m_fOverweightWalkK) : 1.f);
+	const float weight = (jump ? m_fJumpWeightPower : m_fWalkWeightPower) * w;
 	return base > 0.0f ? weight / base : 0.0f;
 }
 
@@ -714,7 +717,8 @@ float CActorCondition::GetOutfitPowerCostIncrease() const
 float CActorCondition::GetJumpPowerCost() const
 {
 	const float w = ActorLoadRatio( object() );
-	float power = m_fJumpPower + m_fJumpWeightPower * w * (w > 1.f ? m_fOverweightJumpK : 1.f);
+	float power = m_fJumpPower + m_fJumpWeightPower * w; // jak ConditionJump
+	power *= GetOverloadCostK( eOverloadJump );
 	return power * ActorPowerLoss( object() ); // jednorazowo, bez czasu
 }
 
