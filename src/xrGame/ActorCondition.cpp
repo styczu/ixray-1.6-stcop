@@ -46,8 +46,7 @@ CActorCondition::CActorCondition(CActor *object) :
 	m_fOverweightHardStopSpeed	= 0.5f;
 	m_fOverweightSpeedStartK	= 1.0f;
 	m_fOverweightSpeedCurve		= 1.0f;
-	for (int i = 0; i < eOverloadModeCount; ++i)
-		m_fOverweightCostK[i]		= 1.f;
+	m_fOverweightCostK			= 0.9f;
 	m_fAccelK					= 0.f;
 	m_fSprintK					= 0.f;
 	Satiety.Current				= 1.0f;
@@ -109,15 +108,16 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 	m_fOverweightJumpK			= pSettings->r_float(section,"overweight_jump_k");
 
 	// Przeciazenie (actor-overload-curve): hard stop = udzwig x k, koszt
-	// 1 / (1 - k x) na tryb (sprint domyslnie k = 1, klucz od
-	// actor-overload-tuning), predkosc
+	// 1 / (1 - k x) (od actor-overload-tuning r3 jedno k dla wszystkich
+	// trybow), predkosc
 	// liniowo od 1 do overweight_hard_stop_speed. Domyslne wartosci sa
 	// modelem; klucze tylko je zmieniaja.
 	m_fOverweightHardStopK							= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_k", 1.5f);
-	m_fOverweightCostK[eOverloadWalk]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_walk_cost_k", 0.75f);
-	m_fOverweightCostK[eOverloadRun]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_run_cost_k", 0.90f);
-	m_fOverweightCostK[eOverloadSprint]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_sprint_cost_k", 1.0f);
-	m_fOverweightCostK[eOverloadJump]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_jump_cost_k", 0.90f);
+	// actor-overload-tuning r3 (decyzja uzytkownika): jedno k dla chodu, biegu,
+	// sprintu i skoku, zeby nadwaga podnosila koszt kazdego ruchu o tyle samo
+	// (jedna linia "Waga ekwipunku" w dymku); dotad osobne klucze per tryb.
+	m_fOverweightCostK								= READ_IF_EXISTS(pSettings, r_float, section, "overweight_cost_k", 0.90f);
+	clamp(m_fOverweightCostK, 0.0f, 1.0f);
 	m_fOverweightHardStopSpeed						= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_speed", 0.5f);
 	clamp(m_fOverweightHardStopSpeed, 0.0f, 1.0f);
 	// actor-overload-tuning: poczatek spowolnienia (ulamek udzwigu) i ksztalt
@@ -636,9 +636,9 @@ float CActorCondition::GetOverloadFactor() const
 
 // Mianownik ograniczony od dolu: przy x = 1 postac i tak stoi
 // (IsCantWalkWeight), a koszt nie dzieli przez zero (najwyzej x100).
-float CActorCondition::GetOverloadCostK(EOverloadMode mode) const
+float CActorCondition::GetOverloadCostK(EOverloadMode) const
 {
-	return 1.0f / _max(1.0f - m_fOverweightCostK[mode] * GetOverloadFactor(), 0.01f);
+	return 1.0f / _max(1.0f - m_fOverweightCostK * GetOverloadFactor(), 0.01f);
 }
 
 // Od 1 w punkcie startu (udzwig x overweight_speed_start_k) do
