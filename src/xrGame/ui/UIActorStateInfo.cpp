@@ -949,8 +949,8 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 	// Kondycja: zuzycie w kazdym trybie ruchu (%/s realnej sekundy) i za
 	// podskok (% za skok), biezacy tryb ruchu jasny (gracz chodzi takze
 	// z otwartym ekwipunkiem), czerwone przy przeciazeniu; pod
-	// spodem wzrost zuzycia w % od obciazenia (wzgledem kosztu bez ladunku)
-	// i od kombinezonu (wzgledem postaci bez niego). Regeneracja jest osobno
+	// spodem wzrost zuzycia w % od obciazenia (wzgledem kosztu bez ladunku),
+	// od kombinezonu (wzgledem postaci bez niego) i od przeciazenia (r3). Regeneracja jest osobno
 	// w "Reg. kondycji" i dziala takze w ruchu. Wzory w CActorCondition, te
 	// same co ConditionWalk/ConditionJump.
 	if (m_state[stt_stamina] != nullptr)
@@ -1001,9 +1001,9 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 
 		separator();
 		const float per_second = real_time_factor * 100.0f;
-		cost_line("ui_uip_cost_walk", cond.GetMovePowerCostPerGameSec(1.0f) * per_second, 2, "ui_uip_unit_percent_s", mode == 0);
-		cost_line("ui_uip_cost_run", cond.GetMovePowerCostPerGameSec(cond.GetRunK()) * per_second, 2, "ui_uip_unit_percent_s", mode == 1);
-		cost_line("ui_uip_cost_sprint", cond.GetMovePowerCostPerGameSec(cond.GetSprintK()) * per_second, 1, "ui_uip_unit_percent_s", mode == 2);
+		cost_line("ui_uip_cost_walk", cond.GetMovePowerCostPerGameSec(CActorCondition::eOverloadWalk) * per_second, 2, "ui_uip_unit_percent_s", mode == 0);
+		cost_line("ui_uip_cost_run", cond.GetMovePowerCostPerGameSec(CActorCondition::eOverloadRun) * per_second, 2, "ui_uip_unit_percent_s", mode == 1);
+		cost_line("ui_uip_cost_sprint", cond.GetMovePowerCostPerGameSec(CActorCondition::eOverloadSprint) * per_second, 1, "ui_uip_unit_percent_s", mode == 2);
 		cost_line("ui_uip_cost_jump", cond.GetJumpPowerCost() * 100.0f, 1, "ui_uip_unit_percent", false);
 
 		separator();
@@ -1012,6 +1012,15 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		increase_line("ui_uip_stamina_load_move", cond.GetLoadPowerCostIncrease(false), costColor);
 		increase_line("ui_uip_stamina_load_jump", cond.GetLoadPowerCostIncrease(true), costColor);
 		increase_line("ui_uip_stamina_outfit", cond.GetOutfitPowerCostIncrease(), kColValue);
+		// Przeciazenie (actor-overload-curve): mnoznik trybu 1 / (1 - k x),
+		// tylko powyzej udzwigu.
+		if (cond.GetOverloadFactor() > 0.0f)
+		{
+			increase_line("ui_uip_stamina_overload_walk", cond.GetOverloadCostK(CActorCondition::eOverloadWalk) - 1.0f, costColor);
+			increase_line("ui_uip_stamina_overload_run", cond.GetOverloadCostK(CActorCondition::eOverloadRun) - 1.0f, costColor);
+			increase_line("ui_uip_stamina_overload_sprint", cond.GetOverloadCostK(CActorCondition::eOverloadSprint) - 1.0f, costColor);
+			increase_line("ui_uip_stamina_overload_jump", cond.GetOverloadCostK(CActorCondition::eOverloadJump) - 1.0f, costColor);
+		}
 		m_state[stt_stamina]->set_hint_text(hint.c_str());
 	}
 
