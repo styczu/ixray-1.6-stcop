@@ -43,11 +43,9 @@ CActorCondition::CActorCondition(CActor *object) :
 	m_fOverweightWalkK			= 0.f;
 	m_fOverweightJumpK			= 0.f;
 	m_fOverweightHardStopK		= 1.5f;
+	m_fOverweightHardStopSpeed	= 0.5f;
 	for (int i = 0; i < eOverloadModeCount; ++i)
-	{
 		m_fOverweightCostK[i]		= 1.f;
-		m_fOverweightSpeedCurve[i]	= 1.f;
-	}
 	m_fAccelK					= 0.f;
 	m_fSprintK					= 0.f;
 	Satiety.Current				= 1.0f;
@@ -110,15 +108,15 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 
 	// Przeciazenie (actor-overload-curve): hard stop = udzwig x k, koszt
 	// 1 / (1 - k x) na tryb (sprint k = 1 - definicja hard stopu), predkosc
-	// q^curve. Domyslne wartosci sa modelem; klucze tylko je zmieniaja.
+	// liniowo od 1 do overweight_hard_stop_speed. Domyslne wartosci sa
+	// modelem; klucze tylko je zmieniaja.
 	m_fOverweightHardStopK							= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_k", 1.5f);
 	m_fOverweightCostK[eOverloadWalk]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_walk_cost_k", 0.75f);
 	m_fOverweightCostK[eOverloadRun]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_run_cost_k", 0.90f);
 	m_fOverweightCostK[eOverloadSprint]				= 1.0f;
 	m_fOverweightCostK[eOverloadJump]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_jump_cost_k", 0.90f);
-	m_fOverweightSpeedCurve[eOverloadWalk]			= READ_IF_EXISTS(pSettings, r_float, section, "overweight_walk_speed_curve", 0.4f);
-	m_fOverweightSpeedCurve[eOverloadRun]			= READ_IF_EXISTS(pSettings, r_float, section, "overweight_run_speed_curve", 0.6f);
-	m_fOverweightSpeedCurve[eOverloadSprint]		= READ_IF_EXISTS(pSettings, r_float, section, "overweight_sprint_speed_curve", 0.9f);
+	m_fOverweightHardStopSpeed						= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_speed", 0.5f);
+	clamp(m_fOverweightHardStopSpeed, 0.0f, 1.0f);
 	m_fAccelK					= pSettings->r_float(section,"accel_k");
 	m_fSprintK					= pSettings->r_float(section,"sprint_k");
 
@@ -634,12 +632,12 @@ float CActorCondition::GetOverloadCostK(EOverloadMode mode) const
 	return 1.0f / _max(1.0f - m_fOverweightCostK[mode] * GetOverloadFactor(), 0.01f);
 }
 
-// q = 1 - smoothstep(x): 1 przy udzwigu, 0 na hard stopie, bez zalamania na koncach.
-float CActorCondition::GetOverloadSpeedK(EOverloadMode mode) const
+// Liniowo od 1 na udzwigu do overweight_hard_stop_speed tuz przed hard
+// stopem, jednakowo dla chodu, biegu i sprintu; od x = 1 postac stoi
+// (IsCantWalkWeight).
+float CActorCondition::GetOverloadSpeedK() const
 {
-	const float x = GetOverloadFactor();
-	const float q = 1.0f - x * x * (3.0f - 2.0f * x);
-	return q > 0.0f ? std::pow(q, m_fOverweightSpeedCurve[mode]) : 0.0f;
+	return 1.0f - (1.0f - m_fOverweightHardStopSpeed) * GetOverloadFactor();
 }
 
 //weight - "удельный" вес от 0..1
