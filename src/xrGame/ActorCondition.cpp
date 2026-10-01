@@ -44,6 +44,8 @@ CActorCondition::CActorCondition(CActor *object) :
 	m_fOverweightJumpK			= 0.f;
 	m_fOverweightHardStopK		= 1.5f;
 	m_fOverweightHardStopSpeed	= 0.5f;
+	m_fOverweightSpeedStartK	= 1.0f;
+	m_fOverweightSpeedCurve		= 1.0f;
 	for (int i = 0; i < eOverloadModeCount; ++i)
 		m_fOverweightCostK[i]		= 1.f;
 	m_fAccelK					= 0.f;
@@ -118,6 +120,12 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 	m_fOverweightCostK[eOverloadJump]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_jump_cost_k", 0.90f);
 	m_fOverweightHardStopSpeed						= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_speed", 0.5f);
 	clamp(m_fOverweightHardStopSpeed, 0.0f, 1.0f);
+	// actor-overload-tuning: poczatek spowolnienia (ulamek udzwigu) i ksztalt
+	// t^curve; domyslne 1 / 1 to liniowo od udzwigu, jak actor-overload-curve.
+	m_fOverweightSpeedStartK						= READ_IF_EXISTS(pSettings, r_float, section, "overweight_speed_start_k", 1.0f);
+	m_fOverweightSpeedCurve							= READ_IF_EXISTS(pSettings, r_float, section, "overweight_speed_curve", 1.0f);
+	clamp(m_fOverweightSpeedStartK, 0.0f, 10.0f);
+	clamp(m_fOverweightSpeedCurve, 0.1f, 10.0f);
 	m_fAccelK					= pSettings->r_float(section,"accel_k");
 	m_fSprintK					= pSettings->r_float(section,"sprint_k");
 
@@ -633,12 +641,20 @@ float CActorCondition::GetOverloadCostK(EOverloadMode mode) const
 	return 1.0f / _max(1.0f - m_fOverweightCostK[mode] * GetOverloadFactor(), 0.01f);
 }
 
-// Liniowo od 1 na udzwigu do overweight_hard_stop_speed tuz przed hard
-// stopem, jednakowo dla chodu, biegu i sprintu; od x = 1 postac stoi
-// (IsCantWalkWeight).
+// Od 1 w punkcie startu (udzwig x overweight_speed_start_k) do
+// overweight_hard_stop_speed tuz przed hard stopem, ksztalt t^curve (1 =
+// liniowo), jednakowo dla chodu, biegu i sprintu; od hard stopu postac stoi
+// (IsCantWalkWeight). hard_stop_speed = 1 wylacza spowolnienie.
 float CActorCondition::GetOverloadSpeedK() const
 {
-	return 1.0f - (1.0f - m_fOverweightHardStopSpeed) * GetOverloadFactor();
+	const float start = object().MaxCarryWeight() * m_fOverweightSpeedStartK;
+	const float stop = GetOverloadHardStop();
+	const float weight = object().inventory().TotalWeight();
+	if (stop <= start)
+		return weight >= stop ? m_fOverweightHardStopSpeed : 1.0f;
+	float t = (weight - start) / (stop - start);
+	clamp(t, 0.0f, 1.0f);
+	return 1.0f - (1.0f - m_fOverweightHardStopSpeed) * std::pow(t, m_fOverweightSpeedCurve);
 }
 
 //weight - "удельный" вес от 0..1
