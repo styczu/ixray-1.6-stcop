@@ -2661,10 +2661,7 @@ void CCC_RegisterCommands()
 	CMD4(CCC_ActorConditionFloat, "actor_overweight_hard_stop_speed", [](CActorCondition& c) -> float& { return c.m_fOverweightHardStopSpeed; }, 0.0f, 1.0f);
 	CMD4(CCC_ActorConditionFloat, "actor_overweight_speed_start_k", [](CActorCondition& c) -> float& { return c.m_fOverweightSpeedStartK; }, 0.0f, 10.0f);
 	CMD4(CCC_ActorConditionFloat, "actor_overweight_speed_curve", [](CActorCondition& c) -> float& { return c.m_fOverweightSpeedCurve; }, 0.1f, 10.0f);
-	CMD4(CCC_ActorConditionFloat, "actor_overweight_walk_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadWalk]; }, 0.0f, 1.0f);
-	CMD4(CCC_ActorConditionFloat, "actor_overweight_run_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadRun]; }, 0.0f, 1.0f);
-	CMD4(CCC_ActorConditionFloat, "actor_overweight_sprint_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadSprint]; }, 0.0f, 1.0f);
-	CMD4(CCC_ActorConditionFloat, "actor_overweight_jump_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadJump]; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK; }, 0.0f, 1.0f);
 
 #ifndef MASTER_GOLD
 	CMD1(CCC_JumpToLevel, "jump_to_level");
