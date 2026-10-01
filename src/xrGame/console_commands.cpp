@@ -15,6 +15,7 @@
 #include "Hit.h"
 #include "PHDestroyable.h"
 #include "Actor.h"
+#include "ActorCondition.h"
 #include "Actor_Flags.h"
 #include "CustomZone.h"
 #include "../xrScripts/script_engine.h"
@@ -1207,6 +1208,56 @@ public:
 		get_files_list(tips, "$game_scripts$", ".script");
 	}
 
+};
+
+// Strojenie kosztu ruchu i przeciazenia (actor-overload-tuning): pole kondycji
+// aktora w trakcie gry, np. "actor_accel_k 35". Bez zapisu do user.ltx - na
+// stale klucze [actor_condition] (ixray-balance); po wczytaniu gry wracaja
+// wartosci z konfiguracji. Bez argumentu pokazuje biezaca wartosc.
+class CCC_ActorConditionFloat : public IConsole_Command
+{
+public:
+	using Field = float& (*)(CActorCondition&);
+	CCC_ActorConditionFloat(LPCSTR N, Field field, float min, float max)
+		: IConsole_Command(N), m_field(field), m_min(min), m_max(max)
+	{
+		bEmptyArgsHandled = true;
+	}
+
+	virtual void Execute(LPCSTR args)
+	{
+		CActor* actor = g_pGameLevel ? smart_cast<CActor*>(Level().CurrentEntity()) : nullptr;
+		if (actor == nullptr)
+		{
+			Msg("! %s: no actor", Name());
+			return;
+		}
+		float& value = m_field(actor->conditions());
+		float v = 0.0f;
+		if (!xr_strlen(args) || sscanf(args, "%f", &v) != 1)
+		{
+			Msg("- %s = %.6g  [%g, %g]", Name(), value, m_min, m_max);
+			return;
+		}
+		clamp(v, m_min, m_max);
+		value = v;
+		Msg("- %s = %.6g", Name(), value);
+	}
+	virtual void Save(IWriter*) {}
+	virtual void Status(TStatus& S)
+	{
+		CActor* actor = g_pGameLevel ? smart_cast<CActor*>(Level().CurrentEntity()) : nullptr;
+		if (actor)
+			xr_sprintf(S, sizeof(S), "%.6g", m_field(actor->conditions()));
+		else
+			S[0] = 0;
+	}
+	virtual void Info(TInfo& I) { xr_sprintf(I, sizeof(I), "float [%g, %g]", m_min, m_max); }
+
+private:
+	Field m_field;
+	float m_min;
+	float m_max;
 };
 
 class CCC_ScriptCommand : public IConsole_Command {
@@ -2598,6 +2649,20 @@ void CCC_RegisterCommands()
 	CMD4(CCC_FloatBlock, "ph_tri_query_ex_aabb_rate", &ph_console::ph_tri_query_ex_aabb_rate, 1.01f, 3.f);
 	CMD3(CCC_Mask, "g_no_clip", &psActorFlags, AF_NO_CLIP);
 #endif // DEBUG
+
+	// actor-overload-tuning: nazwy = klucze [actor_condition] z prefiksem actor_.
+	CMD4(CCC_ActorConditionFloat, "actor_walk_power", [](CActorCondition& c) -> float& { return c.m_fWalkPower; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_walk_weight_power", [](CActorCondition& c) -> float& { return c.m_fWalkWeightPower; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_accel_k", [](CActorCondition& c) -> float& { return c.m_fAccelK; }, 0.0f, 1000.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_sprint_k", [](CActorCondition& c) -> float& { return c.m_fSprintK; }, 0.0f, 1000.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_jump_power", [](CActorCondition& c) -> float& { return c.m_fJumpPower; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_jump_weight_power", [](CActorCondition& c) -> float& { return c.m_fJumpWeightPower; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_hard_stop_k", [](CActorCondition& c) -> float& { return c.m_fOverweightHardStopK; }, 1.0f, 10.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_hard_stop_speed", [](CActorCondition& c) -> float& { return c.m_fOverweightHardStopSpeed; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_walk_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadWalk]; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_run_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadRun]; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_sprint_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadSprint]; }, 0.0f, 1.0f);
+	CMD4(CCC_ActorConditionFloat, "actor_overweight_jump_cost_k", [](CActorCondition& c) -> float& { return c.m_fOverweightCostK[CActorCondition::eOverloadJump]; }, 0.0f, 1.0f);
 
 #ifndef MASTER_GOLD
 	CMD1(CCC_JumpToLevel, "jump_to_level");
