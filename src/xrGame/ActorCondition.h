@@ -75,6 +75,17 @@ public:
 			void		ConditionWalk				(float weight, bool accel, bool sprint);
 			void		ConditionStand				(float weight);
 	IC		float		MaxWalkWeight				() const	{ return m_MaxWalkWeight; }
+
+	// Przeciazenie: x = 0 przy udzwigu (MaxCarryWeight), 1 przy hard stopie
+	// (udzwig x overweight_hard_stop_k). Jedna miara dla kosztu kondycji,
+	// podskoku, predkosci ruchu i wskaznika HUD; bonusy udzwigu (kombinezon,
+	// plecak, artefakty, booster) przesuwaja oba konce. power_loss nie wchodzi.
+	enum EOverloadMode { eOverloadWalk, eOverloadRun, eOverloadSprint, eOverloadJump, eOverloadModeCount };
+			float		GetOverloadHardStopK		() const	{ return m_fOverweightHardStopK; }
+			float		GetOverloadHardStop			() const;
+			float		GetOverloadFactor			() const;
+			float		GetOverloadCostK			(EOverloadMode mode) const;
+			float		GetOverloadSpeedK			(EOverloadMode mode) const;
 			
 			float		GetPsy				()	{return 1.0f-GetPsyHealth();}
 
@@ -137,8 +148,11 @@ public:
 	float m_fWalkPower;
 	float m_fJumpWeightPower;
 	float m_fWalkWeightPower;
-	float m_fOverweightWalkK;
-	float m_fOverweightJumpK;
+	float m_fOverweightWalkK;	// tylko dla skryptow; mechanika uzywa przeciazenia ponizej
+	float m_fOverweightJumpK;	// jw.
+	float m_fOverweightHardStopK;
+	float m_fOverweightCostK[eOverloadModeCount];		// k we wzorze 1 / (1 - k x)
+	float m_fOverweightSpeedCurve[eOverloadModeCount];	// wykladnik q; podskok bez predkosci
 	float m_fAccelK;
 	float m_fSprintK;
 	
