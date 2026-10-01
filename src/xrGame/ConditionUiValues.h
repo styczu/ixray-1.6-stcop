@@ -45,6 +45,17 @@ namespace ConditionUi
         return singlePlayer ? worldFactor * deviceFactor : 1.0f;
     }
 
+    // Polowki od zera zamiast "do parzystej" z printf (37,5 -> 38, 42,5 -> 43),
+    // z tolerancja 0,001 ostatniego miejsca na szum float (16,2499998 -> 16,25).
+    // Przyrost o liczbe calkowita przemienia sie z takim zaokragleniem:
+    // round(b + 5) = round(b) + 5, wiec "+5 pkt" w oknie ulepszen zgadza sie
+    // z roznica liczb na ekranie. Te sama funkcje ma CUIStatic (xrUI).
+    inline double RoundHalfAway(double value, int decimals)
+    {
+        const double scale = std::pow(10.0, decimals);
+        return std::copysign(std::floor(std::fabs(value) * scale + 0.5 + 0.001) / scale, value);
+    }
+
     template <size_t N>
     void FormatNumber(char (&out)[N], double value, char decimalSeparator, bool showSign, int decimals = 2, bool fixedDecimals = false)
     {
@@ -56,7 +67,7 @@ namespace ConditionUi
             std::snprintf(out, N, "%s<0.01", value < 0 ? "-" : (showSign ? "+" : ""));
         else
         {
-            std::snprintf(out, N, showSign ? "%+.*f" : "%.*f", decimals, value);
+            std::snprintf(out, N, showSign ? "%+.*f" : "%.*f", decimals, RoundHalfAway(value, decimals));
             if (char* dot = fixedDecimals ? nullptr : std::strchr(out, '.'))
             {
                 char* end = out + std::strlen(out) - 1;
