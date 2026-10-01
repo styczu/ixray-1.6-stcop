@@ -101,6 +101,15 @@ public:
 	// i power_loss kombinezonu (goly = x0.5), jak ConditionWalk/Jump.
 	float	GetSprintPowerCostPerGameSec			() const;
 	float	GetJumpPowerCost						() const;
+	// Dymek "Zuzycie kondycji": koszt ruchu w trybie modeK (1 = chod,
+	// GetRunK() = bieg, GetSprintK() = sprint) na sekunde gry oraz wzrost
+	// zuzycia (ulamek) od obciazenia - wzgledem kosztu bez ladunku - i od
+	// kombinezonu - wzgledem postaci bez niego (x0.5).
+	float	GetMovePowerCostPerGameSec				(float modeK) const;
+	float	GetRunK									() const { return m_fAccelK; }
+	float	GetSprintK								() const { return m_fSprintK; }
+	float	GetLoadPowerCostIncrease				(bool jump) const;
+	float	GetOutfitPowerCostIncrease				() const;
 	bool	IsOverloaded							() const; // waga > udzwig (MaxCarryWeight)
 
 	bool	DisableSprint							(SHit* pHDS);
