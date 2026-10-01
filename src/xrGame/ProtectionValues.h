@@ -163,4 +163,11 @@ namespace Protection
     };
 
     static constexpr unsigned ArmorGroupCount = sizeof(ArmorGroups) / sizeof(ArmorGroups[0]);
+
+    // Liczba panelu dla progu przebicia: setne progu, zaokraglone jak przy
+    // pasku "Pancerz" i w tooltipie klasy pancerza.
+    inline int ArmorPoints(float armor)
+    {
+        return (int)std::floor(armor * 100.0f + 0.5f);
+    }
 }
