@@ -1014,15 +1014,33 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 
 		separator();
 		header("ui_uip_stamina_increase");
-		increase_line("ui_uip_stamina_load_move", cond.GetLoadPowerCostIncrease(false), costColor);
+		// r6 (decyzja uzytkownika): waga ekwipunku lacznie z nadwaga - czesc
+		// wagowa ruchu razy mnoznik przeciazenia (jedno k dla wszystkich
+		// trybow w danych, wiec liczba jest wspolna dla biegu i sprintu).
+		const float weight_increase = (1.0f + cond.GetLoadPowerCostIncrease(false))
+			* cond.GetOverloadCostK(CActorCondition::eOverloadRun) - 1.0f;
+		increase_line("ui_uip_stamina_load_move", weight_increase, costColor);
 		increase_line("ui_uip_stamina_outfit", cond.GetOutfitPowerCostIncrease(), kColValue);
-		// Przeciazenie (actor-overload-curve): mnoznik trybu 1 / (1 - k x),
-		// tylko powyzej udzwigu.
+		// Stan przeciazenia (powyzej udzwigu): nadwaga, zapas do hard stopu
+		// i biezaca predkosc ruchu (actor-overload-curve).
 		if (cond.GetOverloadFactor() > 0.0f)
 		{
-			increase_line("ui_uip_stamina_overload_run", cond.GetOverloadCostK(CActorCondition::eOverloadRun) - 1.0f, costColor);
-			increase_line("ui_uip_stamina_overload_sprint", cond.GetOverloadCostK(CActorCondition::eOverloadSprint) - 1.0f, costColor);
-			increase_line("ui_uip_stamina_overload_jump", cond.GetOverloadCostK(CActorCondition::eOverloadJump) - 1.0f, costColor);
+			const float carry = actor->MaxCarryWeight();
+			const float weight = actor->inventory().TotalWeight();
+			string32 over, left, speed;
+			FormatRate(over, weight - carry, 1);
+			FormatRate(left, _max(cond.GetOverloadHardStop() - weight, 0.0f), 1);
+			FormatRate(speed, cond.GetOverloadSpeedK() * 100.0f, 0);
+			const shared_str kg = g_pStringTable->translate("st_kg");
+			separator();
+			hint += kBreak; hint += kColLabel;
+			hint += g_pStringTable->translate("ui_uip_stamina_overload").c_str();
+			hint += " "; hint += costColor; hint += "+"; hint += over; hint += " "; hint += kg.c_str();
+			hint += kColLabel; hint += " ("; hint += g_pStringTable->translate("ui_uip_stamina_overload_stop").c_str();
+			hint += " "; hint += costColor; hint += left; hint += " "; hint += kg.c_str(); hint += kColLabel; hint += ")";
+			hint += kBreak; hint += kColLabel;
+			hint += g_pStringTable->translate("ui_uip_stamina_speed").c_str();
+			hint += " "; hint += costColor; hint += speed; hint += "%";
 		}
 		m_state[stt_stamina]->set_hint_text(hint.c_str());
 	}
