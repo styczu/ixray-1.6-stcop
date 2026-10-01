@@ -158,7 +158,7 @@ public:
 	float m_fOverweightWalkK;	// tylko dla skryptow; mechanika uzywa przeciazenia ponizej
 	float m_fOverweightJumpK;	// jw.
 	float m_fOverweightHardStopK;
-	float m_fOverweightCostK[eOverloadModeCount];		// k we wzorze 1 / (1 - k x)
+	float m_fOverweightCostK;							// k we wzorze 1 / (1 - k x), wspolne dla trybow
 	float m_fOverweightHardStopSpeed;					// mnoznik predkosci tuz przed hard stopem
 	float m_fOverweightSpeedStartK;						// poczatek spowolnienia, ulamek udzwigu
 	float m_fOverweightSpeedCurve;						// wykladnik ksztaltu spadku (1 = liniowo)
