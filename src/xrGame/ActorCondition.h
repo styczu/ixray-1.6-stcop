@@ -85,7 +85,7 @@ public:
 			float		GetOverloadHardStop			() const;
 			float		GetOverloadFactor			() const;
 			float		GetOverloadCostK			(EOverloadMode mode) const;
-			float		GetOverloadSpeedK			(EOverloadMode mode) const;
+			float		GetOverloadSpeedK			() const;
 			
 			float		GetPsy				()	{return 1.0f-GetPsyHealth();}
 
@@ -152,7 +152,7 @@ public:
 	float m_fOverweightJumpK;	// jw.
 	float m_fOverweightHardStopK;
 	float m_fOverweightCostK[eOverloadModeCount];		// k we wzorze 1 / (1 - k x)
-	float m_fOverweightSpeedCurve[eOverloadModeCount];	// wykladnik q; podskok bez predkosci
+	float m_fOverweightHardStopSpeed;					// mnoznik predkosci tuz przed hard stopem
 	float m_fAccelK;
 	float m_fSprintK;
 	
