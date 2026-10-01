@@ -43,6 +43,16 @@ m_pTextControl(nullptr)
 	m_bShowSign				= false;
 }
 
+// Jak ConditionUi::RoundHalfAway (xrGame/ConditionUiValues.h): polowki od zera
+// z tolerancja szumu float zamiast "do parzystej" z printf, zeby liczby panelu
+// (decimals="0") zgadzaly sie z przyrostami w oknie ulepszen (37,5 -> 38,
+// 42,5 -> 43).
+static double RoundHalfAway(double value, int decimals)
+{
+	const double scale = std::pow(10.0, decimals);
+	return std::copysign(std::floor(std::fabs(value) * scale + 0.5 + 0.001) / scale, value);
+}
+
 xr_string CUIStatic::FormatExpressionValue(float value) const
 {
 	// Wartosc ujemna przy ustawionym no_value oznacza "brak danych".
@@ -62,7 +72,7 @@ xr_string CUIStatic::FormatExpressionValue(float value) const
 		string64 fmt = { 0 };
 		xr_sprintf(fmt, sizeof(fmt), "%%.%df", m_iDecimals);
 		string64 buf = { 0 };
-		xr_sprintf(buf, sizeof(buf), fmt, value);
+		xr_sprintf(buf, sizeof(buf), fmt, RoundHalfAway(value, m_iDecimals));
 		result = buf;
 	}
 
