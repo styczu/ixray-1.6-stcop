@@ -203,6 +203,7 @@ SERVER_ENTITY_DECLARE_BEGIN(CSE_ALifeItemWeapon,CSE_ALifeItem)
 	u16								get_ammo_magsize	();
 	void							clone_addons		(CSE_ALifeItemWeapon* parent);
 	void							clone_upgrades		(CSE_ALifeItemWeapon* parent);
+	bool							default_grenade_launcher(bool silencer) const;
 
 	virtual bool					Net_Relevant		();
 
