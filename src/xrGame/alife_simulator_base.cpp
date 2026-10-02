@@ -20,6 +20,7 @@
 #include "alife_group_registry.h"
 #include "alife_registry_container.h"
 #include "xrServer.h"
+#include "xrServer_Objects_ALife_Items.h"
 #include "level_graph.h"
 #include "inventory_upgrade_manager.h"
 #include "Level.h"
@@ -196,6 +197,11 @@ void CALifeSimulatorBase::create(CSE_ALifeDynamicObject *&i, CSE_ALifeDynamicObj
 	u16							id;
 	tNetPacket.r_begin			(id);
 	i->UPDATE_Read				(tNetPacket);
+
+	// A weapon placed in the spawn gets the launcher its section gives by default.
+	if (CSE_ALifeItemWeapon* weapon = smart_cast<CSE_ALifeItemWeapon*>(i))
+		if (weapon->default_grenade_launcher(!!weapon->m_addon_flags.test(CSE_ALifeItemWeapon::eWeaponAddonSilencer)))
+			weapon->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, TRUE);
 
 	R_ASSERT3					(!(i->used_ai_locations()) || (i->m_tNodeID != u32(-1)),"Invalid vertex for object ",i->name_replace());
 
