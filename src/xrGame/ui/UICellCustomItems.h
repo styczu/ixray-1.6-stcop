@@ -70,6 +70,7 @@ struct SWeaponIconLayer
 	xr_vector<shared_str>	no_upgrades;	// off while one of them is installed
 	u8						no_addons = 0;	// off while one of these is on, a bit per
 											// CUIWeaponCellItem::eAddonType
+	xr_vector<shared_str>	scopes;			// on only while one of these scopes is attached
 };
 
 class CUIWeaponCellItem :public CUIInventoryCellItem
