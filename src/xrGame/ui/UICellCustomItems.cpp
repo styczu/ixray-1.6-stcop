@@ -119,8 +119,9 @@ IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, cons
 // - inv_layer_x, inv_layer_y: where it goes on the weapon's sprite, weapon_offset_x/_y:
 //   shift of the whole icon, both in the units of the addons' <prefix>_x/_y with icon
 //   keys;
-// - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...) and
-//   no_addons (silencer, scope, grenade_launcher).
+// - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...),
+//   no_addons (silencer, scope, grenade_launcher) and scopes (scope names as the
+//   weapon's scopes or scope_name give them).
 // False with the reason in error when the layer can't be used.
 IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scaled_offsets, float weapon_scale, SWeaponIconLayer& l, string256& error)
 {
@@ -176,6 +177,7 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 	};
 	ids("upgrades", l.upgrades);
 	ids("no_upgrades", l.no_upgrades);
+	ids("scopes", l.scopes);
 
 	l.section = section;
 	l.below = !!READ_IF_EXISTS(pSettings, r_bool, section, "below_weapon", false);
@@ -198,11 +200,20 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 }
 
 // A layer is on while all of its conditions hold: one of upgrades is installed, none of
-// no_upgrades is, none of no_addons is on. A layer without conditions is always on.
-IC bool weapon_icon_layer_on(const SWeaponIconLayer& l, u8 addons_on, CInventoryItem& item)
+// no_upgrades is, none of no_addons is on, the attached scope is one of scopes. A layer
+// without conditions is always on.
+IC bool weapon_icon_layer_on(const SWeaponIconLayer& l, u8 addons_on, CWeapon& weapon)
 {
 	if (l.no_addons & addons_on)
 		return false;
+	if (!l.scopes.empty())
+	{
+		if (!(addons_on & (1 << CUIWeaponCellItem::eScope)))
+			return false;
+		if (std::find(l.scopes.begin(), l.scopes.end(), weapon.GetScopeName()) == l.scopes.end())
+			return false;
+	}
+	CInventoryItem& item = weapon;
 	for (const shared_str& id : l.no_upgrades)
 		if (item.has_upgrade(id))
 			return false;
