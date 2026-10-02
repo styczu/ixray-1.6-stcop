@@ -123,7 +123,8 @@ void CSE_ALifeObject::spawn_supplies(LPCSTR ini_string)
 
                         if (W->m_grenade_launcher_status == ALife::eAddonAttachable)
                         {
-                            W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher);
+                            W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher
+                                || W->default_grenade_launcher(!!W->m_addon_flags.test(CSE_ALifeItemWeapon::eWeaponAddonSilencer)));
                         }
 
                         //spawn count box(es) of the correct ammo for weapon
@@ -229,7 +230,8 @@ void CSE_ALifeObject::spawn_supplies(LPCSTR ini_string)
 
                             if (W->m_grenade_launcher_status == ALife::eAddonAttachable)
                             {
-                                W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher);
+                                W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher
+                                    || W->default_grenade_launcher(!!W->m_addon_flags.test(CSE_ALifeItemWeapon::eWeaponAddonSilencer)));
                             }
                         }
 
