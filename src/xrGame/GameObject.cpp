@@ -527,7 +527,8 @@ void CGameObject::spawn_supplies()
 					if (W->m_silencer_status		== ALife::eAddonAttachable)
 						W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonSilencer, bSilencer);
 					if (W->m_grenade_launcher_status == ALife::eAddonAttachable)
-						W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher);
+						W->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher
+							|| W->default_grenade_launcher(!!W->m_addon_flags.test(CSE_ALifeItemWeapon::eWeaponAddonSilencer)));
 				}
 
 				NET_Packet					P;
