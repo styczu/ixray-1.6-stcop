@@ -505,8 +505,23 @@ CSE_ALifeItemWeapon::CSE_ALifeItemWeapon	(LPCSTR caSection) : CSE_ALifeItem(caSe
 	m_scope_status				=	(EWeaponAddonStatus)pSettings->r_s32(s_name,"scope_status");
 	m_silencer_status			=	(EWeaponAddonStatus)pSettings->r_s32(s_name,"silencer_status");
 	m_grenade_launcher_status	=	(EWeaponAddonStatus)pSettings->r_s32(s_name,"grenade_launcher_status");
+	// grenade_launcher_default: a new weapon comes with its attachable launcher on.
+	if (default_grenade_launcher(false))
+		m_addon_flags.set		(eWeaponAddonGrenadeLauncher, TRUE);
 	m_ef_main_weapon_type		= READ_IF_EXISTS(pSettings,r_u32,caSection,"ef_main_weapon_type",u32(-1));
 	m_ef_weapon_type			= READ_IF_EXISTS(pSettings,r_u32,caSection,"ef_weapon_type",u32(-1));
+}
+
+// grenade_launcher_default (weapon section): the attachable launcher a new weapon gets
+// when nothing asks for it, but not next to a silencer on a weapon that can't carry
+// both (restricted_gl_and_sil).
+bool CSE_ALifeItemWeapon::default_grenade_launcher(bool silencer) const
+{
+	if (m_grenade_launcher_status != ALife::eAddonAttachable)
+		return false;
+	if (!READ_IF_EXISTS(pSettings, r_bool, s_name.c_str(), "grenade_launcher_default", false))
+		return false;
+	return !silencer || !READ_IF_EXISTS(pSettings, r_bool, s_name.c_str(), "restricted_gl_and_sil", false);
 }
 
 CSE_ALifeItemWeapon::~CSE_ALifeItemWeapon	()
