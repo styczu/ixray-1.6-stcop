@@ -124,7 +124,8 @@ CSE_Abstract* CSE_ALifeObject::setAddonFlagsIsWeapon(CSE_Abstract* E, const char
 
     if (ALIWeapon->m_grenade_launcher_status == ALife::eAddonAttachable)
     {
-        ALIWeapon->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher);
+        ALIWeapon->m_addon_flags.set(CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher, bLauncher
+            || ALIWeapon->default_grenade_launcher(!!ALIWeapon->m_addon_flags.test(CSE_ALifeItemWeapon::eWeaponAddonSilencer)));
     }
 
     return E;
