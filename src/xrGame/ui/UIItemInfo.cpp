@@ -313,8 +313,27 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 	if ( UIWeight )
 	{
 		const char*  kg_str = g_pStringTable->translate( "st_kg" ).c_str();
-		float	weight = pInvItem->m_pInventory ? pInvItem->m_pInventory->CalcItemWeight(pInvItem) : pInvItem->Weight();
-		
+		// Whole stack, like the count on the cell: ammo boxes under one cell hold
+		// different counts, so the top one alone says little. Helpers aren't carried.
+		auto	item_weight = [](PIItem item) { return item->m_pInventory ? item->m_pInventory->CalcItemWeight(item) : item->Weight(); };
+		float	weight	= 0.0f;
+		bool	counted	= false;
+		if ( !pCellItem->IsHelper() )
+		{
+			weight		+= item_weight(pInvItem);
+			counted		= true;
+		}
+		for ( u32 j = 0; j < pCellItem->ChildsCount(); ++j )
+		{
+			CUICellItem* child = pCellItem->Child(j);
+			if ( child->IsHelper() )
+				continue;
+			weight		+= item_weight((PIItem)child->m_pData);
+			counted		= true;
+		}
+		if ( !counted )
+			weight		= item_weight(pInvItem);
+
 		if ( !weight )
 		{
 			if ( CWeaponAmmo* ammo = dynamic_cast<CWeaponAmmo*>(pInvItem) )
