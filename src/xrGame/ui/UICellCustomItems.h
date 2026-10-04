@@ -31,6 +31,7 @@ public:
 								 CUIAmmoCellItem			(CWeaponAmmo* itm);
 
 				u32				 CalculateAmmoCount			();
+	virtual		void			 Update						();
 	virtual		bool			 EqualTo						(CUICellItem* itm);
 	virtual		CUIDragItem*	 CreateDragItem				();
 				CWeaponAmmo*	 object						() {return (CWeaponAmmo*)m_pData;}
