@@ -186,6 +186,11 @@ public:
 	virtual bool use_bolts		() const;
 
 	virtual void OnItemTake		(CInventoryItem *inventory_item);
+protected:
+	// Set by the first UpdateCL, after the saved inventory has spawned: from then on a
+	// partly filled ammo box the actor takes tops up the actor's own boxes.
+	bool		m_ammo_merge_ready = false;
+public:
 
 	virtual void OnItemRuck		(CInventoryItem *inventory_item, const SInvItemPlace& previous_place);
 	virtual void OnItemBelt		(CInventoryItem *inventory_item, const SInvItemPlace& previous_place);
