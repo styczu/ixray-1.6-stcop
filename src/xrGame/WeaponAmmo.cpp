@@ -194,6 +194,34 @@ bool CWeaponAmmo::Get(CCartridge &cartridge)
 	return true;
 }
 
+bool CWeaponAmmo::PourInto(const xr_vector<CWeaponAmmo*>& boxes)
+{
+	if (!m_boxCurr || m_boxCurr >= m_boxSize)
+		return false;
+
+	xr_vector<CWeaponAmmo*> partly;
+	for (CWeaponAmmo* box : boxes)
+	{
+		// Empty boxes are on their way out.
+		if (box != this && box->cNameSect() == cNameSect() && box->m_boxCurr && box->m_boxCurr < box->m_boxSize)
+			partly.push_back(box);
+	}
+	std::stable_sort(partly.begin(), partly.end(), [](const CWeaponAmmo* a, const CWeaponAmmo* b)
+	{
+		return a->m_boxCurr > b->m_boxCurr;
+	});
+
+	for (CWeaponAmmo* box : partly)
+	{
+		const u16 moved = std::min<u16>(box->m_boxSize - box->m_boxCurr, m_boxCurr);
+		box->m_boxCurr += moved;
+		m_boxCurr -= moved;
+		if (!m_boxCurr)
+			return true;
+	}
+	return false;
+}
+
 void CWeaponAmmo::renderable_Render() 
 {
 	if(!m_ready_to_destroy)
