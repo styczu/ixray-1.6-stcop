@@ -353,7 +353,9 @@ void CUIActorMenu::OnInventoryAction(PIItem pItem, u16 action_type)
 					}
 				}
 
-				if (!IsGameTypeSingle() && pItem->parent_id() != m_pActorInvOwner->object_id())
+				// Not the actor's item: in single player only one destroyed in the open box
+				// (an emptied ammo box); the actor's own drops still have the actor as parent.
+				if (pItem->parent_id() != m_pActorInvOwner->object_id())
 				{
 					CUIDragDropListEx* lst_to_remove = NULL;
 					lst_to_remove = GetListByType(iDeadBodyBag);

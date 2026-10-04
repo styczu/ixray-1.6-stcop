@@ -39,6 +39,7 @@
 #include "ai_space.h"
 #include "trade.h"
 #include "Inventory.h"
+#include "WeaponAmmo.h"
 //#include "Physics.h"
 #include "Level.h"
 #include "GamePersistent.h"
@@ -1393,6 +1394,7 @@ void CActor::UpdateLensFOV(CWeapon* wpn, float value)
 void CActor::UpdateCL()
 {
 	PROF_EVENT("CActor UpdateCL");
+	m_ammo_merge_ready = true;
 
 	if (g_dedicated_server && g_Alive())
 	{
@@ -2532,6 +2534,20 @@ void CActor::OnItemTake(CInventoryItem *inventory_item)
 {
 	CInventoryOwner::OnItemTake(inventory_item);
 	if (OnClient()) return;
+
+	// After the take callback above, so a treasure counts the box before it goes.
+	CWeaponAmmo* ammo = inventory_item->cast_weapon_ammo();
+	if (ammo && m_ammo_merge_ready && IsGameTypeSingle())
+	{
+		xr_vector<CWeaponAmmo*> boxes;
+		for (PIItem item : inventory().m_all)
+		{
+			if (CWeaponAmmo* box = item->cast_weapon_ammo())
+				boxes.push_back(box);
+		}
+		if (ammo->PourInto(boxes))
+			ammo->DestroyObject();
+	}
 }
 
 void CActor::OnItemDrop(CInventoryItem *inventory_item, bool just_before_destroy)
