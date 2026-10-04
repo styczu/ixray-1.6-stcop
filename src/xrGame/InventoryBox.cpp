@@ -10,6 +10,7 @@
 #include "ui/UIActorMenu.h"
 #include "UIGameCustom.h"
 #include "inventory_item.h"
+#include "WeaponAmmo.h"
 
 CInventoryBox::CInventoryBox()
 {
@@ -52,6 +53,23 @@ void CInventoryBox::OnEvent(NET_Packet& P, u16 type)
 					}
 				}
 			};
+
+			// The actor puts a partly filled ammo box in: it tops up the boxes here. Only
+			// while the actor has the box open, never when its contents spawn (treasures
+			// count their own items).
+			CWeaponAmmo* ammo = pIItem->cast_weapon_ammo();
+			if (ammo && m_in_use && IsGameTypeSingle())
+			{
+				xr_vector<CWeaponAmmo*> boxes;
+				for (u16 item_id : m_items)
+				{
+					CObject* obj = Level().Objects.net_Find(item_id);
+					if (CWeaponAmmo* box = obj ? obj->cast_weapon_ammo() : nullptr)
+						boxes.push_back(box);
+				}
+				if (ammo->PourInto(boxes))
+					ammo->DestroyObject();
+			}
 		}break;
 
 	case GE_TRADE_SELL:
@@ -71,7 +89,9 @@ void CInventoryBox::OnEvent(NET_Packet& P, u16 type)
 
 			itm->H_SetParent(nullptr, dont_create_shell);
 
-			if (!IsGameTypeSingle() && CurrentGameUI())
+			// In single player the menu moves its own cells; an item destroyed here (an
+			// emptied ammo box) has to leave the menu too.
+			if ((!IsGameTypeSingle() || just_before_destroy) && CurrentGameUI())
 			{
 				if (CurrentGameUI()->ActorMenu().GetMenuMode() == mmDeadBodySearch)
 				{
