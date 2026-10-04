@@ -373,6 +373,29 @@ CUIDragItem* CUIAmmoCellItem::CreateDragItem()
 	return IsHelper() ? nullptr : inherited::CreateDragItem();
 }
 
+// Full boxes leave the stack first, the partly filled one last: a drag takes the box of
+// the top cell and the next top comes from the last child (PopChild), so the fullest box
+// sits on top and the emptiest is the first child. Counts change in place (merging,
+// reloading), so every frame. Only the boxes swap between the cells, as PopChild does.
+void CUIAmmoCellItem::Update()
+{
+	if (ChildsCount() && !IsHelperOrHasHelperChild())
+	{
+		xr_vector<void*> boxes;
+		boxes.push_back(m_pData);
+		for (CUICellItem* child : m_childs)
+			boxes.push_back(child->m_pData);
+		std::stable_sort(boxes.begin(), boxes.end(), [](void* a, void* b)
+		{
+			return ((CWeaponAmmo*)a)->m_boxCurr < ((CWeaponAmmo*)b)->m_boxCurr;
+		});
+		m_pData = boxes.back();
+		for (u32 i = 0; i < m_childs.size(); ++i)
+			m_childs[i]->m_pData = boxes[i];
+	}
+	inherited::Update();
+}
+
 u32 CUIAmmoCellItem::CalculateAmmoCount()
 {
 	u32 total = IsHelper() ? 0 : object()->m_boxCurr;
