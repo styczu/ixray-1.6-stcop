@@ -7,9 +7,10 @@ class CUITextWnd;
 class CUIProgressBar;
 class CInventoryItem;
 
-// Ammo tooltip: the cartridge's own parameters from its section. Penetration
-// is a bar on the scale of the "Armour" bar (k_ap 1.0 = full); the rest are
-// percentages of the weapon's own value, since the engine multiplies them in.
+// Ammo tooltip: the cartridge's own parameters from its section. Three bars
+// with their numbers (precision from k_disp, hit power k_hit, penetration
+// k_ap on the scale of the "Armour" bar), then the optional lines and the
+// cartridge weight and box size.
 class CUIAmmoParams : public CUIWindow
 {
 public:
@@ -21,17 +22,32 @@ public:
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 private:
+	enum EBar
+	{
+		eBarPrecision,
+		eBarHit,
+		eBarAp,
+		eBarCount
+	};
+
 	enum ERow
 	{
 		eRowPellets,
-		eRowTracer,
-		eRowHit,
-		eRowDist,
-		eRowDisp,
+		eRowPierces,
 		eRowImpair,
+		eRowTracer,
 		eRowMass,
 		eRowBox,
 		eRowCount
+	};
+
+	struct SBar
+	{
+		CUIWindow*		wnd				= nullptr;
+		CUIProgressBar*	bar				= nullptr;
+		CUIStatic*		overflow		= nullptr;
+		CUIStatic*		overflow_fill	= nullptr;
+		CUITextWnd*		value			= nullptr;
 	};
 
 	struct SRow
@@ -42,14 +58,10 @@ private:
 	};
 
 			void	Place				(CUIWindow* wnd, float& h);
-			void	SetPercent			(ERow row, float percent);
+			void	SetBar				(EBar bar, float pos, LPCSTR text, float& h);
 
 	CUIStatic*		m_Prop_line			= nullptr;
-	CUIWindow*		m_ap				= nullptr;
-	CUIProgressBar*	m_ap_bar			= nullptr;
-	CUIStatic*		m_ap_overflow		= nullptr;
-	CUIStatic*		m_ap_overflow_fill	= nullptr;
-	CUIWindow*		m_header			= nullptr;
+	SBar			m_bars[eBarCount];
 	SRow			m_rows[eRowCount];
 	float			m_gap				= 0.0f;
 };
