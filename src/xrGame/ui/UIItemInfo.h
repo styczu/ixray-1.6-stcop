@@ -15,6 +15,7 @@ class CUIFrameWindow;
 class UIInvUpgPropertiesWnd;
 class CUIOutfitInfo;
 class CUIBoosterInfo;
+class CUIAmmoParams;
 class CUICellItem;
 
 extern const char * const 		fieldsCaptionColor;
@@ -47,6 +48,7 @@ public:
 	void				TryAddOutfitInfo	(CInventoryItem& pInvItem, CInventoryItem* pCompareItem);
 	void				TryAddUpgradeInfo	(CInventoryItem& pInvItem);
 	void				TryAddBoosterInfo	(CInventoryItem& pInvItem);
+	void				TryAddAmmoInfo		(CInventoryItem& pInvItem);
 	
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -72,6 +74,7 @@ public:
 	UIInvUpgPropertiesWnd*	UIProperties;
 	CUIOutfitInfo*			UIOutfitInfo;
 	CUIBoosterInfo*			UIBoosterInfo;
+	CUIAmmoParams*			UIAmmoParams;
 
 	Fvector2			UIItemImageSize; 
 	CUIStatic*			UIItemImage;
