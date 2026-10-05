@@ -175,8 +175,13 @@ void CUIAmmoParams::SetInfo(const shared_str& section)
 		// Same comparison as CCustomOutfit::HitThroughArmor: a bullet goes
 		// through when k_ap is above the bone's armour, which the panel shows in
 		// hundredths rounded half up (Protection::ArmorPoints, not required here).
+		// Real cartridges stay at a few hundred; gauss's 999 only means "goes
+		// through everything", so a four-digit number reads as "max".
 		const float ap = pSettings->r_float(sect, "k_ap");
-		xr_sprintf(text, "%d", (int)floorf(ap * 100.0f + 0.5f));
+		if (ap >= 10.0f)
+			xr_strcpy(text, g_pStringTable->translate("ui_uip_ammo_ap_max").c_str());
+		else
+			xr_sprintf(text, "%d", (int)floorf(ap * 100.0f + 0.5f));
 		SetBar(eBarAp, ap, text, h);
 
 		h += m_gap;
