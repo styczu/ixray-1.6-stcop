@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "UIAmmoParams.h"
 #include "UIConditionFormat.h"
+#include "../ProtectionValues.h"
 #include "../inventory_item.h"
 #include "../../xrUI/UIXmlInit.h"
 #include "../../xrUI/UIHelper.h"
@@ -8,14 +9,26 @@
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrEngine/string_table.h"
 
+static LPCSTR ammo_bar_node[] =
+{
+	"precision",
+	"hit",
+	"ap",
+};
+
+static LPCSTR ammo_bar_caption[] =
+{
+	"ui_uip_ammo_precision",
+	"ui_uip_ammo_hit",
+	"ui_uip_ammo_ap",
+};
+
 static LPCSTR ammo_row_caption[] =
 {
 	"ui_uip_ammo_pellets",
-	"ui_uip_ammo_tracer",
-	"ui_uip_ammo_hit",
-	"ui_uip_ammo_dist",
-	"ui_uip_ammo_disp",
+	"ui_uip_ammo_pierces",
 	"ui_uip_ammo_impair",
+	"ui_uip_ammo_tracer",
 	"ui_uip_ammo_mass",
 	"ui_uip_ammo_box",
 };
@@ -27,15 +40,15 @@ CUIAmmoParams::CUIAmmoParams()
 CUIAmmoParams::~CUIAmmoParams()
 {
 	xr_delete(m_Prop_line);
-	xr_delete(m_ap);
-	xr_delete(m_header);
+	for (u32 i = 0; i < eBarCount; ++i)
+		xr_delete(m_bars[i].wnd);
 	for (u32 i = 0; i < eRowCount; ++i)
 		xr_delete(m_rows[i].wnd);
 }
 
-// <ammo_params gap=""> holds the bar row <ap> (caption, progress, overflow,
-// overflow_fill), the <header> of the weapon block and one <row> template
-// (caption, value) for every other line.
+// <ammo_params gap=""> holds one node per bar (<precision>, <hit>, <ap>: caption,
+// progress with its own min/max, overflow, overflow_fill, value) and one <row>
+// template (caption, value) for every other line.
 void CUIAmmoParams::InitFromXml(CUIXml& xml)
 {
 	LPCSTR base = "ammo_params";
@@ -54,23 +67,30 @@ void CUIAmmoParams::InitFromXml(CUIXml& xml)
 		m_Prop_line->SetAutoDelete(false);
 	}
 
-	m_ap = new CUIWindow();
-	m_ap->SetAutoDelete(false);
-	CUIXmlInit::InitWindow(xml, "ap", 0, m_ap);
-	UIHelper::CreateTextWnd(xml, "ap:caption", m_ap)->SetTextST("ui_uip_ammo_ap");
-	m_ap_bar = new CUIProgressBar();
-	m_ap->AttachChild(m_ap_bar);
-	m_ap_bar->SetAutoDelete(true);
-	CUIXmlInit::InitProgressBar(xml, "ap:progress", 0, m_ap_bar);
-	if (xml.NavigateToNode("ap:overflow"))
-		m_ap_overflow = UIHelper::CreateStatic(xml, "ap:overflow", m_ap);
-	if (xml.NavigateToNode("ap:overflow_fill"))
-		m_ap_overflow_fill = UIHelper::CreateStatic(xml, "ap:overflow_fill", m_ap);
-
-	m_header = new CUIWindow();
-	m_header->SetAutoDelete(false);
-	CUIXmlInit::InitWindow(xml, "header", 0, m_header);
-	UIHelper::CreateTextWnd(xml, "header:caption", m_header)->SetTextST("ui_uip_ammo_weapon");
+	string256 buf;
+	for (u32 i = 0; i < eBarCount; ++i)
+	{
+		SBar& bar = m_bars[i];
+		LPCSTR node = ammo_bar_node[i];
+		bar.wnd = new CUIWindow();
+		bar.wnd->SetAutoDelete(false);
+		CUIXmlInit::InitWindow(xml, node, 0, bar.wnd);
+		xr_strconcat(buf, node, ":caption");
+		UIHelper::CreateTextWnd(xml, buf, bar.wnd)->SetTextST(ammo_bar_caption[i]);
+		bar.bar = new CUIProgressBar();
+		bar.wnd->AttachChild(bar.bar);
+		bar.bar->SetAutoDelete(true);
+		xr_strconcat(buf, node, ":progress");
+		CUIXmlInit::InitProgressBar(xml, buf, 0, bar.bar);
+		xr_strconcat(buf, node, ":overflow");
+		if (xml.NavigateToNode(buf))
+			bar.overflow = UIHelper::CreateStatic(xml, buf, bar.wnd);
+		xr_strconcat(buf, node, ":overflow_fill");
+		if (xml.NavigateToNode(buf))
+			bar.overflow_fill = UIHelper::CreateStatic(xml, buf, bar.wnd);
+		xr_strconcat(buf, node, ":value");
+		bar.value = UIHelper::CreateTextWnd(xml, buf, bar.wnd);
+	}
 
 	for (u32 i = 0; i < eRowCount; ++i)
 	{
@@ -88,7 +108,7 @@ void CUIAmmoParams::InitFromXml(CUIXml& xml)
 
 bool CUIAmmoParams::Check(CInventoryItem& item)
 {
-	return m_ap && item.cast_weapon_ammo();
+	return m_bars[eBarAp].wnd && item.cast_weapon_ammo();
 }
 
 void CUIAmmoParams::Place(CUIWindow* wnd, float& h)
@@ -100,17 +120,18 @@ void CUIAmmoParams::Place(CUIWindow* wnd, float& h)
 	AttachChild(wnd);
 }
 
-// Whole percent; below half a percent one or two decimals, so that a real
-// difference does not round away to zero.
-void CUIAmmoParams::SetPercent(ERow row, float percent)
+// Above the bar's maximum: full bar and the overflow triangle.
+void CUIAmmoParams::SetBar(EBar index, float pos, LPCSTR text, float& h)
 {
-	const float magnitude = _abs(percent);
-	const int decimals = magnitude >= 0.5f ? 0 : (magnitude >= 0.05f ? 1 : 2);
-	string32 number;
-	ConditionUi::FormatNumber(number, percent, ConditionUi::DecimalSeparator(), true, decimals);
-	string64 text;
-	xr_sprintf(text, "%s%%", number);
-	m_rows[row].value->SetText(text);
+	SBar& bar = m_bars[index];
+	bar.bar->SetProgressPosImmediate(pos);
+	const bool overflow = pos > bar.bar->GetRange_max();
+	if (bar.overflow)
+		bar.overflow->Show(overflow);
+	if (bar.overflow_fill)
+		bar.overflow_fill->Show(overflow);
+	bar.value->SetText(text);
+	Place(bar.wnd, h);
 }
 
 void CUIAmmoParams::SetInfo(const shared_str& section)
@@ -123,30 +144,72 @@ void CUIAmmoParams::SetInfo(const shared_str& section)
 		h = m_Prop_line->GetWndPos().y + m_Prop_line->GetWndSize().y;
 	}
 	LPCSTR sect = section.c_str();
+	string32 number;
+	string64 text;
 
 	// Grenades and rockets (S_VOG25, S_M209, S_OG7B) are ammo too, but bullet
-	// penetration and weapon multipliers mean nothing for them.
+	// precision, hit power and penetration mean nothing for them.
 	if (pSettings->r_clsid(sect, "class") == TEXT2CLSID("AMMO_S"))
 	{
-		// Same comparison as CCustomOutfit::HitThroughArmor: a bullet goes
-		// through when k_ap is above the bone's armour, the number the panel
-		// shows in hundredths. Above the bar's maximum: the overflow triangle.
-		const float ap = pSettings->r_float(sect, "k_ap");
-		m_ap_bar->SetProgressPosImmediate(ap);
-		const bool overflow = ap > m_ap_bar->GetRange_max();
-		if (m_ap_overflow)
-			m_ap_overflow->Show(overflow);
-		if (m_ap_overflow_fill)
-			m_ap_overflow_fill->Show(overflow);
-		Place(m_ap, h);
-
 		const int pellets = pSettings->r_s32(sect, "buck_shot");
+
+		// Precision = 1 + 99 * log10(5 / k_disp): k_disp 0.5 -> 100, 5.0 -> 1;
+		// k_disp above 5 counts as 5, below 0.5 goes past 100.
+		const float disp = _min(pSettings->r_float(sect, "k_disp"), 5.0f);
+		if (disp > 0.0f)
+		{
+			const float precision = floorf(1.0f + 99.0f * log10f(5.0f / disp) + 0.5f);
+			ConditionUi::FormatNumber(number, precision, ConditionUi::DecimalSeparator(), false, 0);
+			SetBar(eBarPrecision, precision, number, h);
+		}
+
+		// Hit power: k_hit x 100; shot shows it per pellet.
+		const float hit = pSettings->r_float(sect, "k_hit");
+		ConditionUi::FormatNumber(number, hit * 100.0f, ConditionUi::DecimalSeparator(), false, 0);
+		if (pellets > 1)
+			xr_sprintf(text, "%s%s", number, g_pStringTable->translate("ui_uip_ammo_per_pellet").c_str());
+		else
+			xr_strcpy(text, number);
+		SetBar(eBarHit, hit, text, h);
+
+		// Same comparison as CCustomOutfit::HitThroughArmor: a bullet goes
+		// through when k_ap is above the bone's armour, which the panel shows in
+		// hundredths rounded half up (Protection::ArmorPoints, not required here).
+		const float ap = pSettings->r_float(sect, "k_ap");
+		xr_sprintf(text, "%d", (int)floorf(ap * 100.0f + 0.5f));
+		SetBar(eBarAp, ap, text, h);
+
+		h += m_gap;
+
 		if (pellets > 1)
 		{
-			string32 text;
 			xr_sprintf(text, "%d", pellets);
 			m_rows[eRowPellets].value->SetText(text);
 			Place(m_rows[eRowPellets].wnd, h);
+		}
+
+		// The best class it goes through. ArmorClassName counts the threshold
+		// itself as reached, a bullet needs more: the thresholds have two
+		// decimals, so half a hundredth below compares strictly. The first
+		// class (threshold 0) is no armour at all, so it isn't worth a line.
+		LPCSTR pierced = Protection::ArmorClassName(ap - 0.005f);
+		LPCSTR none = Protection::ArmorClassName(0.0f);
+		if (pierced && (!none || xr_strcmp(pierced, none) != 0))
+		{
+			xr_sprintf(text, "%s %s", g_pStringTable->translate("ui_uip_ammo_class_prefix").c_str(), pierced);
+			m_rows[eRowPierces].value->SetText(text);
+			Place(m_rows[eRowPierces].wnd, h);
+		}
+
+		const float impair = pSettings->r_float(sect, "impair");
+		if (!fsimilar(impair, 1.0f))
+		{
+			const float percent = (impair - 1.0f) * 100.0f;
+			ConditionUi::FormatNumber(number, percent, ConditionUi::DecimalSeparator(), true,
+				_abs(percent) >= 0.5f ? 0 : 1);
+			xr_sprintf(text, "%s%%", number);
+			m_rows[eRowImpair].value->SetText(text);
+			Place(m_rows[eRowImpair].wnd, h);
 		}
 
 		if (READ_IF_EXISTS(pSettings, r_bool, sect, "tracer", false))
@@ -154,44 +217,14 @@ void CUIAmmoParams::SetInfo(const shared_str& section)
 			m_rows[eRowTracer].value->SetTextST("ui_uip_ammo_yes");
 			Place(m_rows[eRowTracer].wnd, h);
 		}
-
-		h += m_gap;
-		Place(m_header, h);
-
-		// Shot: k_hit is the weight of one pellet in the weapon's hit power.
-		m_rows[eRowHit].caption->SetTextST(pellets > 1 ? "ui_uip_ammo_hit_pellet" : "ui_uip_ammo_hit");
-		SetPercent(eRowHit, (pSettings->r_float(sect, "k_hit") - 1.0f) * 100.0f);
-		Place(m_rows[eRowHit].wnd, h);
-
-		SetPercent(eRowDist, (pSettings->r_float(sect, "k_dist") - 1.0f) * 100.0f);
-		Place(m_rows[eRowDist].wnd, h);
-
-		// k_disp scales the dispersion cone; grouping is its inverse.
-		const float disp = pSettings->r_float(sect, "k_disp");
-		if (disp > 0.0f)
-		{
-			SetPercent(eRowDisp, (1.0f / disp - 1.0f) * 100.0f);
-			Place(m_rows[eRowDisp].wnd, h);
-		}
-
-		const float impair = pSettings->r_float(sect, "impair");
-		if (!fsimilar(impair, 1.0f))
-		{
-			SetPercent(eRowImpair, (impair - 1.0f) * 100.0f);
-			Place(m_rows[eRowImpair].wnd, h);
-		}
-
-		h += m_gap;
 	}
 
 	// inv_weight is the full box (CWeaponAmmo::Weight scales it by the count).
 	const int box = pSettings->r_s32(sect, "box_size");
 	if (box > 0)
 	{
-		string32 number;
 		ConditionUi::FormatDetailNumber(number, pSettings->r_float(sect, "inv_weight") / box * 1000.0f,
 			ConditionUi::DecimalSeparator(), false, 1);
-		string64 text;
 		xr_sprintf(text, "%s %s", number, g_pStringTable->translate("ui_uip_ammo_unit_g").c_str());
 		m_rows[eRowMass].value->SetText(text);
 		Place(m_rows[eRowMass].wnd, h);
