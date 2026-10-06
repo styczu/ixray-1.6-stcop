@@ -9,6 +9,7 @@ class CUIScrollView;
 class CUIProgressBar;
 class CUIConditionParams;
 class CUIWpnParams;
+class CUIWeaponParams;
 class CUIKnifeParams;
 class CUIArtefactParams;
 class CUIFrameWindow;
@@ -67,6 +68,7 @@ public:
 
 	CUIConditionParams*		UIConditionWnd;
 	CUIWpnParams*			UIWpnParams;
+	CUIWeaponParams*		UIWeaponParams;
 	CUIKnifeParams*			UIKnifeParams;
 	CUIArtefactParams*		UIArtefactParams;
 	CUIArtefactParams*		UIOutfitParams;
