@@ -38,6 +38,8 @@ class CWeapon : public CHudItemObject,
 {
 private:
 	typedef CHudItemObject inherited;
+	// The weapon tooltip reads the live firing parameters (ui-weapon-params).
+	friend class CUIWeaponParams;
 
 public:
 							CWeapon				();
