@@ -178,6 +178,13 @@ bool CWeapon::install_upgrade_disp(const char* section, bool test)
 	result |= process_if_exists(section, "PDM_disp_crouch", m_pdm.m_fPDM_disp_crouch, test);
 	result |= process_if_exists(section, "PDM_disp_crouch_no_acc", m_pdm.m_fPDM_disp_crouch_no_acc, test);
 
+	// Aim handling: the HUD crosshair settling time factor and the time to raise the sights.
+	// Upgrades subtract, so keep the factor non-negative and the time positive (the zoom update divides by it)
+	result |= process_if_exists(section, "crosshair_inertion", m_crosshair_inertion, test);
+	result |= process_if_exists(section, "zoom_rotate_time", m_zoom_params.m_fZoomRotateTime, test);
+	m_crosshair_inertion = std::max(m_crosshair_inertion, 0.0f);
+	m_zoom_params.m_fZoomRotateTime = std::max(m_zoom_params.m_fZoomRotateTime, EPS_L);
+
 	result |= process_if_exists(section, "misfire_probability", misfireProbability, test);
 	result |= process_if_exists(section, "misfire_condition_k", misfireConditionK, test);
 	result |= process_if_exists(section, "condition_shot_dec", conditionDecreasePerShot, test);
