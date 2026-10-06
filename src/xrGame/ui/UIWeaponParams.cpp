@@ -71,8 +71,8 @@ CUIWeaponParams::~CUIWeaponParams()
 
 // <weapon_params gap=""> holds a <row> template (caption, value), one node per
 // bar (<damage>, <accuracy>, <handling>, <recoil>, <reliability>, <durability>:
-// caption, progress as a double bar with color_less/color_more, overflow,
-// overflow_fill, value), an optional <separator> after the gap between the
+// optional icon, caption, progress as a double bar with color_less/color_more,
+// overflow, overflow_fill, value), an optional <separator> after the gap between the
 // groups and <ammo_icons x="" cell="" gap=""> (cell: the height of one inventory
 // grid cell) with a <dim> colour for the ammo the numbers are not for.
 void CUIWeaponParams::InitFromXml(CUIXml& xml)
@@ -120,6 +120,9 @@ void CUIWeaponParams::InitFromXml(CUIXml& xml)
 		bar.wnd = new CUIWindow();
 		bar.wnd->SetAutoDelete(false);
 		CUIXmlInit::InitWindow(xml, node, 0, bar.wnd);
+		xr_strconcat(buf, node, ":icon");
+		if (xml.NavigateToNode(buf))
+			UIHelper::CreateStatic(xml, buf, bar.wnd);
 		xr_strconcat(buf, node, ":caption");
 		UIHelper::CreateTextWnd(xml, buf, bar.wnd)->SetTextST(weapon_bar_caption[i]);
 		bar.bar = new CUIDoubleProgressBar();
