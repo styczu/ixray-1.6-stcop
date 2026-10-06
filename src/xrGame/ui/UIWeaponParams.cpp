@@ -72,8 +72,9 @@ CUIWeaponParams::~CUIWeaponParams()
 // <weapon_params gap=""> holds a <row> template (caption, value), one node per
 // bar (<damage>, <accuracy>, <handling>, <recoil>, <reliability>, <durability>:
 // caption, progress as a double bar with color_less/color_more, overflow,
-// overflow_fill, value), a <separator> drawn between the groups and
-// <ammo_icons x="" height="" gap=""> with a <dim> colour for the ammo not loaded.
+// overflow_fill, value), an optional <separator> after the gap between the
+// groups and <ammo_icons x="" cell="" gap=""> (cell: the height of one inventory
+// grid cell) with a <dim> colour for the ammo the numbers are not for.
 void CUIWeaponParams::InitFromXml(CUIXml& xml)
 {
 	LPCSTR base = "weapon_params";
@@ -141,7 +142,7 @@ void CUIWeaponParams::InitFromXml(CUIXml& xml)
 	{
 		m_icons_x = xml.ReadAttribFlt("ammo_icons", 0, "x", 0.0f);
 		m_icons_gap = xml.ReadAttribFlt("ammo_icons", 0, "gap", 0.0f);
-		m_icons_height = xml.ReadAttribFlt("ammo_icons", 0, "height", 25.0f);
+		m_icons_cell = xml.ReadAttribFlt("ammo_icons", 0, "cell", 40.0f);
 		m_icon_dim_color = CUIXmlInit::GetColor(xml, "ammo_icons:dim", 0, color_rgba(255, 255, 255, 80));
 	}
 
@@ -172,6 +173,10 @@ CUIWeaponParams::SAmmo CUIWeaponParams::RifleAmmo(CWeapon& weapon)
 	if (weapon.IsChamber() && !weapon.m_chamber.empty())
 		next = &weapon.m_chamber;
 
+	// The type picked for the next reload (in launcher mode it is the grenades').
+	if (weapon.m_set_next_ammoType_on_reload != CWeapon::undefined_ammo_type)
+		type = weapon.m_set_next_ammoType_on_reload;
+
 	// Left in launcher mode: PerformSwitchGL swapped the rifle's ammo out.
 	if (CWeaponMagazinedWGrenade* launcher = smart_cast<CWeaponMagazinedWGrenade*>(&weapon))
 	{
@@ -184,14 +189,18 @@ CUIWeaponParams::SAmmo CUIWeaponParams::RifleAmmo(CWeapon& weapon)
 		}
 	}
 
+	// The next shot's cartridge; empty, the type the weapon will load.
 	if (!next->empty())
 	{
 		const CCartridge& cartridge = next->back();
 		ammo.section = cartridge.m_ammoSect;
-		ammo.loaded = cartridge.m_LocalAmmoType;
+		ammo.shown = cartridge.m_LocalAmmoType;
 	}
 	else if (type < ammo.types->size())
+	{
 		ammo.section = (*ammo.types)[type];
+		ammo.shown = type;
+	}
 	return ammo;
 }
 
@@ -299,16 +308,17 @@ void CUIWeaponParams::SetBar(EBar index, const SScore& cur, const SScore& slot, 
 	Place(bar.wnd, h);
 }
 
-// One row of the rifle's ammo icons, wrapped at the tooltip's width; the loaded
-// type at full colour and the rest dimmed, all lit while the weapon is empty.
+// One row of the rifle's ammo icons at their inventory size, wrapped at the
+// tooltip's width; the type the numbers are for at full colour, the rest dimmed.
 void CUIWeaponParams::SetAmmoIcons(const SAmmo& ammo, float& h)
 {
-	if (fis_zero(m_icons_height) || !ammo.types || ammo.types->empty())
+	if (fis_zero(m_icons_cell) || !ammo.types || ammo.types->empty())
 		return;
 
 	h += m_gap;
 	float x = m_icons_x;
 	float row_y = h;
+	float row_height = 0.0f;
 	for (u32 i = 0; i < ammo.types->size(); ++i)
 	{
 		LPCSTR sect = (*ammo.types)[i].c_str();
@@ -332,20 +342,23 @@ void CUIWeaponParams::SetAmmoIcons(const SAmmo& ammo, float& h)
 		icon->TextureOn();
 		icon->SetStretchTexture(true);
 
-		const float width = m_icons_height * tex_rect.width() / tex_rect.height() * UI().get_current_kx();
+		const float height = m_icons_cell * pSettings->r_float(sect, "inv_grid_height");
+		const float width = height * tex_rect.width() / tex_rect.height() * UI().get_current_kx();
 		if (x > m_icons_x && x + width > GetWidth())
 		{
 			x = m_icons_x;
-			row_y += m_icons_height + m_icons_gap;
+			row_y += row_height + m_icons_gap;
+			row_height = 0.0f;
 		}
 		icon->SetWndPos(Fvector2().set(x, row_y));
-		icon->SetWndSize(Fvector2().set(width, m_icons_height));
-		const bool lit = ammo.loaded < 0 || int(i) == ammo.loaded;
+		icon->SetWndSize(Fvector2().set(width, height));
+		row_height = _max(row_height, height);
+		const bool lit = int(i) == ammo.shown;
 		icon->SetTextureColor(lit ? color_rgba(255, 255, 255, 255) : m_icon_dim_color);
 		AttachChild(icon);
 		x += width + m_icons_gap;
 	}
-	h = row_y + m_icons_height;
+	h = row_y + row_height;
 }
 
 void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
