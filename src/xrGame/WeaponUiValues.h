@@ -133,4 +133,51 @@ namespace WeaponUi
     {
         return 100.0f * std::log(shots / ShotsWorst) / std::log(ShotsBest / ShotsWorst);
     }
+
+    // Effective range (model V4): the distance of 50% hits on a 0.5 x 0.8 m
+    // target with the first steadied shot, drop compensated. The weapon's
+    // dispersion w (degrees, above) meets the practical aiming dispersion a of
+    // its platform and sight: a model for this figure, not an engine mechanic.
+    inline float AimingDispersion(float platformDeg, float sightDeg)
+    {
+        return std::sqrt(platformDeg * platformDeg + sightDeg * sightDeg);
+    }
+
+    // Surrogate of the full simulation (the shot spread of random_dir plus the
+    // aiming error): C(mix) / d with d = sqrt(w^2 + a^2).
+    inline float AccuracyRange(float weaponDeg, float aimingDeg)
+    {
+        const float d2 = weaponDeg * weaponDeg + aimingDeg * aimingDeg;
+        if (d2 <= 0.0f)
+            return HUGE_VALF;
+        const float mix = 2.0f * weaponDeg * aimingDeg / d2;
+        return (70.3457f - 0.1438f * mix - 7.9508f * mix * mix) / std::sqrt(d2);
+    }
+
+    // The bullet's reach in the bullet manager's trajectory (air resistance A
+    // takes the start velocity away linearly within 1/A s, gravity apart).
+    inline float BallisticRange(float speed, float airResistance, float gravity)
+    {
+        if (airResistance <= 0.0f)
+            return HUGE_VALF;
+        const float k = gravity / (airResistance * speed);
+        return speed / (2.0f * airResistance) / std::sqrt(1.0f + k * k);
+    }
+
+    inline float EffectiveRange(float accuracyRange, float ballisticRange, float maxDistance)
+    {
+        const float range = accuracyRange < ballisticRange ? accuracyRange : ballisticRange;
+        return range < maxDistance ? range : maxDistance;
+    }
+
+    // The sight's class from its field of view in zoom (degrees, smaller is
+    // closer): red dots keep about the eye's view, high power optics are narrow.
+    inline const char* ScopeSight(float fov, float redDotMinFov, float opticHighMaxFov)
+    {
+        if (fov >= redDotMinFov)
+            return "sight_red_dot";
+        if (fov <= opticHighMaxFov)
+            return "sight_optic_high";
+        return "sight_optic_low";
+    }
 }

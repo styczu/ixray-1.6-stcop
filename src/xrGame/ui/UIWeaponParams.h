@@ -9,7 +9,7 @@ class CInventoryItem;
 class CWeapon;
 
 // Weapon tooltip (ui-weapon-params): the rows (ammo, capacity, rate of fire,
-// bullet speed, dispersion, condition), six bars with their numbers and the
+// bullet speed, dispersion, effective range, condition), six bars with their numbers and the
 // ammo icons with the one the numbers are for lit. Everything is the weapon as it fires
 // now; the bars compare with the weapon in the slot like the stock tooltip.
 class CUIWeaponParams : public CUIWindow
@@ -33,6 +33,7 @@ public:
 		eRowRpm,
 		eRowSpeed,
 		eRowDispersion,
+		eRowRange,
 		eRowCondition,
 		eRowCount
 	};
@@ -82,6 +83,7 @@ private:
 
 	static	SAmmo	RifleAmmo			(CWeapon& weapon);
 	static	void	Measure				(CWeapon& weapon, const SAmmo& ammo, SScore (&scores)[eBarCount], float& dispersion);
+	static	float	MeasureRange		(CWeapon& weapon, const SAmmo& ammo, float dispersion);
 			void	Place				(CUIWindow* wnd, float& h);
 			void	PlaceSeparator		(u32 index, float& h);
 			void	SetRow				(ERow row, LPCSTR text, float& h);
