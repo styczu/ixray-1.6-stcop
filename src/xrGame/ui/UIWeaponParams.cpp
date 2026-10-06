@@ -11,6 +11,7 @@
 #include "WeaponMagazinedWGrenade.h"
 #include "WeaponShotgun.h"
 #include "WeaponAutomaticShotgun.h"
+#include "weaponBM16.h"
 #include "WeaponBinoculars.h"
 #include "WeaponKnife.h"
 #include "Silencer.h"
@@ -386,8 +387,12 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	xr_sprintf(text, "%d %s", ammo.capacity, g_pStringTable->translate("ui_uip_wpn_unit_rounds").c_str());
 	SetRow(eRowCapacity, text, h);
 
-	xr_sprintf(text, "%d %s", iFloor(60.0f / weapon.getRPM() + 0.5f), g_pStringTable->translate("ui_uip_wpn_unit_rpm").c_str());
-	SetRow(eRowRpm, text, h);
+	// A double-barrel's rpm is only the gap between its two barrels, not a rate of fire.
+	if (!dynamic_cast<CWeaponBM16*>(&weapon))
+	{
+		xr_sprintf(text, "%d %s", iFloor(60.0f / weapon.getRPM() + 0.5f), g_pStringTable->translate("ui_uip_wpn_unit_rpm").c_str());
+		SetRow(eRowRpm, text, h);
+	}
 
 	xr_sprintf(text, "%d %s", iFloor(weapon.getStartBulletSpeed() * weapon.cur_silencer_koef.bullet_speed + 0.5f),
 		g_pStringTable->translate("ui_uip_wpn_unit_speed").c_str());
