@@ -10,7 +10,7 @@ class CWeapon;
 
 // Weapon tooltip (ui-weapon-params): the rows (ammo, capacity, rate of fire,
 // bullet speed, dispersion, condition), six bars with their numbers and the
-// ammo icons with the loaded one lit. Everything is the weapon as it fires
+// ammo icons with the one the numbers are for lit. Everything is the weapon as it fires
 // now; the bars compare with the weapon in the slot like the stock tooltip.
 class CUIWeaponParams : public CUIWindow
 {
@@ -75,8 +75,8 @@ private:
 	struct SAmmo
 	{
 		const xr_vector<shared_str>*	types		= nullptr;
-		shared_str						section;		// loaded, or the one to load
-		int								loaded		= -1;	// index in types, -1 when empty
+		shared_str						section;		// the cartridge the numbers are for
+		int								shown		= -1;	// its index in types: the lit icon
 		int								capacity	= 0;
 	};
 
@@ -96,6 +96,6 @@ private:
 	float			m_gap				= 0.0f;
 	float			m_icons_x			= 0.0f;
 	float			m_icons_gap			= 0.0f;
-	float			m_icons_height		= 0.0f;
+	float			m_icons_cell		= 0.0f;
 	u32				m_icon_dim_color	= 0;
 };
