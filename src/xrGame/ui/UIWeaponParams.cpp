@@ -49,6 +49,7 @@ static LPCSTR weapon_row_caption[] =
 	"ui_uip_wpn_rpm",
 	"ui_uip_wpn_speed",
 	"ui_uip_wpn_dispersion",
+	"ui_uip_wpn_range",
 	"ui_uip_wpn_condition",
 };
 
@@ -263,6 +264,51 @@ void CUIWeaponParams::Measure(CWeapon& weapon, const SAmmo& ammo, SScore (&score
 		: DurabilityScore(ShotsPerLife(weapon.conditionDecreasePerShot, impair));
 }
 
+// Effective range (model V4, docs/features/ui-weapon-params.md): the 50% hit
+// distance from the weapon's dispersion and the practical aiming dispersion of
+// its platform and sight, capped by the bullet's flight and the shot's reach.
+// The weapon names its platform (ui_range_platform), [ui_weapon_range] holds
+// "<degrees>, <iron sights>" per platform, the sights and the field of view
+// limits of the scope classes. Negative: no platform, no row.
+float CUIWeaponParams::MeasureRange(CWeapon& weapon, const SAmmo& ammo, float dispersion)
+{
+	using namespace WeaponUi;
+	LPCSTR table = "ui_weapon_range";
+	LPCSTR platform = READ_IF_EXISTS(pSettings, r_string, weapon.cNameSect(), "ui_range_platform", nullptr);
+	// Multiplayer bullets lose speed by their cartridge, not the global resistance.
+	if (!platform || !IsGameTypeSingle() || !pSettings->section_exist(table))
+		return -1.0f;
+	string64 key;
+	xr_strconcat(key, "platform_", platform);
+	if (!pSettings->line_exist(table, key))
+		return -1.0f;
+	LPCSTR line = pSettings->r_string(table, key);
+	string64 item;
+	const float platform_disp = float(atof(_GetItem(line, 0, item)));
+
+	// A scope (attached or built in) by its zoom, otherwise the platform's iron sights.
+	// The scope's own field of view: CurrentZoomFactor gives the launcher's sights in
+	// grenade mode, and the range is the rifle's.
+	string64 sight;
+	if (weapon.IsScopeAttached())
+		xr_strcpy(sight, ScopeSight(weapon.m_zoom_params.m_fScopeZoomFactor, pSettings->r_float(table, "red_dot_min_fov"),
+			pSettings->r_float(table, "optic_high_max_fov")));
+	else
+		xr_strconcat(sight, "sight_", _GetItem(line, 1, item));
+	if (!pSettings->line_exist(table, sight))
+		return -1.0f;
+	const float aiming = AimingDispersion(platform_disp, pSettings->r_float(table, sight));
+
+	// The player's bullet (CShootingObject::FireBullet, CBulletManager in single player).
+	LPCSTR sect = ammo.section.size() ? ammo.section.c_str() : nullptr;
+	const float k_dist = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_dist", 1.0f) : 1.0f;
+	const float speed = weapon.getStartBulletSpeed() * weapon.cur_silencer_koef.bullet_speed;
+	return EffectiveRange(AccuracyRange(dispersion, aiming),
+		BallisticRange(speed, pSettings->r_float("bullet_manager", "air_resistance_k"),
+			pSettings->r_float("bullet_manager", "gravity_const")),
+		weapon.getFireDistance() * k_dist);
+}
+
 void CUIWeaponParams::Place(CUIWindow* wnd, float& h)
 {
 	Fvector2 pos = wnd->GetWndPos();
@@ -417,6 +463,13 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	ConditionUi::FormatNumber(number, dispersion, separator, false, 3);
 	xr_sprintf(text, "%s%s", number, g_pStringTable->translate("ui_uip_wpn_unit_deg").c_str());
 	SetRow(eRowDispersion, text, h);
+
+	const float range = MeasureRange(weapon, ammo, dispersion);
+	if (range >= 0.0f)
+	{
+		xr_sprintf(text, "%d %s", iFloor(range + 0.5f), g_pStringTable->translate("ui_uip_wpn_unit_m").c_str());
+		SetRow(eRowRange, text, h);
+	}
 
 	xr_sprintf(text, "%d%%", iFloor(item.GetConditionToShow() * 100.0f + 0.5f));
 	SetRow(eRowCondition, text, h);
