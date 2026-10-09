@@ -656,6 +656,19 @@ void CUIActorMenu::highlight_item_slot(CUICellItem* cell_item)
 		}
 		return;
 	}
+
+	// Ammo in the backpack lights up the weapon slots whose weapon it loads on a drop.
+	if (item->cast_weapon_ammo() && cell_item->OwnerList() == m_pInventoryBagList)
+	{
+		for (const u16 slot : { u16(INV_SLOT_2), u16(INV_SLOT_3), u16(PISTOL_SLOT) })
+		{
+			if (m_pInvSlotHighlight[slot] && AmmoFitsSlotWeapon(item, slot))
+			{
+				m_pInvSlotHighlight[slot]->Show(true);
+			}
+		}
+		return;
+	}
 }
 void CUIActorMenu::set_highlight_item(CUICellItem* cell_item)
 {
@@ -1043,6 +1056,15 @@ bool CUIActorMenu::CanSetItemToList(PIItem item, CUIDragDropListEx* l, u16& ret_
 bool CUIActorMenu::PistolSlotUsable() const
 {
 	return m_pInvList[PISTOL_SLOT] && m_pActorInvOwner && m_pActorInvOwner->inventory().PistolSlotEnabled();
+}
+
+bool CUIActorMenu::AmmoFitsSlotWeapon(PIItem ammo, u16 slot) const
+{
+	if (slot == PISTOL_SLOT && !PistolSlotUsable())
+		return false;
+
+	PIItem weapon = m_pActorInvOwner ? m_pActorInvOwner->inventory().ItemFromSlot(slot) : nullptr;
+	return CanLoadAmmoInto(weapon, ammo);
 }
 
 bool CUIActorMenu::AddonFitsSlotWeapon(PIItem addon, u16 slot) const

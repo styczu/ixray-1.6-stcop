@@ -96,6 +96,10 @@ bool CUIActorMenu::OnItemDrop(CUICellItem* itm)
 		Irect cells;
 		if (CUICellItem* target = new_owner->AttachTarget(itm, cells))
 		{
+			// Ammo onto a weapon that takes it: loaded, not moved.
+			if (LoadAmmoInto((PIItem)target->m_pData, (PIItem)itm->m_pData))
+				return true;
+
 			AttachAddon((PIItem)target->m_pData);
 			return true;
 		}
