@@ -50,6 +50,12 @@ public:
 	virtual void	ReloadMagazine	();
 	virtual void	UnloadMagazine	(bool spawn_ammo = true);
 
+	// Ammo of the other mode loads that side: switched there and back without the motion
+	// (the check reads that side without switching).
+	virtual bool	CanLoadAmmo		(const shared_str& ammo_sect) override;
+	virtual bool	LoadAmmo		(const shared_str& ammo_sect) override;
+			bool	OtherModeAmmo	(const shared_str& ammo_sect) const;
+
 	virtual bool	Action			(u16 cmd, u32 flags);
 
 	virtual void	UpdateSounds	();
