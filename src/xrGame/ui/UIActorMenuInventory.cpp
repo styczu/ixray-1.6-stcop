@@ -914,7 +914,31 @@ bool CUIActorMenu::CanAttachOnto(CUICellItem* itm, CUICellItem* target)
 {
 	PIItem addon	= (PIItem)itm->m_pData;
 	PIItem weapon	= (PIItem)target->m_pData;
+	if (CanLoadAmmoInto(weapon, addon))
+		return true;
 	return addon && weapon && weapon->CanAttach(addon);
+}
+
+bool CUIActorMenu::CanLoadAmmoInto(PIItem weapon, PIItem ammo)
+{
+	if (!weapon || !ammo || !ammo->cast_weapon_ammo())
+		return false;
+
+	CWeapon* wpn = weapon->cast_weapon();
+	CWeaponMagazined* magazined = wpn ? wpn->cast_weapon_magazined() : nullptr;
+	return magazined && magazined->CanLoadAmmo(ammo->object().cNameSect());
+}
+
+bool CUIActorMenu::LoadAmmoInto(PIItem weapon, PIItem ammo)
+{
+	if (!CanLoadAmmoInto(weapon, ammo))
+		return false;
+
+	weapon->cast_weapon()->cast_weapon_magazined()->LoadAmmo(ammo->object().cNameSect());
+
+	// The box may be the one emptied and dropped.
+	SetCurrentItem(nullptr);
+	return true;
 }
 
 bool CUIActorMenu::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
@@ -923,6 +947,11 @@ bool CUIActorMenu::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, CUIDr
 	PIItem _iitem	= _citem ? (PIItem)_citem->m_pData : nullptr;
 
 	if(!_iitem)						return	false;
+
+	// Ammo from the backpack onto a weapon slot loads the weapon.
+	if (itm && itm->cast_weapon_ammo() && GetListType(new_owner) == iActorSlot && old_owner == m_pInventoryBagList)
+		return LoadAmmoInto(_iitem, itm);
+
 	if(!_iitem->CanAttach(itm))		return	false;
 
 	if(old_owner != m_pInventoryBagList)	return	false;
