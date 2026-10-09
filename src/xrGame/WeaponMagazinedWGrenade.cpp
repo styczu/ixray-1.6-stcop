@@ -702,6 +702,33 @@ void CWeaponMagazinedWGrenade::ReloadMagazine()
 	}
 }
 
+bool CWeaponMagazinedWGrenade::OtherModeAmmo(const shared_str& ammo_sect) const
+{
+	return IsGrenadeLauncherAttached() && std::find(m_ammoTypes2.begin(), m_ammoTypes2.end(), ammo_sect) != m_ammoTypes2.end();
+}
+
+bool CWeaponMagazinedWGrenade::CanLoadAmmo(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::CanLoadAmmo(ammo_sect);
+
+	// The other side as PerformSwitchGL would make it, without switching: this is asked
+	// on every frame of a drag and on a hover.
+	return CanLoadAmmoSide(ammo_sect, m_ammoTypes2, m_magazine2, m_bGrenadeMode ? iMagazineSize2 : 1, !m_bGrenadeMode);
+}
+
+bool CWeaponMagazinedWGrenade::LoadAmmo(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::LoadAmmo(ammo_sect);
+
+	// The idle state LoadAmmo asks for is an event, handled once the mode is back.
+	PerformSwitchGL();
+	const bool loaded = inherited::LoadAmmo(ammo_sect);
+	PerformSwitchGL();
+	return loaded;
+}
+
 void CWeaponMagazinedWGrenade::UnloadMagazine(bool spawn_ammo)
 {
 	inherited::UnloadMagazine(spawn_ammo);
