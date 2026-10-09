@@ -271,6 +271,8 @@ protected:
 	// The weapon in slot takes the addon. The pistol slot counts only while usable and
 	// never for a grenade launcher, as in the context menu.
 	bool						AddonFitsSlotWeapon			(PIItem addon, u16 slot) const;
+	// The weapon in slot loads the ammo (see CanLoadAmmoInto).
+	bool						AmmoFitsSlotWeapon			(PIItem ammo, u16 slot) const;
 	
 	xr_vector<EDDListType>		m_allowed_drops				[iListTypeMax];
 	bool						AllowItemDrops				(EDDListType from, EDDListType to);
@@ -279,6 +281,10 @@ protected:
 	// The backpack's m_f_item_attach: the dragged addon goes onto the weapon under the
 	// cursor when the weapon takes it, as it would in a slot.
 	bool				CanAttachOnto				(CUICellItem* itm, CUICellItem* target);
+	// Ammo dropped from the backpack onto a weapon that takes it: loaded at once, as the
+	// inventory unloads, the old ammo of another type back in the backpack.
+	static bool			CanLoadAmmoInto				(PIItem weapon, PIItem ammo);
+	bool				LoadAmmoInto				(PIItem weapon, PIItem ammo);
 	bool				OnItemStartDrag				(CUICellItem* itm);
 	bool				OnItemDbClick				(CUICellItem* itm);
 	bool				OnItemSelected				(CUICellItem* itm);

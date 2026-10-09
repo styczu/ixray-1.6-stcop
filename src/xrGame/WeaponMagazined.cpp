@@ -761,6 +761,70 @@ void CWeaponMagazined::ReloadMagazine()
 	VERIFY((u32)iAmmoElapsed == m_magazine.size());
 }
 
+bool CWeaponMagazined::CanLoadAmmo(const shared_str& ammo_sect)
+{
+	return CanLoadAmmoSide(ammo_sect, m_ammoTypes, m_magazine, iMagazineSize, IsGrenadeMode());
+}
+
+bool CWeaponMagazined::CanLoadAmmoSide(const shared_str& ammo_sect, const xr_vector<shared_str>& types,
+									   const xr_vector<CCartridge>& magazine, int mag_size, bool grenade_mode)
+{
+	if (!IsGameTypeSingle() || !m_pInventory || IsPending())
+		return false;
+
+	const auto type = std::find(types.begin(), types.end(), ammo_sect);
+	if (type == types.end())
+		return false;
+
+	// Without a box of it ReloadMagazine would take another type.
+	if (!unlimited_ammo() && !m_pInventory->GetAny(ammo_sect.c_str()))
+		return false;
+
+	// GetMagCapacity for this type rather than the one of the next reload.
+	const u8 idx = u8(type - types.begin());
+	int capacity = mag_size;
+	if (!grenade_mode)
+	{
+		for (auto& ammo_pair : m_mags_capacity)
+		{
+			if (ammo_pair.first == idx)
+				capacity = ammo_pair.second;
+		}
+	}
+
+	// Something to do: another type to swap or room left.
+	const bool other_type = !magazine.empty() && magazine.back().m_ammoSect != ammo_sect;
+	return other_type || int(magazine.size()) < capacity;
+}
+
+bool CWeaponMagazined::LoadAmmo(const shared_str& ammo_sect)
+{
+	if (!CanLoadAmmo(ammo_sect))
+		return false;
+
+	m_set_next_ammoType_on_reload = u8(std::find(m_ammoTypes.begin(), m_ammoTypes.end(), ammo_sect) - m_ammoTypes.begin());
+
+	// The end of eReload in OnAnimationEnd, without the animation.
+	int base_mag_size = iMagazineSize;
+	iMagazineSize = GetMagCapacity();
+	ReloadMagazine();
+	iMagazineSize = base_mag_size;
+
+	if (!IsGrenadeMode())
+	{
+		m_bJustAfterReload = true;
+	}
+
+	GiveAmmoFromMagToChamber();
+
+	// As UnloadMagazine: the idle motion of a weapon in hands follows the ammo.
+	if (GetState() == eIdle)
+		SwitchState(eIdle);
+
+	m_BriefInfo_CalcFrame = 0;
+	return true;
+}
+
 bool CWeaponMagazined::HaveCartridgeInInventory(u8 cnt)
 {
 	if (unlimited_ammo())
