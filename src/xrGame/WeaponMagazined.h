@@ -71,6 +71,9 @@ protected:
 protected:
 	virtual void	ReloadMagazine();
 	bool			HaveCartridgeInInventory(u8 cnt);
+	// CanLoadAmmo for one side of the weapon: its ammo types, magazine and size.
+	bool			CanLoadAmmoSide	(const shared_str& ammo_sect, const xr_vector<shared_str>& types,
+									 const xr_vector<CCartridge>& magazine, int mag_size, bool grenade_mode);
 	virtual u8		AddCartridge(u8 cnt);
 			void	ApplySilencerKoeffs();
 			void	ResetSilencerKoeffs();
@@ -117,6 +120,10 @@ public:
 	virtual bool	Action			(u16 cmd, u32 flags);
 	bool			IsAmmoAvailable	();
 	virtual void	UnloadMagazine	(bool spawn_ammo = true);
+
+	// Ammo dropped onto the weapon in the inventory: loaded at once, as the inventory unloads.
+	virtual bool	CanLoadAmmo		(const shared_str& ammo_sect);
+	virtual bool	LoadAmmo		(const shared_str& ammo_sect);
 
 	virtual bool	GetBriefInfo	(II_BriefInfo& info);
 
