@@ -54,6 +54,10 @@ public:
 	// (the check reads that side without switching).
 	virtual bool	CanLoadAmmo		(const shared_str& ammo_sect) override;
 	virtual bool	LoadAmmo		(const shared_str& ammo_sect) override;
+	virtual bool	LoadAmmoCartridge(const shared_str& ammo_sect) override;
+	virtual bool	HoldsOtherAmmo	(const shared_str& ammo_sect) override;
+	virtual void	UnloadAmmoSide	(const shared_str& ammo_sect) override;
+	virtual bool	IsGrenadeAmmo	(const shared_str& ammo_sect) override;
 			bool	OtherModeAmmo	(const shared_str& ammo_sect) const;
 
 	virtual bool	Action			(u16 cmd, u32 flags);

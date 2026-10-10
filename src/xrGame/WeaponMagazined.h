@@ -124,6 +124,14 @@ public:
 	// Ammo dropped onto the weapon in the inventory: loaded at once, as the inventory unloads.
 	virtual bool	CanLoadAmmo		(const shared_str& ammo_sect);
 	virtual bool	LoadAmmo		(const shared_str& ammo_sect);
+	// One round of it, as a tube takes them; the side has to hold this ammo or none.
+	virtual bool	LoadAmmoCartridge(const shared_str& ammo_sect);
+	// The side this ammo goes in holds another ammo, which has to come out first.
+	virtual bool	HoldsOtherAmmo	(const shared_str& ammo_sect);
+	// Unloads the side this ammo goes in, the chamber stays (as a reload leaves it).
+	virtual void	UnloadAmmoSide	(const shared_str& ammo_sect);
+	// It goes in a grenade launcher: the underslung one, an RG-6 or an RPG-7.
+	virtual bool	IsGrenadeAmmo	(const shared_str& ammo_sect);
 
 	virtual bool	GetBriefInfo	(II_BriefInfo& info);
 
