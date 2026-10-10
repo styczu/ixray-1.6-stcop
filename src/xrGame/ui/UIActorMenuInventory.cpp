@@ -24,6 +24,7 @@
 #include "../eatable_item.h"
 #include "../BottleItem.h"
 #include "../WeaponMagazined.h"
+#include "../WeaponShotgun.h"
 #include "../medkit.h"
 #include "../antirad.h"
 #include "../CustomOutfit.h"
@@ -919,9 +920,10 @@ bool CUIActorMenu::CanAttachOnto(CUICellItem* itm, CUICellItem* target)
 	return addon && weapon && weapon->CanAttach(addon);
 }
 
-bool CUIActorMenu::CanLoadAmmoInto(PIItem weapon, PIItem ammo)
+bool CUIActorMenu::CanLoadAmmoInto(PIItem weapon, PIItem ammo) const
 {
-	if (!weapon || !ammo || !ammo->cast_weapon_ammo())
+	// One loading or unloading at a time.
+	if (!weapon || !ammo || !ammo->cast_weapon_ammo() || !m_ammo_steps.empty())
 		return false;
 
 	CWeapon* wpn = weapon->cast_weapon();
@@ -934,11 +936,134 @@ bool CUIActorMenu::LoadAmmoInto(PIItem weapon, PIItem ammo)
 	if (!CanLoadAmmoInto(weapon, ammo))
 		return false;
 
-	weapon->cast_weapon()->cast_weapon_magazined()->LoadAmmo(ammo->object().cNameSect());
+	CWeaponMagazined* magazined = weapon->cast_weapon()->cast_weapon_magazined();
+	const shared_str& sect = ammo->object().cNameSect();
+	const u8 sound = AmmoSoundKind(magazined, sect);
+
+	// Another ammo out first; a shotgun takes the rounds one by one.
+	if (magazined->HoldsOtherAmmo(sect))
+		QueueAmmoStep(weapon, eAmmoUnload, sect, sound);
+	QueueAmmoStep(weapon, sound == eAmmoSndShotgun ? eAmmoCartridge : eAmmoLoad, sect, sound);
 
 	// The box may be the one emptied and dropped.
 	SetCurrentItem(nullptr);
+
+	StartAmmoStep();
 	return true;
+}
+
+u8 CUIActorMenu::AmmoSoundKind(CWeaponMagazined* weapon, const shared_str& ammo)
+{
+	if (weapon->IsGrenadeAmmo(ammo))
+		return eAmmoSndGrenade;
+	if (weapon->IsTriStateReload() || smart_cast<CWeaponShotgun*>(weapon))
+		return eAmmoSndShotgun;
+	// Pistols go in the pistol slot (slot = 1), submachine guns with the rifles.
+	if (weapon->BaseSlot() == INV_SLOT_2)
+		return eAmmoSndPistol;
+	return eAmmoSndRifle;
+}
+
+void CUIActorMenu::QueueAmmoStep(PIItem weapon, EAmmoStep action, const shared_str& ammo, u8 sound)
+{
+	SAmmoStep step;
+	step.weapon	= weapon->object().ID();
+	step.place	= weapon->m_ItemCurrPlace.value;
+	step.action	= action;
+	step.ammo	= ammo;
+	step.sound	= sound;
+	m_ammo_steps.push_back(step);
+}
+
+ref_sound& CUIActorMenu::AmmoStepSound(const SAmmoStep& step)
+{
+	const bool unload = step.action == eAmmoUnload || step.action == eAmmoUnloadAll;
+	return unload ? m_ammo_unload_snd[step.sound] : m_ammo_load_snd[step.sound];
+}
+
+CWeaponMagazined* CUIActorMenu::AmmoStepWeapon(const SAmmoStep& step)
+{
+	// Still the actor's and where it was: moved, dropped or gone cancels.
+	PIItem item = smart_cast<PIItem>(Level().Objects.net_Find(step.weapon));
+	if (!item || item->object().getDestroy() || !m_pActorInvOwner || item->m_pInventory != &m_pActorInvOwner->inventory())
+		return nullptr;
+	if (item->m_ItemCurrPlace.value != step.place)
+		return nullptr;
+
+	CWeapon* weapon = item->cast_weapon();
+	return weapon ? weapon->cast_weapon_magazined() : nullptr;
+}
+
+void CUIActorMenu::StartAmmoStep()
+{
+	while (!m_ammo_steps.empty())
+	{
+		ref_sound& sound = AmmoStepSound(m_ammo_steps.front());
+		if (sound._handle())
+		{
+			sound.play(nullptr, sm_2D);
+			m_ammo_step_end = Device.dwTimeGlobal + iFloor(sound.get_length_sec() * 1000.0f);
+			return;
+		}
+
+		// No sound for this step: done at once.
+		if (!FinishAmmoStep())
+			return;
+	}
+}
+
+bool CUIActorMenu::FinishAmmoStep()
+{
+	const SAmmoStep step = m_ammo_steps.front();
+	m_ammo_steps.erase(m_ammo_steps.begin());
+
+	bool done = false;
+	if (CWeaponMagazined* weapon = AmmoStepWeapon(step))
+	{
+		switch (step.action)
+		{
+		case eAmmoUnload:
+			weapon->UnloadAmmoSide(step.ammo);
+			done = true;
+			break;
+		case eAmmoUnloadAll:
+			// As the context menu did at once: the magazine, and the chamber out of launcher mode.
+			UnloadWeapon(weapon);
+			if (!weapon->IsGrenadeMode())
+				weapon->UnloadChamber();
+			done = true;
+			break;
+		case eAmmoLoad:
+			done = weapon->LoadAmmo(step.ammo);
+			break;
+		case eAmmoCartridge:
+			done = weapon->LoadAmmoCartridge(step.ammo);
+			// The next round while there is room and ammo.
+			if (done && weapon->CanLoadAmmo(step.ammo))
+				m_ammo_steps.insert(m_ammo_steps.begin(), step);
+			break;
+		}
+	}
+
+	if (!done)
+		StopAmmoSteps();
+	return done;
+}
+
+void CUIActorMenu::UpdateAmmoSteps()
+{
+	if (m_ammo_steps.empty() || Device.dwTimeGlobal < m_ammo_step_end)
+		return;
+
+	if (FinishAmmoStep())
+		StartAmmoStep();
+}
+
+void CUIActorMenu::StopAmmoSteps()
+{
+	if (!m_ammo_steps.empty())
+		AmmoStepSound(m_ammo_steps.front()).stop();
+	m_ammo_steps.clear();
 }
 
 bool CUIActorMenu::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
@@ -1148,7 +1273,8 @@ void CUIActorMenu::PropertiesBoxForWeapon( CUICellItem* cell_item, PIItem item, 
 		{
 		}
 	}
-	if (pWeapon->cast_weapon_magazined() != nullptr && IsGameTypeSingleCompatible())
+	// Not while a loading or unloading runs: it ends first.
+	if (pWeapon->cast_weapon_magazined() != nullptr && IsGameTypeSingleCompatible() && m_ammo_steps.empty())
 	{
 		bool b = pWeapon->GetState() != CWeapon::EWeaponStates::eReload && (pWeapon->GetAmmoElapsed() || pWeapon->IsChamber() && pWeapon->GetAmmoChamberElapsed() && !pWeapon->IsGrenadeMode());
 		if (!b)
@@ -1609,11 +1735,9 @@ void CUIActorMenu::ProcessPropertiesBoxClicked(CUIWindow* w, void* d)
 				break;
 			}
 
-			UnloadWeapon(weap_mag);
-			if (!weap_mag->IsGrenadeMode())
-			{
-				weap_mag->UnloadChamber();
-			}
+			// In steps, as long as the unloading sound of the side in use.
+			const shared_str& sect = weap_mag->m_ammoTypes[weap_mag->GetAmmoType()];
+			QueueAmmoStep(weap_mag, eAmmoUnloadAll, sect, AmmoSoundKind(weap_mag, sect));
 			for (u32 i = 0; i < cell_item->ChildsCount(); ++i)
 			{
 				CUICellItem* child_itm = cell_item->Child(i);
@@ -1621,13 +1745,11 @@ void CUIActorMenu::ProcessPropertiesBoxClicked(CUIWindow* w, void* d)
 				CWeaponMagazined* child_weap_mag = weapon ? weapon->cast_weapon_magazined() : nullptr;
 				if (child_weap_mag != nullptr)
 				{
-					UnloadWeapon(child_weap_mag);
-					if (!child_weap_mag->IsGrenadeMode())
-					{
-						child_weap_mag->UnloadChamber();
-					}
+					const shared_str& child_sect = child_weap_mag->m_ammoTypes[child_weap_mag->GetAmmoType()];
+					QueueAmmoStep(child_weap_mag, eAmmoUnloadAll, child_sect, AmmoSoundKind(child_weap_mag, child_sect));
 				}
 			}
+			StartAmmoStep();
 			break;
 		}
 	case INVENTORY_REPAIR:
