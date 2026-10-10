@@ -281,10 +281,36 @@ protected:
 	// The backpack's m_f_item_attach: the dragged addon goes onto the weapon under the
 	// cursor when the weapon takes it, as it would in a slot.
 	bool				CanAttachOnto				(CUICellItem* itm, CUICellItem* target);
-	// Ammo dropped from the backpack onto a weapon that takes it: loaded at once, as the
-	// inventory unloads, the old ammo of another type back in the backpack.
-	static bool			CanLoadAmmoInto				(PIItem weapon, PIItem ammo);
+	// Ammo dropped from the backpack onto a weapon that takes it: the old ammo of another
+	// type comes out first, then the new goes in, each step as long as its sound.
+	bool				CanLoadAmmoInto				(PIItem weapon, PIItem ammo) const;
 	bool				LoadAmmoInto				(PIItem weapon, PIItem ammo);
+
+	// Unloading and loading in steps, each as long as its sound (snd_ammo_* nodes, by the
+	// kind of weapon); a step without a sound is done at once.
+	enum EAmmoStep		{ eAmmoUnload, eAmmoUnloadAll, eAmmoLoad, eAmmoCartridge };
+	enum EAmmoSound		{ eAmmoSndPistol, eAmmoSndRifle, eAmmoSndShotgun, eAmmoSndGrenade, eAmmoSndCount };
+	struct SAmmoStep
+	{
+		u16				weapon;		// object id
+		u16				place;		// SInvItemPlace value when queued: moved = cancelled
+		EAmmoStep		action;
+		shared_str		ammo;		// the side and the ammo it is about
+		u8				sound;		// EAmmoSound
+	};
+	ref_sound			m_ammo_unload_snd			[eAmmoSndCount];
+	ref_sound			m_ammo_load_snd				[eAmmoSndCount];
+	xr_vector<SAmmoStep> m_ammo_steps;				// the first one is running
+	u32					m_ammo_step_end;
+
+	u8					AmmoSoundKind				(CWeaponMagazined* weapon, const shared_str& ammo);
+	void				QueueAmmoStep				(PIItem weapon, EAmmoStep action, const shared_str& ammo, u8 sound);
+	ref_sound&			AmmoStepSound				(const SAmmoStep& step);
+	CWeaponMagazined*	AmmoStepWeapon				(const SAmmoStep& step);
+	void				StartAmmoStep				();
+	bool				FinishAmmoStep				();
+	void				UpdateAmmoSteps				();
+	void				StopAmmoSteps				();
 	bool				OnItemStartDrag				(CUICellItem* itm);
 	bool				OnItemDbClick				(CUICellItem* itm);
 	bool				OnItemSelected				(CUICellItem* itm);
