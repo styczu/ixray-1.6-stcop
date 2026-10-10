@@ -729,6 +729,44 @@ bool CWeaponMagazinedWGrenade::LoadAmmo(const shared_str& ammo_sect)
 	return loaded;
 }
 
+bool CWeaponMagazinedWGrenade::LoadAmmoCartridge(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::LoadAmmoCartridge(ammo_sect);
+
+	PerformSwitchGL();
+	const bool loaded = inherited::LoadAmmoCartridge(ammo_sect);
+	PerformSwitchGL();
+	return loaded;
+}
+
+bool CWeaponMagazinedWGrenade::HoldsOtherAmmo(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::HoldsOtherAmmo(ammo_sect);
+
+	return !m_magazine2.empty() && m_magazine2.back().m_ammoSect != ammo_sect;
+}
+
+void CWeaponMagazinedWGrenade::UnloadAmmoSide(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+	{
+		inherited::UnloadAmmoSide(ammo_sect);
+		return;
+	}
+
+	PerformSwitchGL();
+	inherited::UnloadAmmoSide(ammo_sect);
+	PerformSwitchGL();
+}
+
+bool CWeaponMagazinedWGrenade::IsGrenadeAmmo(const shared_str& ammo_sect)
+{
+	const xr_vector<shared_str>& grenades = m_bGrenadeMode ? m_ammoTypes : m_ammoTypes2;
+	return std::find(grenades.begin(), grenades.end(), ammo_sect) != grenades.end();
+}
+
 void CWeaponMagazinedWGrenade::UnloadMagazine(bool spawn_ammo)
 {
 	inherited::UnloadMagazine(spawn_ammo);

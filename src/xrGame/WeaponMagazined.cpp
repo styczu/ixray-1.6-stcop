@@ -825,6 +825,37 @@ bool CWeaponMagazined::LoadAmmo(const shared_str& ammo_sect)
 	return true;
 }
 
+bool CWeaponMagazined::LoadAmmoCartridge(const shared_str& ammo_sect)
+{
+	if (HoldsOtherAmmo(ammo_sect) || !CanLoadAmmo(ammo_sect))
+		return false;
+
+	m_set_next_ammoType_on_reload = u8(std::find(m_ammoTypes.begin(), m_ammoTypes.end(), ammo_sect) - m_ammoTypes.begin());
+	AddCartridge(1);
+
+	if (GetState() == eIdle)
+		SwitchState(eIdle);
+
+	m_BriefInfo_CalcFrame = 0;
+	return true;
+}
+
+bool CWeaponMagazined::HoldsOtherAmmo(const shared_str& ammo_sect)
+{
+	return !m_magazine.empty() && m_magazine.back().m_ammoSect != ammo_sect;
+}
+
+void CWeaponMagazined::UnloadAmmoSide(const shared_str& /*ammo_sect*/)
+{
+	UnloadMagazine();
+	m_BriefInfo_CalcFrame = 0;
+}
+
+bool CWeaponMagazined::IsGrenadeAmmo(const shared_str& /*ammo_sect*/)
+{
+	return cast_weapon_rpg7() != nullptr || cast_weapon_rg6() != nullptr;
+}
+
 bool CWeaponMagazined::HaveCartridgeInInventory(u8 cnt)
 {
 	if (unlimited_ammo())
