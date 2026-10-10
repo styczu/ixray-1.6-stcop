@@ -237,6 +237,8 @@ void CUIActorMenu::Show(bool status)
 		m_ActorStateInfo->UpdateActorInfo	(m_pActorInvOwner);
 	}else
 	{
+		// Closing cuts a loading or unloading short: the steps done stay done.
+		StopAmmoSteps						();
 		PlaySnd								(eSndClose);
 		SetMenuMode							(mmUndefined);
 	}
@@ -259,6 +261,7 @@ void CUIActorMenu::Update()
 	{ // all mode
 		m_last_time = Device.dwTimeGlobal;
 		m_ActorStateInfo->UpdateActorInfo( m_pActorInvOwner );
+		UpdateAmmoSteps();
 
 		if (!IsGameTypeSingle())
 			UpdateActorMoneyMP();

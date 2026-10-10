@@ -349,6 +349,19 @@ void CUIActorMenu::Construct()
 	::Sound->create						(sounds[eAttachAddon],	uiXml.Read("snd_attach_addon",	0,	nullptr),st_Effect,sg_SourceType);
 	::Sound->create						(sounds[eDetachAddon],	uiXml.Read("snd_detach_addon",	0,	nullptr),st_Effect,sg_SourceType);
 	::Sound->create						(sounds[eItemUse],		uiXml.Read("snd_item_use",		0,	nullptr),st_Effect,sg_SourceType);
+
+	// Optional: without a node that step of loading or unloading is done at once.
+	const LPCSTR ammo_kinds[eAmmoSndCount] = { "pistol", "rifle", "shotgun", "grenade" };
+	for (u8 kind = 0; kind < eAmmoSndCount; ++kind)
+	{
+		string64 node;
+		xr_sprintf(node, "snd_ammo_unload_%s", ammo_kinds[kind]);
+		if (LPCSTR name = uiXml.Read(node, 0, nullptr))
+			::Sound->create(m_ammo_unload_snd[kind], name, st_Effect, sg_SourceType);
+		xr_sprintf(node, "snd_ammo_load_%s", ammo_kinds[kind]);
+		if (LPCSTR name = uiXml.Read(node, 0, nullptr))
+			::Sound->create(m_ammo_load_snd[kind], name, st_Effect, sg_SourceType);
+	}
 	uiXml.SetLocalRoot					(stored_root);
 
 	m_ItemInfo							= new CUIItemInfo();
@@ -440,6 +453,7 @@ void CUIActorMenu::Construct()
 	SetActor						(nullptr);
 	SetPartner						(nullptr);
 	SetInvBox						(nullptr);
+	m_ammo_step_end					= 0;
 
 	m_actor_trade					= nullptr;
 	m_partner_trade					= nullptr;
