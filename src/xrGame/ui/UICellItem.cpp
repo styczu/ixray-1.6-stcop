@@ -479,6 +479,21 @@ void CUICellItem::PlaceUpgradeIcon()
 	m_upgrade->SetWndPos		(pos);
 }
 
+// Another label in a corner of the icon, with the inset of the count; the width
+// follows the string, so it is called after the text is set.
+void CUICellItem::PlaceCornerText(CUIStatic* text, bool right, bool bottom)
+{
+	text->AdjustWidthToText		();
+
+	const Fvector2 size			= GetWndSize();
+	const Fvector2 text_size	= text->GetWndSize();
+
+	Fvector2 pos;
+	pos.x						= right ? size.x - text_size.x - kCountTextMargin : kCountTextMargin;
+	pos.y						= bottom ? size.y - text_size.y - kCountTextMargin : kCountTextMargin;
+	text->SetWndPos				(pos);
+}
+
 void CUICellItem::Mark( bool status )
 {
 	m_cur_mark = status;
