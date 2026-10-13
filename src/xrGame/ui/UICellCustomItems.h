@@ -75,6 +75,10 @@ struct SWeaponIconLayer
 	xr_vector<shared_str>	scopes;			// on only while one of these scopes is attached
 };
 
+// The rounds in the weapon's own magazine (the rifle side with a grenade launcher) and
+// its size; false without a magazine.
+bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity);
+
 class CUIWeaponCellItem :public CUIInventoryCellItem
 {
 	typedef  CUIInventoryCellItem	inherited;
