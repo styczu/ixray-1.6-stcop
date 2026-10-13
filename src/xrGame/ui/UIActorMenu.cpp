@@ -27,6 +27,7 @@
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrUI/UICursor.h"
 #include "UICellItem.h"
+#include "UICellCustomItems.h"
 #include "UICharacterInfo.h"
 #include "UIItemInfo.h"
 #include "UIDragDropListEx.h"
@@ -262,6 +263,7 @@ void CUIActorMenu::Update()
 		m_last_time = Device.dwTimeGlobal;
 		m_ActorStateInfo->UpdateActorInfo( m_pActorInvOwner );
 		UpdateAmmoSteps();
+		UpdateSlotAmmo();
 
 		if (!IsGameTypeSingle())
 			UpdateActorMoneyMP();
@@ -1094,6 +1096,29 @@ u16 CUIActorMenu::SlotForItem(PIItem item) const
 
 	return PISTOL_SLOT;
 }
+// The rounds of the weapon in each slot that has a slot_ammo node, "15/15", placed by
+// the XML outside the slot's grid; only while the slot is on screen.
+void CUIActorMenu::UpdateSlotAmmo()
+{
+	for (u8 i = 1; i <= m_slot_count; ++i)
+	{
+		CUIStatic* text = m_pInvSlotAmmo[i];
+		if (!text)
+			continue;
+
+		CWeapon* weapon		= smart_cast<CWeapon*>(m_pActorInvOwner->inventory().ItemFromSlot(i));
+		int count = 0, capacity = 0;
+		const bool shown	= m_pInvList[i] && m_pInvList[i]->IsShown() && weapon_loaded_ammo(weapon, count, capacity);
+		if (shown)
+		{
+			string32 str;
+			xr_sprintf(str, "%d/%d", count, capacity);
+			text->TextItemControl()->SetText(str);
+		}
+		text->Show(shown);
+	}
+}
+
 void CUIActorMenu::UpdateConditionProgressBars()
 {
 	for (u8 i = 1; i <= m_slot_count; ++i)
