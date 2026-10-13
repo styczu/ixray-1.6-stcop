@@ -93,6 +93,11 @@ protected:
 	xr_vector<CUIStatic*>		m_layer_icons;				// one per layer, null while it is off
 	u32							m_layers_on = 0;			// a bit per layer
 	bool mScopeBack = false;
+	CUIStatic*					m_condition_text = nullptr;	// "75%" in place of the bar, in lists with bars
+	CUIStatic*					m_ammo_text = nullptr;		// loaded rounds, "15/15"
+	CUIStatic*					CreateCornerText			();
+	void						UpdateCornerTexts			();
+	virtual	void				UpdateItemText				();
 	void						CreateIcon					(eAddonType);
 	void						DestroyIcon					(eAddonType);
 	void						RefreshOffset				();
