@@ -523,7 +523,7 @@ CUIStatic* CUIWeaponCellItem::CreateCornerText()
 // reads 0/15. With a grenade launcher it is the rifle side in either mode (the *2
 // members hold it while the launcher is in use). False without a magazine: knife,
 // binoculars.
-static bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity)
+bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity)
 {
 	CWeaponMagazined* magazined			= smart_cast<CWeaponMagazined*>(weapon);
 	if (!magazined)
@@ -544,8 +544,9 @@ void CUIWeaponCellItem::UpdateItemText()
 }
 
 // The condition as a number in place of the bar and the loaded rounds, both along the
-// bottom edge in lists that show bars (bag, trade, boxes, bodies); elsewhere (slots,
-// which keep their own bar) the rounds alone in the top right corner.
+// bottom edge in lists that show bars (bag, trade, boxes, bodies). Slots show neither:
+// they keep their own bar, and the rounds go to the slot's slot_ammo
+// (CUIActorMenu::UpdateSlotAmmo).
 void CUIWeaponCellItem::UpdateCornerTexts()
 {
 	const bool bars			= m_pParentList && m_pParentList->GetConditionProgBarVisibility();
@@ -561,12 +562,12 @@ void CUIWeaponCellItem::UpdateCornerTexts()
 	m_condition_text->Show	(condition);
 
 	int count = 0, capacity = 0;
-	const bool magazine		= weapon_loaded_ammo(object(), count, capacity);
+	const bool magazine		= bars && weapon_loaded_ammo(object(), count, capacity);
 	if (magazine)
 	{
 		xr_sprintf			(str, "%d/%d", count, capacity);
 		m_ammo_text->TextItemControl()->SetText(str);
-		PlaceCornerText		(m_ammo_text, true, bars);
+		PlaceCornerText		(m_ammo_text, true, true);
 	}
 	m_ammo_text->Show		(magazine);
 
