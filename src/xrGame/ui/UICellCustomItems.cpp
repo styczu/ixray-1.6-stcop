@@ -1037,28 +1037,11 @@ CUIDragItem* CUIWeaponCellItem::CreateDragItem()
 	return				i;
 }
 
+// Weapons never stack: each one keeps its own cell, so its loaded ammo can be seen
+// (a stack showed the top weapon only, and nothing compared the ammo).
 bool CUIWeaponCellItem::EqualTo(CUICellItem* itm)
 {
-	if(!inherited::EqualTo(itm))	return false;
-
-	CUIWeaponCellItem* ci			= smart_cast<CUIWeaponCellItem*>(itm);
-	if(!ci)							return false;
-
-//	bool b_addons					= ( (object()->GetAddonsState() == ci->object()->GetAddonsState()) );
-	if ( object()->GetAddonsState() != ci->object()->GetAddonsState() )
-	{
-		return false;
-	}
-	if(this->is_scope() && ci->is_scope())
-	{
-		if ( object()->GetScopeName() != ci->object()->GetScopeName() )
-		{
-			return false;
-		}
-	}
-//	bool b_place					= ( (object()->m_eItemCurrPlace == ci->object()->m_eItemCurrPlace) );
-
-	return true;
+	return false;
 }
 
 CBuyItemCustomDrawCell::CBuyItemCustomDrawCell	(LPCSTR str, CGameFont* pFont)
