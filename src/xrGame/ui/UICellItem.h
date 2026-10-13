@@ -45,6 +45,7 @@ protected:
 	virtual void			UpdateItemText			();
 			void			PlaceCountText			();
 			void			PlaceUpgradeIcon		();
+			void			PlaceCornerText			(CUIStatic* text, bool right, bool bottom);
 			void			init					();
 public:
 							CUICellItem				();
