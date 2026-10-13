@@ -77,6 +77,10 @@ struct SWeaponIconLayer
 											// only without (0), either way (-1)
 };
 
+// The rounds in the weapon's own magazine (the rifle side with a grenade launcher) and
+// its size; false without a magazine.
+bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity);
+
 class CUIWeaponCellItem :public CUIInventoryCellItem
 {
 	typedef  CUIInventoryCellItem	inherited;

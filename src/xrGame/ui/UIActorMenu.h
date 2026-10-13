@@ -109,6 +109,7 @@ protected:
 	u8							m_slot_count;
 	CUIStatic*					m_pInvSlotHighlight[LAST_SLOT + 1];
 	CUIProgressBar*				m_pInvSlotProgress[LAST_SLOT + 1];
+	CUIStatic*					m_pInvSlotAmmo[LAST_SLOT + 1];		// slot_ammo: rounds of the weapon in the slot
 	CUIDragDropListEx*			m_pInvList[LAST_SLOT + 1];
 
 	CUIStatic*					m_InvSlot2Highlight = nullptr;
@@ -444,6 +445,7 @@ public:
 	void						PutAllToPartner				(CUIWindow* w, void* d);
 	void						TakeAllFromInventoryBox		();
 	void						UpdateConditionProgressBars	();
+	void						UpdateSlotAmmo				();
 
 	void OnSuccessRepairMP(PIItem item);
 	const UIInvUpgradeInfo* GetUpgradeInfo() const { return m_upgrade_info; }
