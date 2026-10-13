@@ -132,6 +132,7 @@ void CUIActorMenu::Construct()
 		m_pInvList[i] = nullptr;
 		m_pInvSlotHighlight[i] = nullptr;
 		m_pInvSlotProgress[i] = nullptr;
+		m_pInvSlotAmmo[i] = nullptr;
 	}
 
 	XML_NODE* stored_root = uiXml.GetLocalRoot();
@@ -162,6 +163,15 @@ void CUIActorMenu::Construct()
 			CUIXmlInit::InitStatic(uiXml, "slot_highlight", 0, m_pInvSlotHighlight[i]);
 			m_pInvSlotHighlight[i]->SetAutoDelete(true);
 			m_pInvSlotHighlight[i]->Show(false);
+		}
+
+		if (uiXml.NavigateToNode("slot_ammo"))
+		{
+			m_pInvSlotAmmo[i] = new CUIStatic();
+			AttachChild(m_pInvSlotAmmo[i]);
+			CUIXmlInit::InitStatic(uiXml, "slot_ammo", 0, m_pInvSlotAmmo[i]);
+			m_pInvSlotAmmo[i]->SetAutoDelete(true);
+			m_pInvSlotAmmo[i]->Show(false);
 		}
 
 		if (uiXml.GetNodesNum(slot_node, "slot_progress") == 0)
