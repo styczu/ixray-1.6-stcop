@@ -1124,8 +1124,10 @@ void CUIActorMenu::UpdateConditionProgressBars()
 	for (u8 i = 1; i <= m_slot_count; ++i)
 	{
 		PIItem itm = m_pActorInvOwner->inventory().ItemFromSlot(i);
+		// Twenty steps rounded down, one per segment of the slot bar texture: 5% each, and
+		// two of them make one tenth of the cell bar (CUICellItem::UpdateConditionProgressBar).
 		if (m_pInvSlotProgress[i])
-			m_pInvSlotProgress[i]->SetProgressPos(itm ? iCeil(itm->GetCondition() * 10.f) / 10.f : 0);
+			m_pInvSlotProgress[i]->SetProgressPos(itm ? iFloor(itm->GetCondition() * 20.f) / 20.f : 0);
 	}
 
 	//Highlight 'equipped' items in actor bag
