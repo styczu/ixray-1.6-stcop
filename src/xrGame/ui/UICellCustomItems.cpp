@@ -478,10 +478,6 @@ CUIWeaponCellItem::CUIWeaponCellItem(CWeapon* itm)
 		m_addon_offset[eLauncher].set(object()->GetGrenadeLauncherX(), object()->GetGrenadeLauncherY());
 	}
 
-	// The condition shows as a number instead of the bar (UpdateCornerTexts).
-	DetachChild				(m_pConditionState);
-	m_pConditionState		= nullptr;
-	m_condition_text		= CreateCornerText();
 	m_ammo_text				= CreateCornerText();
 }
 
@@ -522,30 +518,21 @@ bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity)
 }
 
 // Every frame, from CUIInventoryCellItem::Update. A weapon never stacks, so the count
-// stays hidden; the corners show the condition and the rounds instead.
+// stays hidden; the bottom right corner shows the rounds instead.
 void CUIWeaponCellItem::UpdateItemText()
 {
 	inherited::UpdateItemText	();
 	UpdateCornerTexts			();
 }
 
-// The condition as a number in place of the bar and the loaded rounds, both along the
-// bottom edge in lists that show bars (bag, trade, boxes, bodies). Slots show neither:
-// they keep their own bar, and the rounds go to the slot's slot_ammo
+// The loaded rounds in the bottom right corner, in lists that show bars (bag, trade,
+// boxes, bodies); the condition is the bar along the bottom edge, as for other items.
+// Slots show no rounds in the cell: they go to the slot's slot_ammo
 // (CUIActorMenu::UpdateSlotAmmo).
 void CUIWeaponCellItem::UpdateCornerTexts()
 {
 	const bool bars			= m_pParentList && m_pParentList->GetConditionProgBarVisibility();
 	string64 str;
-
-	const bool condition	= bars && object()->IsUsingCondition();
-	if (condition)
-	{
-		xr_sprintf			(str, "%d%%", iFloor(object()->GetConditionToShow() * 100.0f + 0.5f));
-		m_condition_text->TextItemControl()->SetText(str);
-		PlaceCornerText		(m_condition_text, false, true);
-	}
-	m_condition_text->Show	(condition);
 
 	int count = 0, capacity = 0;
 	const bool magazine		= bars && weapon_loaded_ammo(object(), count, capacity);
@@ -557,18 +544,19 @@ void CUIWeaponCellItem::UpdateCornerTexts()
 	}
 	m_ammo_text->Show		(magazine);
 
-	// Last among the children, so they are drawn over the addon icons, which attach
-	// later; only when something has come after them.
+	// The bar and the rounds last among the children, so they are drawn over the addon
+	// icons, which attach later; only when something has come after them.
 	WINDOW_LIST& children	= GetChildWndList();
 	const size_t n			= children.size();
-	if (n >= 2 && children[n - 2] == m_condition_text && children[n - 1] == m_ammo_text)
+	if (n >= 2 && children[n - 2] == m_pConditionState && children[n - 1] == m_ammo_text)
 		return;
-	for (CUIStatic* text : { m_condition_text, m_ammo_text })
+	CUIWindow* const on_top[] = { m_pConditionState, m_ammo_text };
+	for (CUIWindow* child : on_top)
 	{
-		text->SetAutoDelete	(false);
-		DetachChild			(text);
-		text->SetAutoDelete	(true);
-		AttachChild			(text);
+		child->SetAutoDelete(false);
+		DetachChild			(child);
+		child->SetAutoDelete(true);
+		AttachChild			(child);
 	}
 }
 
