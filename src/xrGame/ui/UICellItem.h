@@ -44,6 +44,7 @@ protected:
 
 	virtual void			UpdateItemText			();
 			void			PlaceCountText			();
+			void			PlaceUpgradeIcon		();
 			void			init					();
 public:
 							CUICellItem				();
