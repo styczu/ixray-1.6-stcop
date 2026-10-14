@@ -382,7 +382,10 @@ void CUICellItem::UpdateConditionProgressBar()
 			float y = itm_grid_size.y * (cell_size.y + cell_space.y) - m_pConditionState->GetHeight() - 2.f;
 
 			m_pConditionState->SetWndPos(Fvector2().set(x,y));
-			m_pConditionState->SetProgressPos( iCeil( cond * 13.0f ) / 13.0f );
+			// Ten steps rounded down, one per segment of the bar texture: a segment lights
+			// only once the whole tenth is there, so 7 segments mean at least 70%, the
+			// condition traders still buy at.
+			m_pConditionState->SetProgressPos( iFloor( cond * 10.0f ) / 10.0f );
 			m_pConditionState->Show(true);
 			return;
 		}
