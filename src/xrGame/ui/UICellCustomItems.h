@@ -68,8 +68,9 @@ struct SWeaponIconLayer
 	bool					below = false;	// below_weapon
 	xr_vector<shared_str>	upgrades;		// on only while one of them is installed
 	xr_vector<shared_str>	no_upgrades;	// off while one of them is installed
-	u8						no_addons = 0;	// off while one of these is on, a bit per
+	u8						addons = 0;		// on only while all of these are on, a bit per
 											// CUIWeaponCellItem::eAddonType
+	u8						no_addons = 0;	// off while one of these is on, bits as addons
 	xr_vector<shared_str>	scopes;			// on only while one of these scopes is attached
 };
 
