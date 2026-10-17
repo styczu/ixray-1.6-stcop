@@ -120,8 +120,8 @@ IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, cons
 //   shift of the whole icon, both in the units of the addons' <prefix>_x/_y with icon
 //   keys;
 // - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...),
-//   no_addons (silencer, scope, grenade_launcher) and scopes (scope names as the
-//   weapon's scopes or scope_name give them).
+//   addons, no_addons (silencer, scope, grenade_launcher) and scopes (scope names as
+//   the weapon's scopes or scope_name give them).
 // False with the reason in error when the layer can't be used.
 IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scaled_offsets, float weapon_scale, SWeaponIconLayer& l, string256& error)
 {
@@ -141,11 +141,13 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 		}
 	}
 
-	l.no_addons = 0;
-	if (pSettings->line_exist(section, "no_addons"))
+	auto addon_bits = [&](LPCSTR key, u8& bits)
 	{
+		bits = 0;
+		if (!pSettings->line_exist(section, key))
+			return true;
 		static const LPCSTR addons[] = { "silencer", "scope", "grenade_launcher" };	// eAddonType order
-		LPCSTR list = pSettings->r_string(section, "no_addons");
+		LPCSTR list = pSettings->r_string(section, key);
 		for (int i = 0, count = _GetItemCount(list); i < count; ++i)
 		{
 			string128 name;
@@ -156,12 +158,15 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 					bit = u8(1 << a);
 			if (!bit)
 			{
-				xr_sprintf(error, "unknown addon '%s' in no_addons", name);
+				xr_sprintf(error, "unknown addon '%s' in %s", name, key);
 				return false;
 			}
-			l.no_addons |= bit;
+			bits |= bit;
 		}
-	}
+		return true;
+	};
+	if (!addon_bits("addons", l.addons) || !addon_bits("no_addons", l.no_addons))
+		return false;
 
 	auto ids = [&](LPCSTR key, xr_vector<shared_str>& res)
 	{
@@ -200,10 +205,12 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 }
 
 // A layer is on while all of its conditions hold: one of upgrades is installed, none of
-// no_upgrades is, none of no_addons is on, the attached scope is one of scopes. A layer
-// without conditions is always on.
+// no_upgrades is, all of addons are on, none of no_addons is, the attached scope is one
+// of scopes. A layer without conditions is always on.
 IC bool weapon_icon_layer_on(const SWeaponIconLayer& l, u8 addons_on, CWeapon& weapon)
 {
+	if ((l.addons & addons_on) != l.addons)
+		return false;
 	if (l.no_addons & addons_on)
 		return false;
 	if (!l.scopes.empty())
