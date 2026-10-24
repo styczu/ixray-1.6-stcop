@@ -118,7 +118,8 @@ IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, cons
 //   (required), inv_scale (the weapon's when on its atlas, else 1);
 // - inv_layer_x, inv_layer_y: where it goes on the weapon's sprite, weapon_offset_x/_y:
 //   shift of the whole icon, both in the units of the addons' <prefix>_x/_y with icon
-//   keys;
+//   keys; weapon_extra_width/_height: cells the weapon's cell grows by, as the addons'
+//   <prefix>_weapon_extra_width/_height;
 // - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...),
 //   addons, no_addons (silencer, scope, grenade_launcher), scopes (scope names as
 //   the weapon's scopes or scope_name give them) and loaded (true or false).
@@ -200,7 +201,8 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 					READ_IF_EXISTS(pSettings, r_float, section, "inv_layer_y", 0.0f) / unit);
 	icon.shift.set(READ_IF_EXISTS(pSettings, r_float, section, "weapon_offset_x", 0.0f) / unit,
 				   READ_IF_EXISTS(pSettings, r_float, section, "weapon_offset_y", 0.0f) / unit);
-	icon.extra.set(0, 0);
+	icon.extra.set(int(READ_IF_EXISTS(pSettings, r_u32, section, "weapon_extra_width", 0)),
+				   int(READ_IF_EXISTS(pSettings, r_u32, section, "weapon_extra_height", 0)));
 	icon.custom = true;
 	return true;
 }
@@ -584,16 +586,17 @@ Ivector2 CUIWeaponCellItem::AttachedAddonsExtra()
 	return res;
 }
 
-// Base size plus <p>_weapon_extra_width/_height of the addons that are on, never beyond
-// the list's columns, nor its rows unless it grows. Vertical lists (the weapon slots)
-// keep the base size.
+// Base size plus <p>_weapon_extra_width/_height of the addons and weapon_extra_width/
+// _height of the layers that are on, never beyond the list's columns, nor its rows unless
+// it grows. Vertical lists (the weapon slots) keep the base size.
 Ivector2 CUIWeaponCellItem::DesiredGridSize(CUIDragDropListEx* list)
 {
 	Ivector2 size = m_base_grid;
 	if (!list || list->GetVerticalPlacement())
 		return size;
 
-	const Ivector2 extra		= AttachedAddonsExtra();
+	Ivector2 extra				= AttachedAddonsExtra();
+	extra.add					(LayersExtra(ActiveLayers()));
 	const Ivector2& capacity	= list->CellsCapacity();
 	size.x						= weapon_grid_len(m_base_grid.x, extra.x, capacity.x);
 	size.y						= list->IsAutoGrow() ? m_base_grid.y + extra.y
@@ -654,6 +657,17 @@ Fvector2 CUIWeaponCellItem::LayersShift(u32 layers_on)
 	for (u32 i = 0; i < m_layers.size(); ++i)
 		if (layers_on & (1u << i))
 			res.add(m_layers[i].icon.shift);
+	return res;
+}
+
+// Sum of the weapon_extra_width/_height of the layers that are on.
+Ivector2 CUIWeaponCellItem::LayersExtra(u32 layers_on)
+{
+	Ivector2 res;
+	res.set(0, 0);
+	for (u32 i = 0; i < m_layers.size(); ++i)
+		if (layers_on & (1u << i))
+			res.add(m_layers[i].icon.extra);
 	return res;
 }
 
