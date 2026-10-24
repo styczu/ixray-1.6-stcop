@@ -120,8 +120,8 @@ IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, cons
 //   shift of the whole icon, both in the units of the addons' <prefix>_x/_y with icon
 //   keys;
 // - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...),
-//   addons, no_addons (silencer, scope, grenade_launcher) and scopes (scope names as
-//   the weapon's scopes or scope_name give them).
+//   addons, no_addons (silencer, scope, grenade_launcher), scopes (scope names as
+//   the weapon's scopes or scope_name give them) and loaded (true or false).
 // False with the reason in error when the layer can't be used.
 IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scaled_offsets, float weapon_scale, SWeaponIconLayer& l, string256& error)
 {
@@ -183,6 +183,7 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 	ids("upgrades", l.upgrades);
 	ids("no_upgrades", l.no_upgrades);
 	ids("scopes", l.scopes);
+	l.loaded = pSettings->line_exist(section, "loaded") ? s8(!!pSettings->r_bool(section, "loaded")) : s8(-1);
 
 	l.section = section;
 	l.below = !!READ_IF_EXISTS(pSettings, r_bool, section, "below_weapon", false);
@@ -206,7 +207,9 @@ IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scale
 
 // A layer is on while all of its conditions hold: one of upgrades is installed, none of
 // no_upgrades is, all of addons are on, none of no_addons is, the attached scope is one
-// of scopes. A layer without conditions is always on.
+// of scopes, the weapon holds ammo in its magazine or chamber (loaded = true) or none
+// (loaded = false); with a grenade launcher only the weapon's own ammo counts. A layer
+// without conditions is always on.
 IC bool weapon_icon_layer_on(const SWeaponIconLayer& l, u8 addons_on, CWeapon& weapon)
 {
 	if ((l.addons & addons_on) != l.addons)
@@ -220,6 +223,8 @@ IC bool weapon_icon_layer_on(const SWeaponIconLayer& l, u8 addons_on, CWeapon& w
 		if (std::find(l.scopes.begin(), l.scopes.end(), weapon.GetScopeName()) == l.scopes.end())
 			return false;
 	}
+	if (l.loaded >= 0 && (weapon.GetCurrentElapsed(false) + weapon.GetAmmoChamberElapsed() > 0) != !!l.loaded)
+		return false;
 	CInventoryItem& item = weapon;
 	for (const shared_str& id : l.no_upgrades)
 		if (item.has_upgrade(id))
