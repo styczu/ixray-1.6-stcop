@@ -102,6 +102,7 @@ protected:
 	void						ApplyWeaponShift			();
 	u32							ActiveLayers				();
 	Fvector2					LayersShift					(u32 layers_on);
+	Ivector2					LayersExtra					(u32 layers_on);
 	void						InitLayers					(bool b_rotate);
 	void						DrawLayers					(bool below);
 	CUIStatic*					GetIcon						(eAddonType);
