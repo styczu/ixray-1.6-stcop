@@ -72,6 +72,8 @@ struct SWeaponIconLayer
 											// CUIWeaponCellItem::eAddonType
 	u8						no_addons = 0;	// off while one of these is on, bits as addons
 	xr_vector<shared_str>	scopes;			// on only while one of these scopes is attached
+	s8						loaded = -1;	// on only with ammo in the magazine or chamber (1),
+											// only without (0), either way (-1)
 };
 
 class CUIWeaponCellItem :public CUIInventoryCellItem
