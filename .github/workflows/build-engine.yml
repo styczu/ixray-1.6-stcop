@@ -43,7 +43,7 @@ jobs:
         platform:
           - x64
         config:
-          - RelWithDebInfo
+          - Release
 
     runs-on: ${{ matrix.system }}
 
