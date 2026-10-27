@@ -27,6 +27,8 @@ ENGINE_API CTimer loading_save_timer;
 ENGINE_API bool loading_save_timer_started = false;
 ENGINE_API xr_atomic_bool g_bRendering = false;
 extern ENGINE_API float psHUD_FOV;
+extern ENGINE_API bool g_stats_log;
+ENGINE_API bool StatsLogActive();
 
 BOOL g_bLoaded = FALSE;
 ref_light precache_light = 0;
@@ -185,7 +187,7 @@ void CRenderDevice::on_idle		()
 	SDL_SetWindowMouseGrab(g_AppInfo.Window, !g_dedicated_server && Focus);
 	SDL_SetWindowRelativeMouseMode(g_AppInfo.Window, !g_dedicated_server && Focus);
 
-	g_bEnableStatGather = psDeviceFlags.test(rsStatistic);
+	g_bEnableStatGather = psDeviceFlags.test(rsStatistic) || g_stats_log;
 
 	if (!g_loading_events.empty())
 	{
@@ -295,7 +297,7 @@ void CRenderDevice::on_idle		()
 			if (Begin())
 			{
 				seqRender.Process(rp_Render);
-				if (psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || Statistic->errors.size())
+				if (psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || Statistic->errors.size() || StatsLogActive())
 					Statistic->Show();
 
 				End();

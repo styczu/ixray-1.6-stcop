@@ -654,6 +654,7 @@ extern int			g_ErrorLineCount;
 extern bool			dsEnableGamepad;
 extern int g_dwFPSlimit;
 extern bool IsFpsShow;
+extern ENGINE_API bool g_stats_log;
 
 extern bool use_smoothed_delta;
 
@@ -714,6 +715,7 @@ void CCC_Register()
 
 	//CMD3(CCC_Mask,		"rs_refresh_60hz",		&psDeviceFlags,		rsRefresh60hz			);
 	CMD3(CCC_Mask,		"rs_stats",				&psDeviceFlags,		rsStatistic				);
+	CMD2(CCC_Boolean,	"rs_stats_log",			&g_stats_log);
 	CMD4(CCC_Float,		"rs_vis_distance",		&psVisDistance,		0.4f,	1.0f			);
 	CMD3(CCC_Mask,		"r_actor_shadow",		&psGameFlags,		rsActorShadow			);
 
