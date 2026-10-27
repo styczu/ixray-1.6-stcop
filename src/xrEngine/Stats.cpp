@@ -11,6 +11,183 @@ int g_ErrorLineCount = 15;
 Flags32 g_stats_flags = {0};
 
 ENGINE_API bool g_bDisableRedText = false;
+ENGINE_API bool g_stats_log = false;
+
+namespace
+{
+	// rs_stats_log: once a second, one CSV row with the per-frame average and maximum
+	// of the rs_stats timers, so a stutter shows up as a spike in the maximum.
+	struct StatsLogTimer
+	{
+		const char* name;
+		CStatTimer CStats::* timer;
+	};
+
+	const StatsLogTimer s_log_timers[] =
+	{
+		{"engine", &CStats::EngineTOTAL},
+		{"sheduler", &CStats::Sheduler},
+		{"update_cl", &CStats::UpdateClient},
+		{"physics", &CStats::Physics},
+		{"ph_collision", &CStats::ph_collision},
+		{"ph_core", &CStats::ph_core},
+		{"animation", &CStats::Animation},
+		{"ai_think", &CStats::AI_Think},
+		{"ai_range", &CStats::AI_Range},
+		{"ai_path", &CStats::AI_Path},
+		{"ai_node", &CStats::AI_Node},
+		{"ai_vis", &CStats::AI_Vis},
+		{"ai_vis_query", &CStats::AI_Vis_Query},
+		{"ai_vis_ray", &CStats::AI_Vis_RayTests},
+		{"render", &CStats::RenderTOTAL},
+		{"r_calc", &CStats::RenderCALC},
+		{"r_hom", &CStats::RenderCALC_HOM},
+		{"r_dump", &CStats::RenderDUMP},
+		{"r_rt", &CStats::RenderDUMP_RT},
+		{"r_skin", &CStats::RenderDUMP_SKIN},
+		{"r_wait", &CStats::RenderDUMP_Wait},
+		{"r_wait_s", &CStats::RenderDUMP_Wait_S},
+		{"r_hud", &CStats::RenderDUMP_HUD},
+		{"r_glows", &CStats::RenderDUMP_Glows},
+		{"r_lights", &CStats::RenderDUMP_Lights},
+		{"r_wallmarks", &CStats::RenderDUMP_WM},
+		{"r_dt_vis", &CStats::RenderDUMP_DT_VIS},
+		{"r_dt_render", &CStats::RenderDUMP_DT_Render},
+		{"r_dt_cache", &CStats::RenderDUMP_DT_Cache},
+		{"r_pcalc", &CStats::RenderDUMP_Pcalc},
+		{"r_scalc", &CStats::RenderDUMP_Scalc},
+		{"r_srender", &CStats::RenderDUMP_Srender},
+		{"sound", &CStats::Sound},
+		{"cl_ray", &CStats::clRAY},
+		{"cl_box", &CStats::clBOX},
+	};
+
+	constexpr size_t s_log_count = sizeof(s_log_timers) / sizeof(s_log_timers[0]);
+
+	struct StatsLogState
+	{
+		FILE* file = nullptr;
+		CTimer clock;
+		float last_frame = 0.f;
+		u32 frames = 0;
+		float frame_sum = 0.f;
+		float frame_max = 0.f;
+		float sum[s_log_count] = {};
+		float max[s_log_count] = {};
+		u64 calls[s_log_count] = {};
+		u64 wallmarks_static = 0;
+		u64 wallmarks_dynamic = 0;
+		u64 wallmarks_tris = 0;
+		u64 details = 0;
+		u64 clients_active = 0;
+		u64 particles_active = 0;
+	};
+
+	StatsLogState s_log;
+	float s_log_time = 0.f;
+
+	void StatsLogReset()
+	{
+		FILE* file = s_log.file;
+		s_log = StatsLogState();
+		s_log.file = file;
+		s_log.clock.Start();
+	}
+
+	void StatsLogClose()
+	{
+		if (s_log.file)
+		{
+			fclose(s_log.file);
+			s_log.file = nullptr;
+		}
+	}
+
+	void StatsLogFrame(const CStats& stats)
+	{
+		if (!g_stats_log)
+		{
+			StatsLogClose();
+			return;
+		}
+
+		if (!s_log.file)
+		{
+			string64 stamp;
+			Time time;
+			xr_sprintf(stamp, "%s.%s.%s-%s.%s.%s", time.GetYearString().c_str(), time.GetMonthString().c_str(),
+				time.GetDayString().c_str(), time.GetHoursString().c_str(), time.GetMinutesString().c_str(),
+				time.GetSecondsString().c_str());
+
+			string_path name, path;
+			xr_sprintf(name, "ixray-stats-%s.csv", stamp);
+			FS.update_path(path, "$logs$", name);
+			s_log.file = fopen(path, "w");
+			if (!s_log.file)
+			{
+				Msg("! rs_stats_log: can't open [%s]", path);
+				g_stats_log = false;
+				return;
+			}
+
+			Msg("* rs_stats_log: writing [%s]", path);
+			fprintf(s_log.file, "time_s,frames,fps,frame_avg_ms,frame_max_ms");
+			for (const StatsLogTimer& column : s_log_timers)
+			{
+				fprintf(s_log.file, ",%s_avg_ms,%s_max_ms,%s_calls", column.name, column.name, column.name);
+			}
+			fprintf(s_log.file, ",wm_static,wm_dynamic,wm_tris,details,clients_active,particles_active\n");
+			fflush(s_log.file);
+			s_log_time = 0.f;
+			StatsLogReset();
+			return;
+		}
+
+		const float now = s_log.clock.GetElapsed_sec();
+		const float frame_ms = (now - s_log.last_frame) * 1000.f;
+		s_log.last_frame = now;
+
+		s_log.frames++;
+		s_log.frame_sum += frame_ms;
+		s_log.frame_max = std::max(s_log.frame_max, frame_ms);
+
+		for (size_t i = 0; i < s_log_count; ++i)
+		{
+			const CStatTimer& timer = stats.*(s_log_timers[i].timer);
+			s_log.sum[i] += timer.result;
+			s_log.max[i] = std::max(s_log.max[i], timer.result);
+			s_log.calls[i] += timer.count;
+		}
+
+		s_log.wallmarks_static += stats.RenderDUMP_WMS_Count;
+		s_log.wallmarks_dynamic += stats.RenderDUMP_WMD_Count;
+		s_log.wallmarks_tris += stats.RenderDUMP_WMT_Count;
+		s_log.details += stats.RenderDUMP_DT_Count;
+		s_log.clients_active += stats.UpdateClient_active;
+		s_log.particles_active += stats.Particles_active;
+
+		if (now < 1.f)
+		{
+			return;
+		}
+
+		const float frames = float(s_log.frames);
+		s_log_time += now;
+
+		fprintf(s_log.file, "%.1f,%u,%.1f,%.2f,%.2f", s_log_time, s_log.frames, frames / now, s_log.frame_sum / frames,
+			s_log.frame_max);
+		for (size_t i = 0; i < s_log_count; ++i)
+		{
+			fprintf(s_log.file, ",%.3f,%.3f,%.1f", s_log.sum[i] / frames, s_log.max[i], float(s_log.calls[i]) / frames);
+		}
+		fprintf(s_log.file, ",%.0f,%.0f,%.0f,%.0f,%.0f,%.0f\n", float(s_log.wallmarks_static) / frames,
+			float(s_log.wallmarks_dynamic) / frames, float(s_log.wallmarks_tris) / frames,
+			float(s_log.details) / frames, float(s_log.clients_active) / frames,
+			float(s_log.particles_active) / frames);
+		fflush(s_log.file);
+		StatsLogReset();
+	}
+}
 
 CStats::CStats	()
 {
@@ -120,6 +297,8 @@ void CStats::Show()
 		else						fMem_calls	=	.9f*fMem_calls + .1f*mem_count;
 		Memory.stat_calls	= 0		;
 	}
+
+	StatsLogFrame(*this);
 	
 	if (g_dedicated_server)
 		return;
@@ -127,7 +306,9 @@ void CStats::Show()
 	int frm = 2000;
 	div_t ddd = div(Device.dwFrame,frm);
 	
-	if( ddd.rem < frm/2.0f )
+	// rs_stats_log alone calls Show() for the timers only, without the overlay
+	const bool overlay = psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || !errors.empty();
+	if (overlay && ddd.rem < frm/2.0f)
 		{
 		pFont->SetColor	(0xFFFFFFFF	);
 		pFont->OutSet	(0,0);
@@ -382,6 +563,7 @@ void CStats::OnDeviceCreate			()
 
 void CStats::OnDeviceDestroy		()
 {
+	StatsLogClose();
 	xrLogger::RemoveLogCallback(_LogCallback);
 	xr_delete	(pFont);
 }
@@ -427,7 +609,7 @@ void CStats::OnRender()
 	}
 #endif
 	
-	if (psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || !Device.Statistic->errors.empty())
+	if (psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || !Device.Statistic->errors.empty() || g_stats_log || s_log.file)
 	{
 		Device.Statistic->Show();
 	}

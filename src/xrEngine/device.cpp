@@ -19,6 +19,7 @@ ENGINE_API bool loading_save_timer_started = false;
 ENGINE_API xr_atomic_bool g_bRendering = false;
 extern ENGINE_API float psHUD_FOV;
 bool IsFpsShow = false;
+extern ENGINE_API bool g_stats_log;
 
 bool g_bLoaded = false;
 ref_light precache_light = 0;
@@ -162,7 +163,7 @@ void CRenderDevice::on_idle		()
 	SDL_SetWindowMouseGrab(g_AppInfo.Window, !g_dedicated_server && Focus);
 	SDL_SetWindowRelativeMouseMode(g_AppInfo.Window, !g_dedicated_server && Focus);
 
-	g_bEnableStatGather = psDeviceFlags.test(rsStatistic);
+	g_bEnableStatGather = psDeviceFlags.test(rsStatistic) || g_stats_log;
 
 	if (Autotest::Active())
 		Autotest::FrameBegin();

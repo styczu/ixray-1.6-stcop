@@ -670,6 +670,7 @@ extern int			g_ErrorLineCount;
 extern int fps_limit;
 extern int main_menu_fps_limit;
 extern bool IsFpsShow;
+extern ENGINE_API bool g_stats_log;
 extern float fps_smoothing_alpha;
 
 extern bool use_smoothed_delta;
@@ -785,6 +786,7 @@ void CCC_Register()
 
 	//CMD3(CCC_Mask32,		"rs_refresh_60hz",		&psDeviceFlags,		rsRefresh60hz			);
 	CMD3(CCC_Mask32,		"rs_stats",				&psDeviceFlags,		rsStatistic				);
+	CMD2(CCC_Boolean,		"rs_stats_log",			&g_stats_log);
 	CMD4(CCC_Float,		"rs_vis_distance",		&psVisDistance,		0.4f,	1.0f			);
 	CMD3(CCC_Mask32,		"r_actor_shadow",		&psGameFlags,		rsActorShadow			);
 
