@@ -94,6 +94,76 @@ namespace
 
 	StatsLogState s_log;
 	float s_log_time = 0.f;
+	FILE* s_sound_file = nullptr;
+	u32 s_log_rows = 0;
+
+	// Every 5 s: the sound emitters grouped by file, so hundreds of sources can be traced
+	// to the sounds (and the addons) that create them. Owners are not read: an emitter's
+	// object pointer may be stale.
+	void SoundLogDump(float time)
+	{
+		struct Group
+		{
+			shared_str name;
+			u32 count = 0;
+			u32 rendered = 0;
+			u32 positional = 0;
+			u32 inaudible = 0;
+			float distance = 0.f;
+			int type = 0;
+			int game_type = 0;
+		};
+
+		CSound_stats_ext sounds;
+		::Sound->statistic(nullptr, &sounds);
+
+		xr_map<shared_str, Group> groups;
+		Group total;
+		for (const CSound_stats_ext::SItem& item : sounds.items)
+		{
+			Group& group = groups[item.name];
+			for (Group* target : {&group, &total})
+			{
+				target->count++;
+				target->rendered += item._rendered;
+				if (item._3D)
+				{
+					const float distance = item.params.position.distance_to(Device.vCameraPosition);
+					target->positional++;
+					target->distance += distance;
+					target->inaudible += distance > item.params.max_distance;
+				}
+			}
+			group.name = item.name;
+			group.type = item.type;
+			group.game_type = item.game_type;
+		}
+
+		xr_vector<Group> sorted;
+		for (const auto& [name, group] : groups)
+		{
+			sorted.push_back(group);
+		}
+		std::sort(sorted.begin(), sorted.end(), [](const Group& a, const Group& b) { return a.count > b.count; });
+		if (sorted.size() > 25)
+		{
+			sorted.resize(25);
+		}
+
+		auto write = [time](const Group& group, const char* name)
+		{
+			fprintf(s_sound_file, "%.1f,%s,%u,%u,%u,%u,%.0f,%d,0x%08x\n", time, name, group.count, group.rendered,
+				group.positional, group.inaudible, group.positional ? group.distance / group.positional : 0.f,
+				group.type, group.game_type);
+		};
+
+		write(total, "<all>");
+		for (const Group& group : sorted)
+		{
+			write(group, group.name.size() ? group.name.c_str() : "<no owner>");
+		}
+		fflush(s_sound_file);
+	}
 
 	void StatsLogReset()
 	{
@@ -109,6 +179,11 @@ namespace
 		{
 			fclose(s_log.file);
 			s_log.file = nullptr;
+		}
+		if (s_sound_file)
+		{
+			fclose(s_sound_file);
+			s_sound_file = nullptr;
 		}
 	}
 
@@ -140,6 +215,17 @@ namespace
 			}
 
 			Msg("* rs_stats_log: writing [%s]", path);
+
+			xr_sprintf(name, "ixray-sounds-%s.csv", stamp);
+			FS.update_path(path, "$logs$", name);
+			s_sound_file = fopen(path, "w");
+			if (s_sound_file)
+			{
+				fprintf(s_sound_file, "time_s,sound,emitters,rendered,positional,inaudible,avg_distance_m,s_type,game_type\n");
+				fflush(s_sound_file);
+				Msg("* rs_stats_log: writing [%s]", path);
+			}
+			s_log_rows = 0;
 			fprintf(s_log.file, "time_s,frames,fps,frame_avg_ms,frame_max_ms");
 			for (const StatsLogTimer& column : s_log_timers)
 			{
@@ -216,6 +302,10 @@ namespace
 			float(s_log.snd_events) / frames, s_log.snd_cache_hits, s_log.snd_cache_misses,
 			s_log.sheduler_load_sum / frames, s_log.sheduler_load_max);
 		fflush(s_log.file);
+		if (s_sound_file && ++s_log_rows % 5 == 0)
+		{
+			SoundLogDump(s_log_time);
+		}
 		StatsLogReset();
 	}
 }
