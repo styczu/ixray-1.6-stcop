@@ -81,6 +81,15 @@ namespace
 		u64 details = 0;
 		u64 clients_active = 0;
 		u64 particles_active = 0;
+		u64 snd_rendered = 0;
+		u32 snd_rendered_max = 0;
+		u64 snd_simulated = 0;
+		u32 snd_simulated_max = 0;
+		u64 snd_events = 0;
+		u64 snd_cache_hits = 0;
+		u64 snd_cache_misses = 0;
+		float sheduler_load_sum = 0.f;
+		float sheduler_load_max = 0.f;
 	};
 
 	StatsLogState s_log;
@@ -136,7 +145,9 @@ namespace
 			{
 				fprintf(s_log.file, ",%s_avg_ms,%s_max_ms,%s_calls", column.name, column.name, column.name);
 			}
-			fprintf(s_log.file, ",wm_static,wm_dynamic,wm_tris,details,clients_active,particles_active\n");
+			fprintf(s_log.file, ",wm_static,wm_dynamic,wm_tris,details,clients_active,particles_active");
+			fprintf(s_log.file, ",snd_rendered,snd_rendered_max,snd_simulated,snd_simulated_max,snd_events"
+				",snd_cache_hits,snd_cache_misses,sheduler_load_ms,sheduler_load_max_ms\n");
 			fflush(s_log.file);
 			s_log_time = 0.f;
 			StatsLogReset();
@@ -166,6 +177,22 @@ namespace
 		s_log.clients_active += stats.UpdateClient_active;
 		s_log.particles_active += stats.Particles_active;
 
+		// Sound sources playing on a target / all emitters; statistic() also resets the
+		// cache counters, so with rs_stats on the overlay's HIT/MISS shows only the rest.
+		CSound_stats sound;
+		::Sound->statistic(&sound, nullptr);
+		s_log.snd_rendered += sound._rendered;
+		s_log.snd_rendered_max = std::max(s_log.snd_rendered_max, sound._rendered);
+		s_log.snd_simulated += sound._simulated;
+		s_log.snd_simulated_max = std::max(s_log.snd_simulated_max, sound._simulated);
+		s_log.snd_events += sound._events;
+		s_log.snd_cache_hits += sound._cache_hits;
+		s_log.snd_cache_misses += sound._cache_misses;
+
+		// The sheduler's adaptive budget per frame (psShedulerCurrent, 3..66 ms).
+		s_log.sheduler_load_sum += stats.fShedulerLoad;
+		s_log.sheduler_load_max = std::max(s_log.sheduler_load_max, stats.fShedulerLoad);
+
 		if (now < 1.f)
 		{
 			return;
@@ -180,10 +207,14 @@ namespace
 		{
 			fprintf(s_log.file, ",%.3f,%.3f,%.1f", s_log.sum[i] / frames, s_log.max[i], float(s_log.calls[i]) / frames);
 		}
-		fprintf(s_log.file, ",%.0f,%.0f,%.0f,%.0f,%.0f,%.0f\n", float(s_log.wallmarks_static) / frames,
+		fprintf(s_log.file, ",%.0f,%.0f,%.0f,%.0f,%.0f,%.0f", float(s_log.wallmarks_static) / frames,
 			float(s_log.wallmarks_dynamic) / frames, float(s_log.wallmarks_tris) / frames,
 			float(s_log.details) / frames, float(s_log.clients_active) / frames,
 			float(s_log.particles_active) / frames);
+		fprintf(s_log.file, ",%.1f,%u,%.1f,%u,%.1f,%llu,%llu,%.2f,%.2f\n", float(s_log.snd_rendered) / frames,
+			s_log.snd_rendered_max, float(s_log.snd_simulated) / frames, s_log.snd_simulated_max,
+			float(s_log.snd_events) / frames, s_log.snd_cache_hits, s_log.snd_cache_misses,
+			s_log.sheduler_load_sum / frames, s_log.sheduler_load_max);
 		fflush(s_log.file);
 		StatsLogReset();
 	}
