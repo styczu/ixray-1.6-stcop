@@ -567,7 +567,8 @@ void CUIActorMenuBase::PropertiesBoxForWeapon(CUICellItem* cell_item, PIItem ite
 		{
 		}
 	}
-	if (pWeapon->cast_weapon_magazined() != nullptr && IsGameTypeSingleCompatible())
+	// Not while an unloading runs: it ends first.
+	if (pWeapon->cast_weapon_magazined() != nullptr && IsGameTypeSingleCompatible() && m_unload_steps.empty())
 	{
 		bool b = (pWeapon->GetAmmoElapsed() || pWeapon->IsChamber() && pWeapon->GetAmmoChamberElapsed());
 		if (!b)
@@ -954,6 +955,22 @@ void CUIActorMenuBase::ProcessPropertiesBoxClicked(CUIWindow* w, void* d)
 			CWeaponMagazined* weap_mag = weapon ? weapon->cast_weapon_magazined() : nullptr;
 			if (weap_mag == nullptr)
 			{
+				break;
+			}
+
+			if (IsGameTypeSingle())
+			{
+				// In steps, each as long as its sound; the ammo goes to the actor.
+				if (CanUnloadWeapon(weap_mag))
+					QueueUnload(weap_mag);
+				for (u32 i = 0; i < cell_item->ChildsCount(); ++i)
+				{
+					weapon = (CWeapon*)cell_item->Child(i)->m_pData;
+					CWeaponMagazined* child_weap_mag = weapon ? weapon->cast_weapon_magazined() : nullptr;
+					if (CanUnloadWeapon(child_weap_mag))
+						QueueUnload(child_weap_mag);
+				}
+				StartUnloadStep();
 				break;
 			}
 
