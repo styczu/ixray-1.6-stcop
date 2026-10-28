@@ -689,7 +689,9 @@ float CGameFont::WidthOf(const char* str)
 
 	if (!IsUTF8(str))
 	{
-		const xr_string utf8 = Platform::ANSI_TO_UTF8(str);
+		// Ta sama strona kodowa co w MasterOut - inaczej szerokosc liczona
+		// jest z glifow innego jezyka (np. cyrylicy dla tekstu CP1250).
+		const xr_string utf8 = Localization::AnsiToUtf8(str, Localization::GetActiveCodepage());
 		return WidthOf(utf8.c_str());
 	}
 
