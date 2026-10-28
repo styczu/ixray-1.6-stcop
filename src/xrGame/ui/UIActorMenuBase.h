@@ -123,6 +123,33 @@ protected:
 	void						UnloadWeapon				(CWeaponMagazined* pWnp);
 	void						UnloadWeaponItem			(CWeaponMagazined* pWpn);
 	void						UnloadAllWeaponsFromRuck	();
+
+	// Unloading in steps, each as long as its sound (snd_ammo_unload_<kind> nodes); a step
+	// without a sound is done at once. A shotgun gives up its rounds one by one. The ammo
+	// goes to the actor, also from the weapon of a corpse or a stash being searched.
+	enum EUnloadStep			{ eUnloadWeapon, eUnloadCartridge };
+	enum EUnloadSound			{ eUnloadSndPistol, eUnloadSndRifle, eUnloadSndShotgun, eUnloadSndGrenade, eUnloadSndCount };
+	struct SUnloadStep
+	{
+		u16						weapon;		// object id
+		u16						parent;		// owner when queued: another one cancels
+		u16						place;		// SInvItemPlace value when queued: moved = cancelled
+		EUnloadStep				action;
+		u8						sound;		// EUnloadSound
+	};
+	ref_sound					m_unload_snd				[eUnloadSndCount];
+	xr_vector<SUnloadStep>		m_unload_steps;				// the first one is running
+	u32							m_unload_step_end = 0;
+	u16							m_hovered_item_id = u16(-1);	// under the cursor, for the unload key
+
+	bool						CanUnloadWeapon				(CWeaponMagazined* weapon);
+	void						QueueUnload					(CWeaponMagazined* weapon);
+	CWeaponMagazined*			UnloadStepWeapon			(const SUnloadStep& step);
+	void						StartUnloadStep				();
+	bool						FinishUnloadStep			();
+	void						UpdateUnloadSteps			();
+	void						StopUnloadSteps				();
+	void						UnloadHoveredWeapon			();
 	void						AppendMissingActorBagItems	();
 
 	void						UpdateItemsPlace			();
@@ -396,6 +423,8 @@ public:
 
 	void						OnInventoryAction			(PIItem pItem, u16 action_type);
 	virtual void				Update						();
+	// Closing cuts an unloading short: the steps done stay done.
+	virtual void				Show						(bool status) override;
 
 	virtual bool				OnMouseAction				(float x, float y, EUIMessages mouse_action);
 	virtual bool				OnKeyboardAction			(int dik, EUIMessages keyboard_action);
