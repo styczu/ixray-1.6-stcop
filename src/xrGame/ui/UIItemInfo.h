@@ -15,6 +15,7 @@ class CUIFrameWindow;
 class UIInvUpgPropertiesWnd;
 class CUIOutfitInfo;
 class CUIBoosterInfo;
+class CUIAmmoParams;
 class CUICellItem;
 class CUIGrenadeParams;
 
@@ -56,7 +57,7 @@ public:
 	void				TryAddBoosterInfo	(CInventoryItem& pInvItem);
 	void				ScrollDown			();
 	void				ScrollUp			();
-
+	void				TryAddAmmoInfo		(CInventoryItem& pInvItem);
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 	virtual void		Draw				();
@@ -82,6 +83,7 @@ public:
 	CUIOutfitInfo*			UIOutfitInfo;
 	CUIBoosterInfo*			UIBoosterInfo;
 	CUIGrenadeParams*		UIGrenadeParams;
+	CUIAmmoParams*			UIAmmoParams;
 	// legacy
 	CUIStatic*				UICondition;
 	CUIProgressBar*			UICondProgresBar;
