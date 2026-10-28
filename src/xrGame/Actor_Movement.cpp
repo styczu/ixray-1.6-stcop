@@ -336,6 +336,8 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 				{
 					scale *= ControlledActorSpeedKoef;
 				}
+				// Przeciazenie: liniowy spadek predkosci do overweight_hard_stop_speed.
+				scale *= conditions().GetOverloadSpeedK();
 
 				vControlAccel.mul			(scale);
 			}//scale>EPS
@@ -703,7 +705,7 @@ bool CActor::CanRun()
 	bool can_run = !IsZoomAimingMode() && !(mstate_real & mcLookout);
 	if (isSprintWhileOverweightDisabled)
 	{
-		can_run ^= inventory().TotalWeight() < (MaxWalkWeight() - 10.0f);
+		can_run = can_run && conditions().GetOverloadFactor() <= 0.0f;
 	}
 	return can_run;
 }
@@ -775,11 +777,11 @@ float CActor::MaxCarryWeight () const
 	return res;
 }
 
+// Hard stop przeciazenia (udzwig x overweight_hard_stop_k); dotad
+// max_walk_weight + dodatki. API zostaje dla zgodnosci.
 float CActor::MaxWalkWeight() const
 {
-	float max_w = CActor::conditions().MaxWalkWeight();
-	max_w += get_additional_weight();
-	return max_w;
+	return CActor::conditions().GetOverloadHardStop();
 }
 
 float CActor::get_additional_weight() const
