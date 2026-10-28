@@ -1740,31 +1740,102 @@ void ui_actor_state_wnd::UpdateRateHints(CActor* actor)
 		}
 	};
 
-	// Kondycja: koszt sprintu (%/s realnej sekundy) i podskoku (% za skok),
-	// czerwone przy przeciazeniu. Wzory w CActorCondition (te same co ruch).
+	// Kondycja (r5, uklad uzytkownika): "Szybkosc meczenia sie"; zuzycie
+	// biegu i sprintu (% kondycji na sekunde realnej) i skoku (% kondycji za
+	// skok), biezacy tryb jasny (gracz biega takze z otwartym ekwipunkiem),
+	// czerwone przy przeciazeniu; pod spodem czynniki zwiekszajace zmeczenie:
+	// waga ekwipunku (czesc wagowa wzgledem kosztu bez ladunku - jedna linia,
+	// stosunek waga/staly jest wspolny dla ruchu i skoku w danych), rodzaj
+	// kombinezonu (wzgledem postaci bez niego) i przeciazenie. Chod pominiety.
+	// Regeneracja osobno w "Reg. kondycji". Wzory w CActorCondition, te same
+	// co ConditionWalk/ConditionJump.
 	if (m_state[stt_stamina] != nullptr)
 	{
-		const bool overloaded = actor->conditions().IsOverloaded();
+		const CActorCondition& cond = actor->conditions();
+		const bool overloaded = cond.IsOverloaded();
 		LPCSTR costColor = overloaded ? "%c[255,210,80,65]" : kColValue;
+
+		// Tryb jak w UpdateCondition: sprint albo bieg (isActorAccelerated);
+		// -1 = postac stoi, idzie albo jedzie.
+		const u32 state = actor->mstate_real;
+		const bool moving = actor->Holder() == nullptr && (state & mcAnyMove) != 0;
+		const int mode = !moving ? -1
+			: (state & mcSprint) != 0 ? 2
+			: isActorAccelerated(state, actor->IsZoomAimingMode()) ? 1 : -1;
 
 		xr_string hint = kColTitle;
 		hint += g_pStringTable->translate("ui_uip_tt_stamina").c_str();
-
-		auto cost_line = [&hint, costColor](LPCSTR label, float value, LPCSTR unit)
+		auto separator = [&hint]()
+		{
+			hint += kBreak; hint += kColSep;
+			hint += g_pStringTable->translate("ui_armor_tt_sep").c_str();
+		};
+		auto header = [&hint](LPCSTR label)
+		{
+			hint += kBreak; hint += kColTitle;
+			hint += g_pStringTable->translate(label).c_str();
+		};
+		// Pozycje sekcji wciete; koszt "3,12 % kondycji/s" ze spacja, wzrost "+35%" bez.
+		auto value_line = [&hint](LPCSTR label, LPCSTR number, LPCSTR unit, bool spaced, LPCSTR labelColor, LPCSTR valueColor)
+		{
+			hint += kBreak; hint += labelColor; hint += "  ";
+			hint += g_pStringTable->translate(label).c_str();
+			hint += " "; hint += valueColor; hint += number;
+			if (spaced)
+				hint += " ";
+			hint += g_pStringTable->translate(unit).c_str();
+		};
+		auto cost_line = [&](LPCSTR label, float value, int decimals, LPCSTR unit, bool current)
 		{
 			string32 num;
-			FormatRate(num, value, 1);
-			hint += kBreak; hint += kColLabel;
-			hint += g_pStringTable->translate(label).c_str();
-			hint += " "; hint += costColor; hint += num;
-			hint += " "; hint += g_pStringTable->translate(unit).c_str();
+			FormatRate(num, value, decimals);
+			value_line(label, num, unit, true, current ? kColTitle : kColLabel,
+				overloaded ? costColor : (current ? kColTitle : kColValue));
 		};
-		cost_line("ui_uip_cost_sprint",
-			actor->conditions().GetSprintPowerCostPerGameSec() * real_time_factor * 100.0f,
-			"ui_uip_unit_percent_s");
-		cost_line("ui_uip_cost_jump",
-			actor->conditions().GetJumpPowerCost() * 100.0f,
-			"ui_uip_unit_percent");
+		auto increase_line = [&](LPCSTR label, float increase, LPCSTR valueColor)
+		{
+			string32 num;
+			ConditionUi::FormatNumber(num, increase * 100.0f, ConditionUi::DecimalSeparator(), true, 0);
+			value_line(label, num, "ui_uip_unit_percent", false, kColLabel, valueColor);
+		};
+
+		separator();
+		header("ui_uip_stamina_use");
+		const float per_second = real_time_factor * 100.0f;
+		cost_line("ui_uip_cost_run", cond.GetMovePowerCostPerGameSec(CActorCondition::eOverloadRun) * per_second, 2, "ui_uip_unit_percent_s", mode == 1);
+		cost_line("ui_uip_cost_sprint", cond.GetMovePowerCostPerGameSec(CActorCondition::eOverloadSprint) * per_second, 1, "ui_uip_unit_percent_s", mode == 2);
+		cost_line("ui_uip_cost_jump", cond.GetJumpPowerCost() * 100.0f, 1, "ui_uip_unit_stamina", false);
+
+		separator();
+		header("ui_uip_stamina_increase");
+		// r6 (decyzja uzytkownika): waga ekwipunku lacznie z nadwaga - czesc
+		// wagowa ruchu razy mnoznik przeciazenia (jedno k dla wszystkich
+		// trybow w danych, wiec liczba jest wspolna dla biegu i sprintu).
+		const float weight_increase = (1.0f + cond.GetLoadPowerCostIncrease(false))
+			* cond.GetOverloadCostK(CActorCondition::eOverloadRun) - 1.0f;
+		increase_line("ui_uip_stamina_load_move", weight_increase, costColor);
+		increase_line("ui_uip_stamina_outfit", cond.GetOutfitPowerCostIncrease(), kColValue);
+		// Stan przeciazenia (powyzej udzwigu): nadwaga, zapas do hard stopu
+		// i biezaca predkosc ruchu (actor-overload-curve).
+		if (cond.GetOverloadFactor() > 0.0f)
+		{
+			const float carry = actor->MaxCarryWeight();
+			const float weight = actor->inventory().TotalWeight();
+			string32 over, left, speed;
+			FormatRate(over, weight - carry, 1);
+			FormatRate(left, std::max(cond.GetOverloadHardStop() - weight, 0.0f), 1);
+			FormatRate(speed, cond.GetOverloadSpeedK() * 100.0f, 0);
+			const shared_str kg = g_pStringTable->translate("st_kg");
+			separator();
+			hint += kBreak; hint += kColLabel;
+			hint += g_pStringTable->translate("ui_uip_stamina_overload").c_str();
+			hint += " "; hint += costColor; hint += "+"; hint += over; hint += " "; hint += kg.c_str();
+			hint += kColLabel; hint += " ("; hint += g_pStringTable->translate("ui_uip_stamina_overload_stop").c_str();
+			hint += " "; hint += costColor; hint += left; hint += " "; hint += kg.c_str(); hint += kColLabel; hint += ")";
+			hint += kBreak; hint += kColLabel;
+			hint += g_pStringTable->translate("ui_uip_stamina_speed").c_str();
+			hint += " "; hint += costColor; hint += speed; hint += "%";
+		}
 		m_state[stt_stamina]->set_hint_text(hint.c_str());
 	}
 
