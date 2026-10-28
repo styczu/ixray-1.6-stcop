@@ -12,6 +12,7 @@
 #include "../Inventory.h"
 #include "../InventoryVolumeSystem.h"
 #include "../InventoryWeaponSlotLayout.h"
+#include "../InventoryBox.h"
 #include "../eatable_item_object.h"
 #include "../../xrUI/UICursor.h"
 
@@ -348,6 +349,142 @@ void CUIActorMenuBase::UnloadWeaponItem(CWeaponMagazined* pWpn)
 
 	pWpn->m_bHaveShell = false;
 	pWpn->m_bNeedPumpState = false;
+}
+
+bool CUIActorMenuBase::CanUnloadWeapon(CWeaponMagazined* weapon)
+{
+	// Rounds in the magazine or the chamber, as the context menu asks; not while the
+	// weapon is busy in hands.
+	return weapon && !weapon->IsPending()
+		&& (weapon->GetAmmoElapsed() || weapon->IsChamber() && weapon->GetAmmoChamberElapsed());
+}
+
+void CUIActorMenuBase::QueueUnload(CWeaponMagazined* weapon)
+{
+	SUnloadStep step;
+	step.weapon	= weapon->ID();
+	step.parent	= weapon->parent_id();
+	step.place	= weapon->m_ItemCurrPlace.value;
+
+	// A tube or a double barrel gives up its rounds one by one. The RG-6 drops its rockets
+	// together with the magazine, so it unloads at once.
+	const bool shotgun = (weapon->IsTriStateReload() || weapon->cast_weapon_shotgun()) && !weapon->cast_weapon_rg6();
+	step.action	= shotgun && !weapon->IsGrenadeMode() ? eUnloadCartridge : eUnloadWeapon;
+
+	if (weapon->IsGrenadeMode() || weapon->cast_weapon_rg6() || weapon->cast_weapon_rpg7())
+		step.sound = eUnloadSndGrenade;
+	else if (shotgun)
+		step.sound = eUnloadSndShotgun;
+	else if (IsSidearmPhysicalSlot(weapon->BaseSlot()))
+		step.sound = eUnloadSndPistol;
+	else
+		step.sound = eUnloadSndRifle;
+
+	m_unload_steps.push_back(step);
+}
+
+CWeaponMagazined* CUIActorMenuBase::UnloadStepWeapon(const SUnloadStep& step)
+{
+	// Still there, with the same owner and in the same place: moved, taken or gone cancels.
+	CObject* object = Level().Objects.net_Find(step.weapon);
+	PIItem item = object && !object->getDestroy() ? object->cast_inventory_item() : nullptr;
+	if (!item || item->parent_id() != step.parent || item->m_ItemCurrPlace.value != step.place)
+		return nullptr;
+
+	CWeapon* weapon = item->cast_weapon();
+	return weapon ? weapon->cast_weapon_magazined() : nullptr;
+}
+
+void CUIActorMenuBase::StartUnloadStep()
+{
+	while (!m_unload_steps.empty())
+	{
+		ref_sound& sound = m_unload_snd[m_unload_steps.front().sound];
+		if (sound._handle())
+		{
+			sound.play(nullptr, sm_2D);
+			m_unload_step_end = Device.dwTimeGlobal + iFloor(sound.get_length_sec() * 1000.0f);
+			return;
+		}
+
+		// No sound for this kind: done at once.
+		if (!FinishUnloadStep())
+			return;
+	}
+}
+
+bool CUIActorMenuBase::FinishUnloadStep()
+{
+	const SUnloadStep step = m_unload_steps.front();
+	m_unload_steps.erase(m_unload_steps.begin());
+
+	CWeaponMagazined* weapon = UnloadStepWeapon(step);
+	if (!weapon)
+	{
+		StopUnloadSteps();
+		return false;
+	}
+
+	// The rounds of a corpse's or a stash's weapon go to the actor.
+	CInventoryOwner* actor = GetInventoryOwner();
+	if (actor && step.parent != actor->object_id())
+		weapon->m_ammo_recipient = actor->object_id();
+
+	if (step.action == eUnloadCartridge)
+	{
+		// The next round while there is one.
+		if (weapon->UnloadCartridge() && (weapon->GetAmmoElapsed() || weapon->GetAmmoChamberElapsed()))
+			m_unload_steps.insert(m_unload_steps.begin(), step);
+	}
+	else
+	{
+		UnloadWeaponItem(weapon);
+	}
+
+	weapon->m_ammo_recipient = u16(-1);
+	return true;
+}
+
+void CUIActorMenuBase::UpdateUnloadSteps()
+{
+	if (m_unload_steps.empty() || Device.dwTimeGlobal < m_unload_step_end)
+		return;
+
+	if (FinishUnloadStep())
+		StartUnloadStep();
+}
+
+void CUIActorMenuBase::StopUnloadSteps()
+{
+	if (!m_unload_steps.empty())
+		m_unload_snd[m_unload_steps.front().sound].stop();
+	m_unload_steps.clear();
+}
+
+void CUIActorMenuBase::UnloadHoveredWeapon()
+{
+	if (!(m_currMenuMode == mmInventory || m_currMenuMode == mmDeadBodySearch) || !IsGameTypeSingle()
+		|| !m_unload_steps.empty() || !GetInventoryOwner())
+		return;
+
+	CObject* object = m_hovered_item_id != u16(-1) ? Level().Objects.net_Find(m_hovered_item_id) : nullptr;
+	PIItem item = object ? object->cast_inventory_item() : nullptr;
+	CWeapon* weapon = item ? item->cast_weapon() : nullptr;
+	CWeaponMagazined* magazined = weapon ? weapon->cast_weapon_magazined() : nullptr;
+	if (!CanUnloadWeapon(magazined))
+		return;
+
+	// The actor's own weapon (backpack, slots, belt) or one of the corpse or the stash
+	// being searched.
+	const u16 parent = item->parent_id();
+	const bool own = parent == GetInventoryOwner()->object_id();
+	const bool searched = m_currMenuMode == mmDeadBodySearch
+		&& (GetPartner() && parent == GetPartner()->object_id() || GetInvBox() && parent == GetInvBox()->ID());
+	if (!own && !searched)
+		return;
+
+	QueueUnload(magazined);
+	StartUnloadStep();
 }
 
 void CUIActorMenuBase::AppendMissingActorBagItems()

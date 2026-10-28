@@ -2183,9 +2183,18 @@ void CWeapon::ReturnAmmoToInventory(xr_map<shared_str, u16>& ammo, xr_map<u16, u
 
 	bool ammoChanged = false;
 
+	// The boxes to top up and the parent of new ones: the recipient when one is set.
+	CInventory* inventory = m_pInventory;
+	CObject* recipient = m_ammo_recipient != u16(-1) ? Level().Objects.net_Find(m_ammo_recipient) : nullptr;
+	if (recipient)
+	{
+		CInventoryOwner* owner = recipient->cast_inventory_owner();
+		inventory = owner ? &owner->inventory() : nullptr;
+	}
+
 	for (auto& entry : ammo)
 	{
-		if (m_pInventory)
+		if (inventory)
 		{
 			const auto tryFillBox = [&](PIItem item)
 			{
@@ -2229,11 +2238,11 @@ void CWeapon::ReturnAmmoToInventory(xr_map<shared_str, u16>& ammo, xr_map<u16, u
 				}
 			};
 
-			for (PIItem item : m_pInventory->m_belt)
+			for (PIItem item : inventory->m_belt)
 			{
 				tryFillBox(item);
 			}
-			for (PIItem item : m_pInventory->m_ruck)
+			for (PIItem item : inventory->m_ruck)
 			{
 				tryFillBox(item);
 			}
@@ -2242,7 +2251,7 @@ void CWeapon::ReturnAmmoToInventory(xr_map<shared_str, u16>& ammo, xr_map<u16, u
 		if (entry.second)
 		{
 			u32 parentId = 0xffffffff;
-			if (CObject* parent = H_Parent())
+			if (CObject* parent = recipient ? recipient : H_Parent())
 			{
 				parentId = parent->ID();
 			}
@@ -2250,10 +2259,10 @@ void CWeapon::ReturnAmmoToInventory(xr_map<shared_str, u16>& ammo, xr_map<u16, u
 		}
 	}
 
-	if (ammoChanged && m_pInventory)
+	if (ammoChanged && inventory)
 	{
-		m_pInventory->InvalidateState();
-		m_pInventory->CalcTotalWeight();
+		inventory->InvalidateState();
+		inventory->CalcTotalWeight();
 	}
 }
 
