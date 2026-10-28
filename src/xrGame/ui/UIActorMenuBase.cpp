@@ -281,6 +281,22 @@ void CUIActorMenuBase::InitBase(CUIXml& uiXml)
 			::Sound->create(sounds[eUnloadMagazine], snd_unload, st_Effect, sg_SourceType);
 		}
 	}
+
+	// Optional: without a node that kind of weapon unloads at once.
+	const char* unload_kinds[eUnloadSndCount] = { "pistol", "rifle", "shotgun", "grenade" };
+	for (u8 kind = 0; kind < eUnloadSndCount; ++kind)
+	{
+		string64 node;
+		xr_sprintf(node, "snd_ammo_unload_%s", unload_kinds[kind]);
+		if (uiXml.NavigateToNode(node, 0))
+		{
+			const char* name = uiXml.Read(node, 0, "");
+			if (name && name[0])
+			{
+				::Sound->create(m_unload_snd[kind], name, st_Effect, sg_SourceType);
+			}
+		}
+	}
 	uiXml.SetLocalRoot					(stored_root);
 }
 
@@ -1640,6 +1656,7 @@ void CUIActorMenuBase::Update()
 	}
 
 	inherited::Update();
+	UpdateUnloadSteps();
 	if (m_ui_navigation_selector)
 	{
 		m_ui_navigation_selector->SetVisible(m_ui_navigation_selection && m_ui_navigation_selector_shown && pInput->GetControllerMode());
@@ -1649,6 +1666,15 @@ void CUIActorMenuBase::Update()
 		m_ui_aux_selector->SetVisible(m_ui_aux_selector_shown && pInput->GetControllerMode());
 	}
 	UpdateGamepadLegend();
+}
+
+void CUIActorMenuBase::Show(bool status)
+{
+	if (!status)
+	{
+		StopUnloadSteps();
+	}
+	inherited::Show(status);
 }
 
 void CUIActorMenuBase::CheckSelectors()
@@ -1772,7 +1798,8 @@ bool CUIActorMenuBase::OnKeyboardAction(int dik, EUIMessages keyboard_action)
 	{
 		if ( WINDOW_KEY_PRESSED == keyboard_action )
 		{
-			UnloadAllWeaponsFromRuck();
+			// Only the weapon under the cursor, in steps as the context menu unloads.
+			UnloadHoveredWeapon();
 		}
 		return true;
 	}
