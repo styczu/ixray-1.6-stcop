@@ -23,6 +23,7 @@
 #include "UIInvUpgradeProperty.h"
 #include "UIOutfitInfo.h"
 #include "UIBoosterInfo.h"
+#include "UIAmmoParams.h"
 #include "../Weapon.h"
 #include "../CustomOutfit.h"
 #include "../ActorHelmet.h"
@@ -52,6 +53,7 @@ CUIItemInfo::CUIItemInfo()
 	UIProperties				= nullptr;
 	UIOutfitInfo				= nullptr;
 	UIBoosterInfo				= nullptr;
+	UIAmmoParams				= nullptr;
 	UIArtefactParams			= nullptr;
 	UIOutfitParams				= nullptr;
 	UIBackpackParams			= nullptr;
@@ -76,6 +78,7 @@ CUIItemInfo::~CUIItemInfo()
 	xr_delete	(UIProperties);
 	xr_delete	(UIOutfitInfo);
 	xr_delete	(UIBoosterInfo);
+	xr_delete	(UIAmmoParams);
 }
 
 bool CUIItemInfo::InitItemInfo(const char* xml_name)
@@ -182,6 +185,13 @@ bool CUIItemInfo::InitItemInfo(const char* xml_name)
 		{
 			UIBoosterInfo = new CUIBoosterInfo();
 			UIBoosterInfo->InitFromXml(uiXml);
+		}
+
+		// Only with an <ammo_params> layout; without it ammo keeps the plain tooltip.
+		if (uiXml.NavigateToNode("ammo_params", 0))
+		{
+			UIAmmoParams				= new CUIAmmoParams();
+			UIAmmoParams->InitFromXml	(uiXml);
 		}
 
 		//UIDesc_line						= new CUIStatic();
@@ -403,6 +413,7 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 		TryAddOutfitInfo					(*pInvItem, pCompareItem);
 		TryAddUpgradeInfo					(*pInvItem);
 		TryAddBoosterInfo					(*pInvItem);
+		TryAddAmmoInfo						(*pInvItem);
 
 		if(m_b_FitToHeight)
 		{
@@ -563,6 +574,15 @@ void CUIItemInfo::TryAddBoosterInfo(CInventoryItem& pInvItem)
 	{
 		UIBoosterInfo->SetInfo(pInvItem.object().cNameSect());
 		UIDesc->AddWindow(UIBoosterInfo, false);
+	}
+}
+
+void CUIItemInfo::TryAddAmmoInfo(CInventoryItem& pInvItem)
+{
+	if (UIAmmoParams && UIAmmoParams->Check(pInvItem))
+	{
+		UIAmmoParams->SetInfo(pInvItem.object().cNameSect());
+		UIDesc->AddWindow(UIAmmoParams, false);
 	}
 }
 
