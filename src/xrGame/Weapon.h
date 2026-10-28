@@ -39,6 +39,8 @@ class CWeapon : public CHudItemObject,
 {
 	using inherited = CHudItemObject;
 	CEntityAlive* WeaponOwner = nullptr;
+	// The weapon tooltip reads the live firing parameters (ui-weapon-params).
+	friend class CUIWeaponParams;
 
 protected:
 	friend struct TAmmoBones;
