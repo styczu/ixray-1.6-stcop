@@ -203,6 +203,10 @@ bool CArmorBase::install_upgrade_impl(const char* section, bool test)
 	const char* str = {};
 
 	result |= process_if_exists(section, "burn_protection", m_HitTypeProtection[ALife::eHitTypeBurn], test);
+	// Anomalies burn with light_burn. Load copies burn_protection into it,
+	// so an upgrade has to as well, or it never protects against them.
+	if (!test)
+		m_HitTypeProtection[ALife::eHitTypeLightBurn] = m_HitTypeProtection[ALife::eHitTypeBurn];
 	result |= process_if_exists(section, "shock_protection", m_HitTypeProtection[ALife::eHitTypeShock], test);
 	result |= process_if_exists(section, "strike_protection", m_HitTypeProtection[ALife::eHitTypeStrike], test);
 	result |= process_if_exists(section, "wound_protection", m_HitTypeProtection[ALife::eHitTypeWound], test);
