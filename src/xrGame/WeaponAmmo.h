@@ -77,6 +77,10 @@ public:
 	virtual	u32						Cost				() const;
 
 	bool							Get					(CCartridge &cartridge);
+	// This box has just come in: a partly filled one tops up the partly filled boxes
+	// of the same ammo among boxes, fullest first. Only this box loses rounds. True:
+	// it's empty now and its owner destroys it.
+	bool							PourInto			(const xr_vector<CWeaponAmmo*>& boxes);
 
 	SCartridgeParam cartridge_param;
 
