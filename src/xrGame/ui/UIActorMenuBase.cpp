@@ -543,7 +543,10 @@ void CUIActorMenuBase::UpdateConditionProgressBars()
 
 		if (hasLegacy)
 		{
-			m_pInvSlotProgressLegacy[i]->SetProgressPos(display.state);
+			// Twenty steps rounded down, one per segment of the slot bar texture: 5% each, and
+			// two of them make one tenth of the cell bar (CUICellItem::UpdateConditionProgressBar).
+			const float state = display.usePortion ? display.state : iFloor(display.state * 20.0f) / 20.0f;
+			m_pInvSlotProgressLegacy[i]->SetProgressPos(state);
 			m_pInvSlotProgressLegacy[i]->m_bUseGradient = !display.disableGradient;
 			m_pInvSlotProgressLegacy[i]->ShowBackground(!display.hideBackground);
 			m_pInvSlotProgressLegacy[i]->Show(true);
