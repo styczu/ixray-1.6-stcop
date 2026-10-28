@@ -31,6 +31,7 @@ public:
 	void SetPortion(int current, int max);
 	float GetState() const { return _value; }
 	EPercentFormat GetPercentFormat() const { return _percentFormat; }
+	EDisplayMode GetDisplayMode() const { return _mode; }
 
 	void SetProgressPos(float pos) { SetState(pos); }
 	float GetProgressPos() const { return GetState(); }
