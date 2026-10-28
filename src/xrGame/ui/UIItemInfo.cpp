@@ -18,6 +18,7 @@
 #include "UIInventoryUtilities.h"
 #include "../PhysicsShellHolder.h"
 #include "UIWpnParams.h"
+#include "UIWeaponParams.h"
 #include "UIKnifeParams.h"
 #include "ui_af_params.h"
 #include "UIInvUpgradeProperty.h"
@@ -48,6 +49,7 @@ CUIItemInfo::CUIItemInfo()
 	UIDesc						= nullptr;
 	UIConditionWnd				= nullptr;
 	UIWpnParams					= nullptr;
+	UIWeaponParams				= nullptr;
 	UIKnifeParams				= nullptr;
 	UIGrenadeParams				= nullptr;
 	UIProperties				= nullptr;
@@ -70,6 +72,7 @@ CUIItemInfo::~CUIItemInfo()
 {
 	xr_delete	(UIConditionWnd);
 	xr_delete	(UIWpnParams);
+	xr_delete	(UIWeaponParams);
 	xr_delete	(UIKnifeParams);
 	xr_delete	(UIGrenadeParams);
 	xr_delete	(UIArtefactParams);
@@ -167,6 +170,13 @@ bool CUIItemInfo::InitItemInfo(const char* xml_name)
 		UIConditionWnd->InitFromXml		(uiXml);
 		UIWpnParams						= new CUIWpnParams();
 		UIWpnParams->InitFromXml		(uiXml);
+		// Only with a <weapon_params> layout; without it weapons keep the stock
+		// condition bar and Lua-driven parameters.
+		if (uiXml.NavigateToNode("weapon_params", 0))
+		{
+			UIWeaponParams				= new CUIWeaponParams();
+			UIWeaponParams->InitFromXml	(uiXml);
+		}
 		UIKnifeParams					= new CUIKnifeParams();
 		UIKnifeParams->InitFromXml		(uiXml);
 		UIGrenadeParams					= new CUIGrenadeParams();
@@ -474,7 +484,8 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 
 void CUIItemInfo::TryAddConditionInfo(CInventoryItem& pInvItem, CInventoryItem* pCompareItem)
 {
-	if (pInvItem.IsUsingCondition())
+	// The weapon tooltip has its own condition row.
+	if (pInvItem.IsUsingCondition() && !(UIWeaponParams && UIWeaponParams->Check(pInvItem)))
 	{
 		UIConditionWnd->SetInfo(pCompareItem, pInvItem);
 		UIDesc->AddWindow(UIConditionWnd, false);
@@ -487,7 +498,12 @@ void CUIItemInfo::TryAddConditionInfo(CInventoryItem& pInvItem, CInventoryItem* 
 
 void CUIItemInfo::TryAddWpnInfo(CInventoryItem& pInvItem, CInventoryItem* pCompareItem)
 {
-	if (UIWpnParams->Check(pInvItem))
+	if (UIWeaponParams && UIWeaponParams->Check(pInvItem))
+	{
+		UIWeaponParams->SetInfo(pCompareItem, pInvItem);
+		UIDesc->AddWindow(UIWeaponParams, false);
+	}
+	else if (UIWpnParams->Check(pInvItem))
 	{
 		UIWpnParams->SetInfo(pCompareItem, pInvItem);
 		UIDesc->AddWindow(UIWpnParams, false);
