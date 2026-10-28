@@ -264,11 +264,8 @@ void CUIItemDropAmountWnd::ShowDropAmount(u32 max, EDropMode mode, CInventoryIte
 	_pCellItem = pCellItem;
 
     const int maxSelectable = GetMaxSelectable(_maxAmount);
-    _currentAmount = maxSelectable / 2;
-    if (_currentAmount < 1)
-    {
-        _currentAmount = 1;
-    }
+    // One piece first, whatever the item (user's choice 2026-10-28; 1.4 started at half).
+    _currentAmount = 1;
 
     Enable(true);
     ShowDialog(false);
@@ -321,11 +318,8 @@ void CUIItemDropAmountWnd::Show(CInventoryItem* pItem, CUICellItem* pCellItem, i
     _callback = std::move(callback);
 
     const int maxSelectable = GetMaxSelectable(_maxAmount);
-    _currentAmount = maxSelectable / 2;
-    if (_currentAmount < 1)
-    {
-        _currentAmount = 1;
-    }
+    // One piece first, whatever the item (user's choice 2026-10-28; 1.4 started at half).
+    _currentAmount = 1;
 
     Enable(true);
     ShowDialog(false);
