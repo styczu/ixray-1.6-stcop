@@ -822,6 +822,9 @@ public:
 													u32 ParentID = 0xffffffff);
 			void			ReturnAmmoToInventory(xr_map<shared_str, u16>& ammo,
 													xr_map<u16, u16>* ammos_to_sync = nullptr);
+	// The object unloaded ammo goes to instead of the owner of this weapon: the inventory
+	// window sets the actor for one unload of a corpse's or a stash's weapon.
+	u16						m_ammo_recipient = u16(-1);
 	bool					SwitchAmmoType		(u32 flags);
 
 	virtual	float			Get_PDM_Base		()	const	{ return m_pdm.m_fPDM_disp_base			; };
