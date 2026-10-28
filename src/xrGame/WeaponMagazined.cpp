@@ -896,6 +896,69 @@ void CWeaponMagazined::UnloadMagazine(bool spawn_ammo)
 	}
 }
 
+bool CWeaponMagazined::UnloadCartridge()
+{
+	xr_map<shared_str, u16> l_ammo;
+	if (!m_magazine.empty())
+	{
+		l_ammo[m_magazine.back().m_ammoSect] = 1;
+		m_magazine.pop_back();
+		--AmmoElapsed.MagazineElapsed;
+	}
+	else if (!m_chamber.empty())
+	{
+		l_ammo[m_chamber.back().m_ammoSect] = 1;
+		m_chamber.pop_back();
+		--iAmmoChamberElapsed;
+	}
+	else
+	{
+		return false;
+	}
+
+	VERIFY((u32)AmmoElapsed.MagazineElapsed == m_magazine.size());
+
+	// As UnloadMagazine and the inventory's unload (UnloadWeaponItem) leave the weapon.
+	if (!IsGrenadeMode())
+	{
+		SetMisfireStatus(false);
+	}
+
+	ReturnAmmoToInventory(l_ammo);
+	m_BriefInfo_CalcFrame = 0;
+
+	if (m_magazine.empty() && m_chamber.empty())
+	{
+		m_bJustAfterReload = false;
+		m_bHaveShell = false;
+		m_bNeedPumpState = false;
+
+		if (IsGameTypeSingleCompatible() && ParentIsActor())
+		{
+			int	AC = GetSuitableAmmoTotal();
+			Actor()->callback(GameObject::eOnWeaponMagazineEmpty)(lua_game_object(), AC);
+		}
+	}
+
+	if (GetState() == eIdle)
+		SwitchState(eIdle);
+
+	if (!IsGrenadeMode())
+	{
+		if (TAmmoBones* AmmoBones = GetComponent<TAmmoBones>())
+		{
+			AmmoBones->UpdateAmmoBones(this, AmmoElapsed.MagazineElapsed, AmmoType.MagazineType);
+		}
+
+		if (TLiteAmmoBones* LiteAmmoBones = GetComponent<TLiteAmmoBones>())
+		{
+			LiteAmmoBones->UpdateLiteAmmoBones(this, GetCurrentElapsed() + iAmmoChamberElapsed);
+		}
+	}
+
+	return true;
+}
+
 void CWeaponMagazined::ReloadMagazine() 
 {
 	m_BriefInfo_CalcFrame = 0;	
