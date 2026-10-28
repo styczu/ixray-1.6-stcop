@@ -61,6 +61,18 @@ CUIOutfitImmunity::InitResult CUIOutfitImmunity::Init( CUIXml& xml_doc, const ch
 		AttachChild(m_progress);
 		m_progress->InitFromXml(xml_doc, "progress_immunity");
 	}
+
+	// Opcjonalny trojkat przepelnienia za paskiem, jak w panelu postaci.
+	if (xml_doc.NavigateToNode("overflow"))
+	{
+		m_overflow = UIHelper::CreateStatic(xml_doc, "overflow", this);
+		m_overflow->Show(false);
+	}
+	if (xml_doc.NavigateToNode("overflow_fill"))
+	{
+		m_overflow_fill = UIHelper::CreateStatic(xml_doc, "overflow_fill", this);
+		m_overflow_fill->Show(false);
+	}
 	
 	m_value = UIHelper::CreateStatic(xml_doc, "static_value", this);
 
@@ -127,6 +139,34 @@ static float EquipmentProtectionValue(float protection, ALife::EHitType hit_type
 {
 	const float contribution = Protection::EquipmentContribution(protection, hit_type);
 	return Protection::IsZoneType(hit_type) ? Protection::DisplayRatio(contribution, max_power) : contribution / max_power;
+}
+
+void CUIOutfitImmunity::SetPointsValue(float cur, float comp, float bar_max)
+{
+	float currentFill = cur / bar_max, comparisonFill = comp / bar_max;
+	clamp(currentFill, 0.0f, 1.0f);
+	clamp(comparisonFill, 0.0f, 1.0f);
+	if (m_progress)
+		m_progress->SetTwoPos(currentFill * 100.0f, comparisonFill * 100.0f);
+	if (m_value)
+	{
+		string64 text;
+		ConditionUi::FormatProtectionPointsPlain(text, cur);
+		m_value->SetText(text);
+	}
+	const bool overflow = cur > bar_max;
+	if (m_overflow)
+		m_overflow->Show(overflow);
+	if (m_overflow_fill)
+		m_overflow_fill->Show(overflow);
+}
+
+// "Ochrona mechaniczna" przedmiotu: srednia trzech progow ze stanem.
+template <class Armour> static float MechanicalProtection(Armour* item)
+{
+	return Protection::MechanicalMean(item->GetDefHitTypeProtection(ALife::eHitTypeWound),
+		item->GetDefHitTypeProtection(ALife::eHitTypeStrike),
+		item->GetDefHitTypeProtection(ALife::eHitTypeExplosion));
 }
 
 void CUIOutfitImmunity::SetProgressValue(float cur, float comp)
@@ -331,6 +371,13 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		}
 		
 		ALife::EHitType hit_type = (ALife::EHitType)i;
+		if ( hit_type == ALife::eHitTypeWound && !m_items[i]->GetLegacyMode() )
+		{
+			const float mech = MechanicalProtection( cur_outfit );
+			m_items[i]->SetPointsValue( mech, slot_outfit ? MechanicalProtection( slot_outfit ) : mech, Protection::MechanicalBarMax );
+			ShowInList( m_items[i], true );
+			continue;
+		}
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
 		float cur = EquipmentProtectionValue( cur_outfit->GetDefHitTypeProtection( hit_type ), hit_type, max_power );
@@ -436,6 +483,13 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		}
 		
 		ALife::EHitType hit_type = (ALife::EHitType)i;
+		if ( hit_type == ALife::eHitTypeWound && !m_items[i]->GetLegacyMode() )
+		{
+			const float mech = MechanicalProtection( cur_helmet );
+			m_items[i]->SetPointsValue( mech, slot_helmet ? MechanicalProtection( slot_helmet ) : mech, Protection::MechanicalBarMax );
+			ShowInList( m_items[i], true );
+			continue;
+		}
 		float max_power = actor->conditions().GetZoneMaxPower( hit_type );
 
 		float cur = EquipmentProtectionValue( cur_helmet->GetDefHitTypeProtection( hit_type ), hit_type, max_power );
