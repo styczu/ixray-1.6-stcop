@@ -14,6 +14,8 @@
 #include "../ProtectionValues.h"
 #include "../Actor.h"
 #include "../ActorCondition.h"
+#include "../CustomOutfit.h"
+#include "../../Include/xrRender/Kinematics.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/xrUIXmlParser.h"
@@ -159,8 +161,201 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	return false;
 }
 
-bool UIProperty::show_result(const char* values)
+// Tekst z addonu, bez tlumaczenia zastepstwo (jednostka jak w FormatProtectionPoints).
+static shared_str TranslatedOr(LPCSTR id, LPCSTR fallback)
 {
+    const shared_str text = g_pStringTable->translate(id);
+    return text.size() && xr_strcmp(text.c_str(), id) != 0 ? text : shared_str(fallback);
+}
+
+void UIProperty::set_armor_context(CInventoryItem* item, bool installed)
+{
+    m_armor_outfit = item ? item->cast_outfit() : nullptr;
+    m_armor_installed = installed;
+}
+
+// prop_armor "Pancerz": skrypt pokazywal etykiete value ("Klasa pancerza
+// +10%"), a ulepszenie podnosi progi przebicia kosci o pole armor sekcji
+// bones_koeff_protection_add (SBoneProtections::add; Swit 0,41 -> 0,49).
+// Wiersz to ten przyrost x100, skala liczby "Pancerz" panelu postaci, w
+// strefach tooltipa klasy pancerza (Protection::ArmorGroups): najpierw
+// sylwetka, potem glowa, w strefie najwiekszy przyrost jej kosci, strefy bez
+// zmiany pominiete. fire_wound_protection sekcji nie wchodzi - strzal w aktora
+// liczy tylko progi kosci.
+// r8: z kombinezonem w kontekscie strefa to roznica liczb panelu (maksimum
+// kosci z progiem >= 0, ArmorPoints) przed i po ulepszeniach, liczona na
+// zywych progach przedmiotu: egzo 99 -> 99 na korpusie (obojczyki 0,99, a
+// ulepszenie podnosi kregoslup 0,98 -> 0,99) nie trafia do wiersza. Bez stanu
+// przedmiotu, jak inne wiersze okna. Bez kontekstu zostaje przyrost kosci.
+bool UIProperty::show_armor(LPCSTR values)
+{
+    if (!get_property())
+        return false;
+
+    float sums[Protection::ArmorGroupCount][8] = {};
+    bool found = false;
+    string256 section;
+    const int count = _GetItemCount(values);
+    for (int i = 0; i < count; ++i)
+    {
+        _GetItem(values, i, section);
+        if (!pSettings->section_exist(section) || !pSettings->line_exist(section, "bones_koeff_protection_add"))
+            continue;
+        LPCSTR bones = pSettings->r_string(section, "bones_koeff_protection_add");
+        if (!bones || !*bones || !pSettings->section_exist(bones))
+            continue;
+        found = true;
+        for (const auto& item : pSettings->r_section(bones).Data)
+        {
+            for (unsigned g = 0; g < Protection::ArmorGroupCount; ++g)
+            {
+                for (int b = 0; Protection::ArmorGroups[g].bones[b] != nullptr; ++b)
+                {
+                    if (xr_strcmp(item.first.c_str(), Protection::ArmorGroups[g].bones[b]) != 0)
+                        continue;
+                    string256 armor;
+                    sums[g][b] += (float)atof(_GetItem(item.second.c_str(), 1, armor));
+                }
+            }
+        }
+    }
+    if (!found)
+        return false;
+
+    IKinematics* kinematics = nullptr;
+    if (m_armor_outfit && Level().CurrentViewEntity())
+        kinematics = PKinematics(Level().CurrentViewEntity()->Visual());
+
+    const char separator = ConditionUi::DecimalSeparator();
+    string256 zones = "";
+    for (int part = 1; part >= 0; --part)
+    {
+        for (unsigned g = 0; g < Protection::ArmorGroupCount; ++g)
+        {
+            const Protection::ArmorGroup& group = Protection::ArmorGroups[g];
+            if (group.section != part)
+                continue;
+            float best = 0.0f;
+            if (kinematics)
+            {
+                float before = -1.0f;
+                float after = -1.0f;
+                for (int b = 0; group.bones[b] != nullptr; ++b)
+                {
+                    const u16 bone_id = kinematics->LL_BoneID(group.bones[b]);
+                    if (BI_NONE == bone_id)
+                        continue;
+                    const float live = m_armor_outfit->GetBoneArmor(bone_id);
+                    const float base = m_armor_installed ? live - sums[g][b] : live;
+                    before = std::max(before, base);
+                    after = std::max(after, base + sums[g][b]);
+                }
+                // Strefa bez oslonietej kosci (-1, takze -1 + 0,11) liczy sie jako 0.
+                best = 0.01f * (float)(Protection::ArmorPoints(std::max(after, 0.0f)) - Protection::ArmorPoints(std::max(before, 0.0f)));
+            }
+            else
+            {
+                for (int b = 0; group.bones[b] != nullptr; ++b)
+                {
+                    if (std::fabs(sums[g][b]) > std::fabs(best))
+                        best = sums[g][b];
+                }
+            }
+            // Zero po zaokragleniu do dwoch miejsc (FormatNumber) = strefa bez zmiany.
+            if (std::fabs(best * 100.0f) < 0.005f)
+                continue;
+            string32 number;
+            ConditionUi::FormatNumber(number, best * 100.0f, separator, true);
+            const shared_str zone = TranslatedOr(group.zone_key, g_pStringTable->translate(group.label_key).c_str());
+            if (zones[0])
+                xr_strcat(zones, sizeof(zones), ", ");
+            xr_strcat(zones, sizeof(zones), zone.c_str());
+            xr_strcat(zones, sizeof(zones), " ");
+            xr_strcat(zones, sizeof(zones), number);
+        }
+    }
+    if (!zones[0])
+        xr_strcpy(zones, sizeof(zones), "0");
+    xr_strconcat(m_text, get_property()->name(), ": ", zones, " ", TranslatedOr("ui_uip_unit_protection", "pt").c_str());
+    m_ui_text->SetText(m_text);
+    return true;
+}
+
+// Wiersze fizyczne okna ulepszen liczone z kluczy sekcji efektow, jak ochrony
+// srodowiskowe w compute_value (skrypt pokazuje jedna etykiete value na
+// ulepszenie, wspolna dla wszystkich jego wlasciwosci).
+// prop_damage: przyrost progow rozszarpania, uderzenia i wybuchu x100, skala
+// panelu postaci; jedna liczba = przyrost sredniej trzech progow, jak
+// "Ochrona mechaniczna" w dymku przedmiotu. prop_damage_absorption (nazwa
+// sortuje sie zaraz po prop_damage): absorpcja kuli zatrzymanej przez
+// pancerz w punktach procentowych, -100 x suma hit_fraction_actor, bez
+// mnoznika trudnosci (jak dymek przedmiotu i panel "Balistyczna").
+// prop_armor: patrz show_armor.
+bool UIProperty::show_physical(LPCSTR values)
+{
+    if (xr_strcmp(m_property_id.c_str(), "prop_armor") == 0)
+        return show_armor(values);
+
+    const bool mechanical = xr_strcmp(m_property_id.c_str(), "prop_damage") == 0;
+    const bool impact = xr_strcmp(m_property_id.c_str(), "prop_damage_absorption") == 0;
+    if ((!mechanical && !impact) || !get_property())
+        return false;
+
+    static const LPCSTR mechanical_keys[] = { "wound_protection", "strike_protection", "explosion_protection" };
+    float sums[3] = {};
+    bool found = false;
+    string256 section;
+    const int count = _GetItemCount(values);
+    for (int i = 0; i < count; ++i)
+    {
+        _GetItem(values, i, section);
+        float value;
+        if (impact)
+        {
+            if (read_value_from_section(section, "hit_fraction_actor", value))
+            {
+                sums[0] -= value;
+                found = true;
+            }
+            continue;
+        }
+        for (int k = 0; k < 3; ++k)
+        {
+            if (read_value_from_section(section, mechanical_keys[k], value))
+            {
+                sums[k] += value;
+                found = true;
+            }
+        }
+    }
+    if (!found)
+        return false;
+
+    const char separator = ConditionUi::DecimalSeparator();
+    string64 points;
+    string32 number;
+    if (impact)
+    {
+        ConditionUi::FormatNumber(number, sums[0] * 100.0f, separator, true);
+        xr_strconcat(points, number, " ", TranslatedOr("ui_uip_unit_pp", "pp").c_str());
+    }
+    else
+    {
+        // Przyrost sredniej trzech progow, jak "Ochrona mechaniczna" w dymku
+        // przedmiotu (przy rownych przyrostach to po prostu ten przyrost).
+        ConditionUi::FormatProtectionPoints(points, Protection::MechanicalMean(sums[0], sums[1], sums[2]));
+    }
+    xr_strconcat(m_text, get_property()->name(), ": ", points);
+    m_ui_text->SetText(m_text);
+    return true;
+}
+
+bool UIProperty::show_result(LPCSTR values)
+{
+	if (show_physical(values))
+	{
+		return true;
+	}
 	if (get_property() && get_property()->run_functor(values, m_text))
 	{
 		m_ui_text->SetText(m_text);
@@ -294,13 +489,14 @@ void UIInvUpgPropertiesWnd::SetAvailableWidth(float Width, bool AllowExpansion)
 	CanExpand = AllowExpansion;
 }
 
-void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades)
+void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, CInventoryItem* item, bool installed)
 {
 	xr_vector<UIProperty*> VisibleProperties;
 	float RequiredColumnWidth = 0.0f;
 	for (auto* Property : m_properties_ui)
 	{
 		Property->Show(false);
+		Property->set_armor_context(item, installed);
 		if (Property->compute_value(item_upgrades))
 		{
 			VisibleProperties.push_back(Property);
@@ -319,7 +515,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades)
 	for (u32 Index = 0; Index < VisibleProperties.size();)
 	{
 		UIProperty* Left = VisibleProperties[Index++];
-		// Wiersz ochrony albo regeneracji idzie sam na cala szerokosc z zawijaniem;
+		// Wiersz ochrony, regeneracji albo fizyczny idzie sam na cala szerokosc z zawijaniem;
 		// zwykla wlasciwosc przed nim zostaje bez pary i tez bierze cala szerokosc.
 		const bool FullRow = Left->is_full_width_row();
 		UIProperty* Right = nullptr;
@@ -343,7 +539,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades)
 	SetHeight(Height);
 }
 
-void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade)
+void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, CInventoryItem* item)
 {
 	if (!upgrade.is_known())
 	{
@@ -353,12 +549,21 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade)
 
 	m_temp_upgrade_vector.resize(0);
 	m_temp_upgrade_vector.push_back(upgrade.id());
-	set_info(m_temp_upgrade_vector);
+	set_info(m_temp_upgrade_vector, item, item && item->has_upgrade(upgrade.id()));
 }
 
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
-	set_info(item.upgardes());
+	set_info(item.upgardes(), &item, true);
+}
+
+// Wiersze show_physical maja tekst jak ochrony srodowiskowe ("Nazwa: +N pkt"),
+// wiec zajmuja cala szerokosc zamiast polowy kolumny.
+bool UIProperty::is_physical() const
+{
+    return xr_strcmp(m_property_id.c_str(), "prop_damage") == 0 ||
+        xr_strcmp(m_property_id.c_str(), "prop_damage_absorption") == 0 ||
+        xr_strcmp(m_property_id.c_str(), "prop_armor") == 0;
 }
 
 bool UIProperty::is_regeneration() const
