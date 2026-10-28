@@ -314,6 +314,8 @@ bool CUIActorMenuBase::OnItemFocusLost(CUICellItem* itm)
 			if (PIItem iItm = (PIItem)itm->m_pData)
 			{
 				m_lastFocusLostItem_id = iItm->object_id();
+				if (m_hovered_item_id == iItm->object_id())
+					m_hovered_item_id = u16(-1);
 			}
 		}
 		itm->m_selected = false;
@@ -321,6 +323,7 @@ bool CUIActorMenuBase::OnItemFocusLost(CUICellItem* itm)
 	else 
 	{
 		m_lastFocusLostItem_id = u16(0xffff);
+		m_hovered_item_id = u16(-1);
 	}
 
 	InfoCurItem( nullptr );
@@ -389,6 +392,8 @@ bool CUIActorMenuBase::OnItemFocusReceive(CUICellItem* itm)
 
 	m_lastFocusRecivedItem = (PIItem)itm->m_pData;
 	m_cell_lastFocusRecivedItem = itm;
+	// An id, not the cell: cells are freed when items move.
+	m_hovered_item_id = itm->HasValidInventoryBinding() && itm->m_pData ? ((PIItem)itm->m_pData)->object_id() : u16(-1);
 	if (m_isItemFocusReceive)
 	{
 		luabind::functor<bool> funct1;
