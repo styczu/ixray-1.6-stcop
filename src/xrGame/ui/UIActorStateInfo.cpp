@@ -351,43 +351,14 @@ LPCSTR Protection::ArmorClassName(float value)
 
 namespace
 {
-	// Grupy kosci pokazywane w tooltipie klasy pancerza. Dlonie i stopy sa
-	// swiadomie pominiete - maja wszedzie wartosci szczatkowe. Twarz jest
-	// osobno, bo bywa slabsza od czaszki i w jednej grupie z glowa znikalaby
-	// pod maksimum.
-	//
-	// "section" dzieli tabele na dwie czesci pokazywane w tooltipie osobno:
-	// 0 = to, co kryje glowe (helm ALBO zintegrowany kaptur kombinezonu),
-	// 1 = reszta sylwetki. Z maksimum kazdej sekcji bierze sie para liczb
-	// przy pasku, wiec liczba po lewej nie zalezy od tego, czy w slocie helmu
-	// cos siedzi - exoszkielet ma oslone glowy we wlasnym bones_koeff_protection.
-	struct SArmorGroup
-	{
-		int		section;
-		LPCSTR	label_key;
-		LPCSTR	bones[8];
-	};
-
-	static const SArmorGroup kArmorGroups[] =
-	{
-		{ 0, "ui_armor_tt_head",  { "bip01_head", nullptr } },
-		{ 0, "ui_armor_tt_face",  { "eyelid_1", "eye_left", "eye_right", "jaw_1", nullptr } },
-		{ 0, "ui_armor_tt_neck",  { "bip01_neck", nullptr } },
-		{ 1, "ui_armor_tt_torso", { "bip01_pelvis", "bip01_spine", "bip01_spine1", "bip01_spine2",
-								   "bip01_l_clavicle", "bip01_r_clavicle", nullptr } },
-		{ 1, "ui_armor_tt_arms",  { "bip01_l_upperarm", "bip01_r_upperarm",
-								   "bip01_l_forearm", "bip01_r_forearm", nullptr } },
-		{ 1, "ui_armor_tt_legs",  { "bip01_l_thigh", "bip01_r_thigh",
-								   "bip01_l_calf", "bip01_r_calf", nullptr } },
-	};
-
-	static const u32 kArmorGroupCount = sizeof(kArmorGroups) / sizeof(kArmorGroups[0]);
+	// Tabela grup kosci jest w Protection::ArmorGroups (ProtectionValues.h),
+	// wspolna z wierszem "Pancerz" okna ulepszen.
 
 	// ArmorClassName wyprowadzono do Protection:: (definicja nad ta przestrzenia).
 
 	// Najwyzszy efektywny prog przebicia w grupie. -1 = zadna kosc grupy
 	// nie jest kryta przez zadna warstwe.
-	float GroupArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, const SArmorGroup& group)
+	float GroupArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, const Protection::ArmorGroup& group)
 	{
 		float best = -1.0f;
 		for (u32 i = 0; group.bones[i] != nullptr; ++i)
@@ -417,12 +388,12 @@ namespace
 	float SectionArmor(IKinematics* ikv, CCustomOutfit* outfit, CHelmet* helmet, int section)
 	{
 		float best = -1.0f;
-		for (u32 g = 0; g < kArmorGroupCount; ++g)
+		for (u32 g = 0; g < Protection::ArmorGroupCount; ++g)
 		{
-			if (kArmorGroups[g].section != section)
+			if (Protection::ArmorGroups[g].section != section)
 				continue;
 
-			const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
+			const float a = GroupArmor(ikv, outfit, helmet, Protection::ArmorGroups[g]);
 			if (a > best)
 				best = a;
 		}
@@ -461,6 +432,51 @@ namespace
 			if (dot != nullptr)
 				*dot = sep.c_str()[0];
 		}
+	}
+
+	// Jedna strefa dymka "Absorpcja impaktu" - tylko pocisk, ktory NIE przebil
+	// oslony. HitOutfitEffect puszcza trafienie przez kombinezon, potem helm,
+	// a kazda warstwa mnozy moc przez swoj hit_fraction_actor wylacznie na
+	// kosciach, dla ktorych ma pancerz (HitThroughArmor pomija kosc
+	// z GetBoneArmor < 0). Strefe opisuje wiec jej reprezentatywna kosc; bez
+	// tej kosci w modelu liczy sie sama obecnosc warstwy. Absorpcja = 1 - hf,
+	// bez mnoznika trudnosci (decyzja uzytkownika: trudnosc nie jest cecha
+	// pancerza i dziala tez po przebiciu).
+	void AppendStoppedBulletZone(xr_string& hint, LPCSTR zoneKey, IKinematics* ikv, LPCSTR bone,
+		CCustomOutfit* outfit, CHelmet* helmet)
+	{
+		const u16 boneId = ikv ? ikv->LL_BoneID(bone) : BI_NONE;
+		const bool byOutfit = outfit && (boneId == BI_NONE || outfit->GetBoneArmor((s16)boneId) >= 0.0f);
+		const bool byHelmet = helmet && (boneId == BI_NONE || helmet->GetBoneArmor((s16)boneId) >= 0.0f);
+
+		hint += kBreak;
+		hint += kColTitle;
+		hint += g_pStringTable->translate(zoneKey).c_str();
+		hint += " ";
+		if (byOutfit)
+			hint += g_pStringTable->translate("ui_uip_prot_layer_outfit").c_str();
+		if (byOutfit && byHelmet)
+			hint += " + ";
+		if (byHelmet)
+			hint += g_pStringTable->translate("ui_uip_prot_layer_helmet").c_str();
+		if (!byOutfit && !byHelmet)
+		{
+			hint += g_pStringTable->translate("ui_uip_prot_layer_none").c_str();
+			return;
+		}
+
+		const float hitFraction = (byOutfit ? outfit->GetHitFractionActor() : 1.0f)
+			* (byHelmet ? helmet->GetHitFractionActor() : 1.0f);
+
+		string64 v;
+		ConditionUi::FormatDetailNumber(v, (1.0f - hitFraction) * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
+		hint += kBreak;
+		hint += kColLabel;
+		hint += g_pStringTable->translate("ui_uip_prot_armor_absorption").c_str();
+		hint += ": ";
+		hint += kColTitle;
+		hint += v;
+		hint += g_pStringTable->translate("ui_uip_unit_percent").c_str();
 	}
 }
 
@@ -1208,27 +1224,18 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 		return;
 	}
 
-	// Liczba obok paska: "glowa/korpus" w setnych progu przebicia.
-	// Obie polowy licza sie z OBU warstw naraz, wiec pusty slot helmu nie daje
-	// kreski, jesli glowe kryje sam kombinezon (exoszkielet, kombinezony
-	// z helmet_avaliable = false). Kreska oznacza teraz naprawde "nic nie kryje".
-	const float head_armor = SectionArmor(ikv, outfit, helmet, 0);
+	// Liczba obok paska: sam korpus (sekcja 1) w setnych progu przebicia, ze
+	// stanem obu warstw. Glowa jest tylko w tooltipie ponizej. Kreska = zadna
+	// warstwa nie kryje korpusu.
 	const float body_armor = SectionArmor(ikv, outfit, helmet, 1);
 
-	string32 head_txt, body_txt;
-	if (head_armor < 0.0f)
-		xr_strcpy(head_txt, sizeof(head_txt), dash);
-	else
-		xr_sprintf(head_txt, sizeof(head_txt), "%d", iFloor(head_armor * 100.0f + 0.5f));
-
+	string32 body_txt;
 	if (body_armor < 0.0f)
 		xr_strcpy(body_txt, sizeof(body_txt), dash);
 	else
-		xr_sprintf(body_txt, sizeof(body_txt), "%d", iFloor(body_armor * 100.0f + 0.5f));
+		xr_sprintf(body_txt, sizeof(body_txt), "%d", Protection::ArmorPoints(body_armor));
 
-	string64 value_txt;
-	xr_sprintf(value_txt, sizeof(value_txt), "%s/%s", head_txt, body_txt);
-	item->set_text_str(value_txt);
+	item->set_text_str(body_txt);
 
 	// Tooltip: naglowek, pusta linia, potem dwie sekcje rozdzielone kreskowana
 	// linia - najpierw to, co kryje glowe, potem reszta sylwetki.
@@ -1238,18 +1245,18 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 	hint += kBreak;
 
 	int last_section = -1;
-	for (u32 g = 0; g < kArmorGroupCount; ++g)
+	for (u32 g = 0; g < Protection::ArmorGroupCount; ++g)
 	{
-		if (kArmorGroups[g].section != last_section)
+		if (Protection::ArmorGroups[g].section != last_section)
 		{
-			last_section = kArmorGroups[g].section;
+			last_section = Protection::ArmorGroups[g].section;
 			hint += kColSep;
 			hint += s_sep.c_str();
 			hint += kBreak;
 		}
 
-		const float a = GroupArmor(ikv, outfit, helmet, kArmorGroups[g]);
-		const shared_str s_label = g_pStringTable->translate(kArmorGroups[g].label_key);
+		const float a = GroupArmor(ikv, outfit, helmet, Protection::ArmorGroups[g]);
+		const shared_str s_label = g_pStringTable->translate(Protection::ArmorGroups[g].label_key);
 
 		// Kolumny trzymaja sie tylko przy foncie o stalej szerokosci - hint_wnd
 		// panelu uzywa [ui_font_panel_tt] (consola). Strony kodowe 1250/1251/1252
@@ -1265,7 +1272,7 @@ void ui_actor_state_wnd::UpdateArmorInfo(CActor* actor, CCustomOutfit* outfit, C
 		{
 			LPCSTR cls = Protection::ArmorClassName(a);
 			xr_sprintf(line, sizeof(line), "%s%-8s %s%3d  %s%s %s%s",
-				kColLabel, s_label.c_str(), kColValue, iFloor(a * 100.0f + 0.5f),
+				kColLabel, s_label.c_str(), kColValue, Protection::ArmorPoints(a),
 				kColUnit, s_class.c_str(), kColClass, cls ? cls : dash);
 		}
 
@@ -1510,9 +1517,10 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
 // Mechaniczne (rozszarpanie/uderzenie/wybuch): prog absolutny odejmowany od
 // trafienia (kombinezon+helm, kazdy *condition) plus nieliniowa redukcja
 // artefaktow na pasie; "Efektywny prog" = prog / (1 - f). Skala pkt = wartosc
-// x100, pelny pasek przy 1.00, trojkat powyzej. Balistyka: absorpcja pancerza
-// (1 - hit_fraction_actor) plus dodatkowa redukcja z mnoznika trudnosci; osobno
-// scenariusz zatrzymania i przebicia pancerza; skala w %.
+// x100, pelny pasek przy 1.00, trojkat powyzej. Balistyka: liczba i pasek to
+// absorpcja kombinezonu (1 - hit_fraction_actor, skala %, bez mnoznika
+// trudnosci); dymek "Absorpcja impaktu" rozbija zatrzymany pocisk na tulow
+// i glowe (AppendStoppedBulletZone).
 void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* outfit, CHelmet* helmet)
 {
     // Panel (liczba/pasek/trojkat) liczy sie zawsze; bogaty tooltip wymaga
@@ -1645,14 +1653,11 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
     mechanical(stt_main,  ALife::eHitTypeStrike,    "ui_uip_prot_strike_title", "ui_uip_prot_effect_strike");
     mechanical(stt_sleep, ALife::eHitTypeExplosion, "ui_uip_prot_explo_title",  "ui_uip_prot_effect_explo");
 
-    // ---- balistyka (absorpcja pancerza + mnoznik trudnosci, skala %) ----
+    // ---- balistyka (absorpcja pancerza, skala %) ----
     {
         ui_actor_state_item* item = m_state[stt_fire_wound];
         if (item)
         {
-            // Mnoznik OBRAZEN z poziomu trudnosci (actor_immunities_<diff>).
-            // Efekty czasowe (m_fBoost*Immunity) sa zerowe w bazowej grze i tu pominiete.
-            const float mult = actor->conditions().GetHitImmunity(ALife::eHitTypeFireWound);
             if (!outfit)
             {
                 item->set_value_text("-");
@@ -1661,76 +1666,44 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
             }
             else
             {
-                const float hitFraction = outfit->GetHitFractionActor(); // czesc przechodzaca
-                const float effStopped  = 1.0f - hitFraction * mult;     // Efektywna ochrona (zatrzymany)
+                const float absorb = 1.0f - outfit->GetHitFractionActor(); // Absorpcja pancerza
                 string64 num;
-                ConditionUi::FormatProtectionPointsPlain(num, effStopped);
+                ConditionUi::FormatProtectionPointsPlain(num, absorb);
                 xr_strcat(num, unitPct);
                 item->set_value_text(num);
                 if (item->m_progress)
                 {
-                    float fill = effStopped;
+                    float fill = absorb;
                     clamp(fill, 0.0f, 1.0f);
                     item->m_progress->SetProgressPosImmediate(fill);
                 }
             }
             item->set_protection_overflow(0.0f); // balistyka nie przekracza 100%
 
-            if (richTooltips && outfit)
+            // Dymek "Absorpcja impaktu": tulow, potem glowa, obie strefy przy
+            // pocisku zatrzymanym przez oslone. Liczony takze bez kombinezonu,
+            // zeby nie zostala stara tresc ani statyczny opis z XML.
+            if (richTooltips)
             {
-                const float hitFraction = outfit->GetHitFractionActor();
-                const float absorb      = 1.0f - hitFraction;          // Absorpcja pancerza
-                const float redStopped  = hitFraction * (1.0f - mult); // Dodatkowa redukcja (trudnosc)
-                const float effStopped  = absorb + redStopped;         // Efektywna ochrona
-                const float redPen      = 1.0f - mult;                 // przy przebiciu (absorpcja=0)
+                IKinematics* ikv = PKinematics(actor->Visual());
+                CHelmet* wornHelmet = showHelmet ? helmet : nullptr;
 
                 xr_string hint = kColTitle;
-                hint += g_pStringTable->translate("ui_uip_prot_ballistic_title").c_str();
+                hint += g_pStringTable->translate("ui_uip_impact_absorption").c_str();
                 hint += kBreak;
                 hint += kColSep;
                 hint += dotted;
-
-                auto pctLine = [&](LPCSTR key, float frac, LPCSTR labelCol, LPCSTR valueCol, bool indent)
-                {
-                    string64 v;
-                    ConditionUi::FormatDetailNumber(v, frac * 100.0f, ConditionUi::DecimalSeparator(), false, 2);
-                    hint += kBreak;
-                    hint += labelCol;
-                    if (indent)
-                        hint += "  ";
-                    hint += g_pStringTable->translate(key).c_str();
-                    hint += ": ";
-                    hint += valueCol;
-                    hint += v;
-                    hint += unitPct;
-                };
-
-                // Po zatrzymaniu pocisku
-                pctLine("ui_uip_prot_effective", effStopped, kColLabel, kColTitle, false);
-                pctLine("ui_uip_prot_armor_absorption", absorb, kColComponent, kColComponent, true);
-                pctLine("ui_uip_prot_difficulty_reduction", redStopped, kColComponent, kColComponent, true);
+                AppendStoppedBulletZone(hint, "ui_uip_prot_zone_body", ikv, "bip01_spine1", outfit, wornHelmet);
                 hint += kBreak;
-                hint += kColLabel;
-                hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
-                hint += " ";
-                hint += kColTitle;
-                hint += g_pStringTable->translate("ui_uip_prot_bleeding_no").c_str();
-
-                // Przy przebiciu pancerza (hit_fraction pominiete)
+                hint += kColSep;
+                hint += dotted;
+                AppendStoppedBulletZone(hint, "ui_uip_prot_zone_head", ikv, "bip01_head", outfit, wornHelmet);
                 hint += kBreak;
                 hint += kColSep;
                 hint += dotted;
                 hint += kBreak;
-                hint += kColTitle;
-                hint += g_pStringTable->translate("ui_uip_prot_penetration_header").c_str();
-                pctLine("ui_uip_prot_effective", redPen, kColLabel, kColTitle, false);
-                pctLine("ui_uip_prot_difficulty_reduction", redPen, kColComponent, kColComponent, true);
-                hint += kBreak;
                 hint += kColLabel;
-                hint += g_pStringTable->translate("ui_uip_prot_bleeding").c_str();
-                hint += " ";
-                hint += kColTitle;
-                hint += g_pStringTable->translate("ui_uip_prot_bleeding_possible").c_str();
+                hint += g_pStringTable->translate("ui_uip_prot_stopped_no_bleeding").c_str();
 
                 item->set_hint_text(hint.c_str());
             }
