@@ -389,7 +389,7 @@ void CUIActorMenuBase::highlight_weapons_for_addon(PIItem addon_item, CUIDragDro
 			continue;
 		}
 
-		if (pScope && weapon->ScopeAttachable() && weapon->ScopeFit(pScope))
+		if (pScope && weapon->CanAttach(pScope))
 		{
 			ci->m_select_armament = true;
 			continue;
@@ -410,6 +410,20 @@ void CUIActorMenuBase::highlight_weapons_for_addon(PIItem addon_item, CUIDragDro
 	}//for i
 }
 
+// The weapon in the slot takes the addon: CanAttach, as the "attach" entries of the
+// context menu. The holster never counts for a grenade launcher, as in the menu.
+bool CUIActorMenuBase::AddonFitsSlotWeapon(PIItem addon, u16 slot)
+{
+	if (slot == PISTOL_SLOT_NEW && addon->cast_addon_grenade_launcher())
+	{
+		return false;
+	}
+
+	CInventory* inv = GetInventory();
+	PIItem weapon = inv ? inv->ItemFromSlot(slot) : nullptr;
+	return weapon && weapon->CanAttach(addon);
+}
+
 void CUIActorMenuBase::highlight_item_slot(CUICellItem* cell_item)
 {
 	PIItem item = (PIItem)cell_item->m_pData;
@@ -420,6 +434,19 @@ void CUIActorMenuBase::highlight_item_slot(CUICellItem* cell_item)
 
 	if (CUIDragDropListEx::m_drag_item)
 	{
+		return;
+	}
+
+	// An addon lights up the weapon slots whose weapon takes it.
+	if (item->cast_addon_scope() || item->cast_addon_silencer() || item->cast_addon_grenade_launcher())
+	{
+		for (const u16 slot : { u16(INV_SLOT_2), u16(INV_SLOT_3), u16(PISTOL_SLOT_NEW) })
+		{
+			if (m_pInvSlotHighlight[slot] && AddonFitsSlotWeapon(item, slot))
+			{
+				m_pInvSlotHighlight[slot]->Show(true);
+			}
+		}
 		return;
 	}
 
