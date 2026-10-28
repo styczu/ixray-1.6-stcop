@@ -142,6 +142,9 @@ public:
 	virtual bool	Action			(u16 cmd, u32 flags);
 	bool			IsAmmoAvailable	();
 	virtual void	UnloadMagazine	(bool spawn_ammo = true);
+	// One round out, as a shotgun gives them up in the inventory: the magazine first, then
+	// the chamber. False when there is none.
+			bool	UnloadCartridge	();
 
 	virtual bool	GetBriefInfo	(II_BriefInfo& info);
 
