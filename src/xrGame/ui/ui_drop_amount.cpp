@@ -24,6 +24,7 @@
 #include "../../xrEngine/string_table.h"
 #include "../../xrEngine/xr_input.h"
 #include "UITalkWnd.h"
+#include "UICellCustomItems.h"
 #include "UITradeWnd.h"
 
 namespace
@@ -382,6 +383,16 @@ void CUIItemDropAmountWnd::PerformDrop()
     int amount = _currentAmount;
     if (amount < 1)
         amount = 1;
+
+    // A drop and a take pop the top box first, the others take the children from the
+    // first: full ammo boxes go first either way.
+    if (_dropMode != eModeDrop && _dropMode != eModeTake)
+    {
+        if (CUIAmmoCellItem* ammo = smart_cast<CUIAmmoCellItem*>(_pCellItem))
+        {
+            ammo->ArrangeForChildMoves();
+        }
+    }
 
     switch (_dropMode)
     {
