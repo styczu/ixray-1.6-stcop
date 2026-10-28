@@ -865,7 +865,16 @@ void CUICellItem::UpdateConditionProgressBar()
 	}
 	else
 	{
-		m_pConditionState->SetState(display.state);
+		// Ten steps rounded down, one per segment of the bar texture: a segment lights
+		// only once the whole tenth is there, so 7 segments mean at least 70%, the
+		// condition traders still buy at. A percentage keeps its exact value, and the
+		// portions of a food item are not a condition.
+		float state = display.state;
+		if (m_pConditionState->GetDisplayMode() == CUIItemStateDisplay::EDisplayMode::Bar && !display.usePortion)
+		{
+			state = iFloor(state * 10.0f) / 10.0f;
+		}
+		m_pConditionState->SetState(state);
 	}
 
 	m_pConditionState->Show(true);
