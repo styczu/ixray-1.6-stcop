@@ -34,6 +34,9 @@ public:
 			void	SetZoneProtection	( bool zone ) { m_zone_protection = zone; }
 			// Nadpisuje sam tekst wartosci (np. nazwa klasy pancerza zamiast liczby).
 			void	SetValueText		( const char* text );
+			// Wartosc w punktach panelu (x100, liczba calkowita) z paskiem pelnym
+			// przy bar_max i trojkatem przepelnienia powyzej (wezly overflow).
+			void	SetPointsValue		( float cur, float comp, float bar_max );
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -43,6 +46,8 @@ protected:
 	CUIDoubleProgressBar*	m_progress;
 	CUIStatic*				m_value; // 100%
 	CUIStatic*				m_text_legacy; // 100%
+	CUIStatic*				m_overflow = nullptr;
+	CUIStatic*				m_overflow_fill = nullptr;
 	float					m_magnitude;
 	float					m_af_value = 0.0f;
 	bool					m_zone_protection = false;

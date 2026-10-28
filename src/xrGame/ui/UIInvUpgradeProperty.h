@@ -12,6 +12,8 @@
 #include "inventory_item.h"
 #include "inventory_upgrade_property.h"
 
+class CCustomOutfit;
+
 namespace inventory::upgrade
 {
 	class Upgrade;
@@ -34,6 +36,11 @@ protected:
 	CUIStatic* m_ui_text = nullptr;
 	string256 m_text = {};
 
+	// Kontekst przedmiotu dla wiersza "Pancerz" (show_armor): kombinezon
+	// i czy liczone ulepszenia sa juz na nim zainstalowane.
+	CCustomOutfit* m_armor_outfit = nullptr;
+	bool m_armor_installed = true;
+
 public:
 	UIProperty() = default;
 	virtual	~UIProperty() = default;
@@ -49,8 +56,12 @@ public:
 	bool is_regeneration() const;
 	ALife::EHitType protection_type() const;
 	bool is_protection() const;
-	// Ochrony i regeneracja maja dluzsza wartosc z jednostka, wiec zajmuja caly wiersz.
-	bool is_full_width_row() const { return is_regeneration() || is_protection(); }
+	bool is_physical() const;
+	// Ochrony, regeneracja i wiersze fizyczne maja dluzsza wartosc z jednostka, wiec zajmuja caly wiersz.
+	bool is_full_width_row() const { return is_regeneration() || is_protection() || is_physical(); }
+	void set_armor_context(CInventoryItem* item, bool installed);
+	bool show_armor(const char* values);
+	bool show_physical(const char* values);
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -83,7 +94,7 @@ public:
 	virtual	~UIInvUpgPropertiesWnd();
 	void init_from_xml(const char* xml_name);
 
-	void set_upgrade_info(Upgrade_type& upgrade);
+	void set_upgrade_info(Upgrade_type& upgrade, CInventoryItem* item = nullptr);
 	void set_item_info(CInventoryItem& item);
 	void SetAvailableWidth(float Width, bool AllowExpansion);
 	void UpdateStatsPos(float& h, Fvector2& pos, UIProperty* pWnd, int& counter) const;
@@ -91,6 +102,6 @@ public:
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 protected:
-	void set_info(ItemUpgrades_type const& item_upgrades);
+	void set_info(ItemUpgrades_type const& item_upgrades, CInventoryItem* item = nullptr, bool installed = true);
 
 }; // class UIInvUpgPropertiesWnd
