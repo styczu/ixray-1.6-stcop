@@ -200,6 +200,48 @@ CUIDragItem* CUIAmmoCellItem::CreateDragItem()
 	return IsHelper() ? nullptr : inherited::CreateDragItem();
 }
 
+// Full boxes leave the stack first, the partly filled one last: a drag, and a drop or a
+// take of an amount, take the box of the top cell and the next top comes from the last
+// child (PopChild), so the fullest box sits on top and the emptiest is the first child.
+// Counts change in place (merging, unloading), so every frame. Only the boxes swap
+// between the cells, as PopChild does; stacks with trade helpers keep their order.
+void CUIAmmoCellItem::Update()
+{
+	ArrangeBoxes(true);
+	inherited::Update();
+}
+
+// A move or a trade of an amount takes the children from the first and the top last:
+// for it the fullest boxes go first among the children and the emptiest on top. The next
+// Update puts the fullest back on top.
+void CUIAmmoCellItem::ArrangeForChildMoves()
+{
+	ArrangeBoxes(false);
+}
+
+void CUIAmmoCellItem::ArrangeBoxes(bool fullest_on_top)
+{
+	bool helpers = IsHelper();
+	for (CUICellItem* child : m_childs)
+		helpers = helpers || child->IsHelper();
+	if (m_childs.empty() || helpers)
+		return;
+
+	xr_vector<void*> boxes;
+	boxes.push_back(m_pData);
+	for (CUICellItem* child : m_childs)
+		boxes.push_back(child->m_pData);
+	// Fullest last for the top, else fullest first for the children.
+	std::stable_sort(boxes.begin(), boxes.end(), [fullest_on_top](void* a, void* b)
+	{
+		const u16 ca = ((CWeaponAmmo*)a)->m_boxCurr, cb = ((CWeaponAmmo*)b)->m_boxCurr;
+		return fullest_on_top ? ca < cb : ca > cb;
+	});
+	m_pData = boxes.back();
+	for (u32 i = 0; i < m_childs.size(); ++i)
+		m_childs[i]->m_pData = boxes[i];
+}
+
 u32 CUIAmmoCellItem::CalculateAmmoCount()
 {
 	u32 total = IsHelper() ? 0 : object()->m_boxCurr;
