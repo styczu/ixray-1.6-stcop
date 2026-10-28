@@ -43,6 +43,10 @@ CActorCondition::CActorCondition(CActor *object) :
 	m_fWalkWeightPower			= 0.f;
 	m_fOverweightWalkK			= 0.f;
 	m_fOverweightJumpK			= 0.f;
+	m_fOverweightHardStopK		= 1.5f;
+	m_fOverweightHardStopSpeed	= 0.5f;
+	for (int i = 0; i < eOverloadModeCount; ++i)
+		m_fOverweightCostK[i]		= 1.f;
 	m_fAccelK					= 0.f;
 	m_fSprintK					= 0.f;
 	Satiety.Current				= 1.0f;
@@ -104,6 +108,18 @@ void CActorCondition::LoadCondition(const char* entity_section)
 	m_fWalkWeightPower			= pSettings->r_float(section,"walk_weight_power");
 	m_fOverweightWalkK			= pSettings->r_float(section,"overweight_walk_k");
 	m_fOverweightJumpK			= pSettings->r_float(section,"overweight_jump_k");
+
+	// Przeciazenie (actor-overload-curve): hard stop = udzwig x k, koszt
+	// 1 / (1 - k x) na tryb (sprint k = 1 - definicja hard stopu), predkosc
+	// liniowo od 1 do overweight_hard_stop_speed. Domyslne wartosci sa
+	// modelem; klucze tylko je zmieniaja.
+	m_fOverweightHardStopK							= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_k", 1.5f);
+	m_fOverweightCostK[eOverloadWalk]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_walk_cost_k", 0.75f);
+	m_fOverweightCostK[eOverloadRun]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_run_cost_k", 0.90f);
+	m_fOverweightCostK[eOverloadSprint]				= 1.0f;
+	m_fOverweightCostK[eOverloadJump]				= READ_IF_EXISTS(pSettings, r_float, section, "overweight_jump_cost_k", 0.90f);
+	m_fOverweightHardStopSpeed						= READ_IF_EXISTS(pSettings, r_float, section, "overweight_hard_stop_speed", 0.5f);
+	clamp(m_fOverweightHardStopSpeed, 0.0f, 1.0f);
 	m_fAccelK					= pSettings->r_float(section,"accel_k");
 	m_fSprintK					= pSettings->r_float(section,"sprint_k");
 
@@ -718,19 +734,57 @@ void CActorCondition::PowerHit(float power, bool apply_outfit)
 	m_fPower			-=	apply_outfit ? HitPowerEffect(power) : power;
 	clamp					(m_fPower, 0.f, 1.f);
 }
+float CActorCondition::GetOverloadHardStop() const
+{
+	return object().MaxCarryWeight() * m_fOverweightHardStopK;
+}
+
+float CActorCondition::GetOverloadFactor() const
+{
+	const float carry = object().MaxCarryWeight();
+	if (carry <= 0.0f)
+		return 0.0f;
+	const float weight = object().inventory().TotalWeight();
+	const float range = carry * (m_fOverweightHardStopK - 1.0f);
+	if (range <= 0.0f)
+		return weight > carry ? 1.0f : 0.0f;
+	float x = (weight - carry) / range;
+	clamp(x, 0.0f, 1.0f);
+	return x;
+}
+
+// Mianownik ograniczony od dolu: przy x = 1 postac i tak stoi
+// (IsCantWalkWeight), a koszt nie dzieli przez zero (najwyzej x100).
+float CActorCondition::GetOverloadCostK(EOverloadMode mode) const
+{
+	return 1.0f / std::max(1.0f - m_fOverweightCostK[mode] * GetOverloadFactor(), 0.01f);
+}
+
+// Liniowo od 1 na udzwigu do overweight_hard_stop_speed tuz przed hard
+// stopem, jednakowo dla chodu, biegu i sprintu; od x = 1 postac stoi
+// (IsCantWalkWeight).
+float CActorCondition::GetOverloadSpeedK() const
+{
+	return 1.0f - (1.0f - m_fOverweightHardStopSpeed) * GetOverloadFactor();
+}
+
 //weight - "удельный" вес от 0..1
+// Masa liniowo takze powyzej udzwigu; przeciazenie jako plynny mnoznik
+// (GetOverloadCostK) zamiast skoku overweight_jump_k; power_loss na koncu.
 void CActorCondition::ConditionJump(float weight)
 {
 	float power			=	m_fJumpPower;
-	power				+=	m_fJumpWeightPower*weight*(weight>1.f?m_fOverweightJumpK:1.f);
+	power				+=	m_fJumpWeightPower*weight;
+	power				*=	GetOverloadCostK(eOverloadJump);
 	m_fPower			-=	HitPowerEffect(power);
 }
 
 void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
 {
 	float power			=	m_fWalkPower;
-	power				+=	m_fWalkWeightPower*weight*(weight>1.f?m_fOverweightWalkK:1.f);
+	power				+=	m_fWalkWeightPower*weight;
 	power				*=	m_fDeltaTime*(accel?(sprint?m_fSprintK:m_fAccelK):1.f);
+	power				*=	GetOverloadCostK(accel ? (sprint ? eOverloadSprint : eOverloadRun) : eOverloadWalk);
 	m_fPower			-=	HitPowerEffect(power);
 }
 
@@ -790,11 +844,11 @@ bool CActorCondition::IsCantWalkWeight()
 {
 	if(IsGameTypeSingleCompatible() && !GodMode())
 	{
-		float max_w	= m_object->MaxWalkWeight();
+		// Hard stop przeciazenia (udzwig x overweight_hard_stop_k); kara objetosci
+		// z IX-Ray 1.4 (EnableInventoryVolume) obniza prog jak dotad.
 		const SInventoryVolumePenalty volumePenalty = CInventoryVolumeSystem::Get().GetPenalty(object());
-		max_w = std::max(0.0f, max_w - volumePenalty.maxWalkWeightPenalty);
-
-		if( object().inventory().TotalWeight() > max_w )
+		if( GetOverloadFactor() >= 1.0f || (volumePenalty.maxWalkWeightPenalty > 0.0f &&
+			object().inventory().TotalWeight() > std::max(0.0f, m_object->MaxWalkWeight() - volumePenalty.maxWalkWeightPenalty)) )
 		{
 			m_condition_flags.set			(eCantWalkWeight, true);
 			return true;
