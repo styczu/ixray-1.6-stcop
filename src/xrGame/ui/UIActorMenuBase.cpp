@@ -282,7 +282,7 @@ void CUIActorMenuBase::InitBase(CUIXml& uiXml)
 		}
 	}
 
-	// Optional: without a node that kind of weapon unloads at once.
+	// Optional: without a node that kind of weapon unloads or loads at once.
 	const char* unload_kinds[eUnloadSndCount] = { "pistol", "rifle", "shotgun", "grenade" };
 	for (u8 kind = 0; kind < eUnloadSndCount; ++kind)
 	{
@@ -294,6 +294,15 @@ void CUIActorMenuBase::InitBase(CUIXml& uiXml)
 			if (name && name[0])
 			{
 				::Sound->create(m_unload_snd[kind], name, st_Effect, sg_SourceType);
+			}
+		}
+		xr_sprintf(node, "snd_ammo_load_%s", unload_kinds[kind]);
+		if (uiXml.NavigateToNode(node, 0))
+		{
+			const char* name = uiXml.Read(node, 0, "");
+			if (name && name[0])
+			{
+				::Sound->create(m_load_snd[kind], name, st_Effect, sg_SourceType);
 			}
 		}
 	}
