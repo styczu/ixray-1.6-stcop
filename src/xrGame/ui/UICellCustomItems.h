@@ -43,6 +43,23 @@ public:
 	virtual CUICellItem* ui_cast_cell_item() { return this; }
 };
 
+// Inventory icon of one addon overlay, read from the weapon's (or scope's) section with
+// the addon's own section as the fallback for every key.
+struct SAddonIconLayout
+{
+	shared_str	icon_section;	// section the <prefix>_* keys were read from
+	shared_str	addon_section;	// silencer_name, scope_name, grenade_launcher_name
+	shared_str	texture;		// empty: the weapon's atlas
+	Fvector2	grid_pos{};		// in atlas cells
+	Fvector2	grid_size{};	// in atlas cells
+	float		scale = 1.0f;	// atlas cell is 50 * scale px
+	Fvector2	offset{};		// <prefix>_x/_y in logical units (50 per cell), used when custom
+	Fvector2	shift{};		// <prefix>_weapon_offset_x/_y in logical units: moves the
+								// whole icon while the addon is on
+	bool		custom = false;	// an icon key or addon_offsets_use_inv_scale is set: the
+								// offset above is used instead of the legacy one
+};
+
 class CUIWeaponCellItem final :public CUIInventoryCellItem
 {
 	typedef  CUIInventoryCellItem	inherited;
@@ -51,12 +68,19 @@ public:
 protected:
 	CUIStatic*					m_addons					[eMaxAddon];
 	Fvector2					m_addon_offset				[eMaxAddon];
+	SAddonIconLayout			m_layout					[eMaxAddon];
+	Fvector2					m_shift{};
+	bool						m_scaled_offsets = false;	// addon_offsets_use_inv_scale
 	bool mScopeBack = false;
 	void						CreateIcon					(eAddonType);
 	void						DestroyIcon					(eAddonType);
 	void						RefreshOffset				();
+	const SAddonIconLayout&		RefreshLayout				(eAddonType);
+	LPCSTR						AddonIconsTexture			(eAddonType);
+	Fvector2					AttachedAddonsShift			();
+	void						ApplyWeaponShift			();
 	CUIStatic*					GetIcon						(eAddonType);
-	void						InitAddon					(CUIStatic* s, const char* section, Fvector2 offset, bool use_heading);
+	void						InitAddon					(CUIStatic* s, eAddonType t, bool use_heading);
 	bool						is_scope					();
 	bool						is_silencer					();
 	bool						is_launcher					();
