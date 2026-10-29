@@ -127,7 +127,9 @@ protected:
 	// Unloading in steps, each as long as its sound (snd_ammo_unload_<kind> nodes); a step
 	// without a sound is done at once. A shotgun gives up its rounds one by one. The ammo
 	// goes to the actor, also from the weapon of a corpse or a stash being searched.
-	enum EUnloadStep			{ eUnloadWeapon, eUnloadCartridge };
+	// Loading by ammo dropped on a weapon runs in the same queue (snd_ammo_load_<kind>):
+	// another ammo out first, the chamber stays; a shotgun round by round.
+	enum EUnloadStep			{ eUnloadWeapon, eUnloadCartridge, eLoadUnloadSide, eLoadUnloadSideCartridge, eLoadMagazine, eLoadCartridge };
 	enum EUnloadSound			{ eUnloadSndPistol, eUnloadSndRifle, eUnloadSndShotgun, eUnloadSndGrenade, eUnloadSndCount };
 	struct SUnloadStep
 	{
@@ -136,8 +138,10 @@ protected:
 		u16						place;		// SInvItemPlace value when queued: moved = cancelled
 		EUnloadStep				action;
 		u8						sound;		// EUnloadSound
+		shared_str				ammo;		// loading: the ammo, which also picks the side
 	};
 	ref_sound					m_unload_snd				[eUnloadSndCount];
+	ref_sound					m_load_snd					[eUnloadSndCount];
 	xr_vector<SUnloadStep>		m_unload_steps;				// the first one is running
 	u32							m_unload_step_end = 0;
 	u16							m_hovered_item_id = u16(-1);	// under the cursor, for the unload key
@@ -147,6 +151,12 @@ protected:
 	CWeaponMagazined*			UnloadStepWeapon			(const SUnloadStep& step);
 	void						StartUnloadStep				();
 	bool						FinishUnloadStep			();
+	bool						FinishLoadStep				(CWeaponMagazined* weapon, const SUnloadStep& step);
+	ref_sound&					StepSound					(const SUnloadStep& step);
+	// Ammo from the backpack onto a weapon that loads it (CanLoadAmmo), one operation at a time.
+	bool						CanLoadAmmoInto				(PIItem weapon, PIItem ammo) const;
+	bool						LoadAmmoInto				(PIItem weapon, PIItem ammo);
+	void						QueueLoad					(CWeaponMagazined* weapon, EUnloadStep action, const shared_str& ammo, u8 sound);
 	void						UpdateUnloadSteps			();
 	void						StopUnloadSteps				();
 	void						UnloadHoveredWeapon			();
@@ -182,6 +192,8 @@ protected:
 	void						highlight_item_slot			(CUICellItem* cell_item);
 	// The weapon in the slot takes the addon (CanAttach, as in the context menu).
 	bool						AddonFitsSlotWeapon			(PIItem addon, u16 slot);
+	// The weapon in the slot loads the ammo on a drop (CanLoadAmmoInto).
+	bool						AmmoFitsSlotWeapon			(PIItem ammo, u16 slot);
 	void						highlight_armament			(PIItem item, CUIDragDropListEx* ddlist);
 	void						highlight_ammo_for_weapon	(PIItem weapon_item, CUIDragDropListEx* ddlist);
 	void						highlight_weapons_for_ammo	(PIItem ammo_item, CUIDragDropListEx* ddlist);
@@ -208,6 +220,9 @@ protected:
 	bool						OnItemDropped				(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner);
 	// The item under the cursor that takes itm as an addon when it is dropped there, if any.
 	PIItem						DropAttachTarget			(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner);
+	// The weapon under the cursor (backpack) or in the slot that loads itm, ammo dropped
+	// from the backpack, if any.
+	PIItem						DropLoadTarget				(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner);
 
 	bool						OnItemFocusedUpdate			(CUICellItem* itm);
 	bool						OnItemFocusLost				(CUICellItem* itm);
