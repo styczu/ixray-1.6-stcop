@@ -23,6 +23,84 @@ struct is_helper_pred
 
 } //namespace detail 
 
+// Optional per-weapon icon of an addon overlay: <prefix>_icons_texture, _grid_x, _grid_y,
+// _grid_width, _grid_height and _inv_scale in the weapon's (or scope's) section. Every key
+// falls back on its own to the addon's section and the weapon's atlas, so without any of
+// them the overlay is the legacy one. _weapon_offset_x/_y move the whole icon.
+// Offsets are pixels at scale 1 (50 per cell); with scaled_offsets (the weapon's
+// addon_offsets_use_inv_scale) they are pixels of the weapon's own atlas instead, so
+// they are divided by its inv_scale.
+IC void read_addon_icon_layout(LPCSTR icon_section, LPCSTR prefix, LPCSTR addon_section, bool scaled_offsets, float weapon_scale, SAddonIconLayout& l)
+{
+	string128 key;
+	auto own = [&](LPCSTR suffix)
+	{
+		xr_sprintf(key, "%s_%s", prefix, suffix);
+		return !!pSettings->line_exist(icon_section, key);
+	};
+	auto cells = [&](LPCSTR suffix, LPCSTR addon_key)
+	{
+		if (own(suffix))
+		{
+			l.custom = true;
+			return float(pSettings->r_u32(icon_section, key));
+		}
+		// As GetInventoryIconParams: the addon's own icon cells may be fractional.
+		return pSettings->r_float(addon_section, addon_key);
+	};
+
+	l.custom = false;
+	l.texture = nullptr;
+	if (own("icons_texture"))
+	{
+		l.texture = pSettings->r_string(icon_section, key);
+		l.custom = true;
+	}
+
+	l.grid_pos.x = cells("grid_x", "inv_grid_x");
+	l.grid_pos.y = cells("grid_y", "inv_grid_y");
+	l.grid_size.x = cells("grid_width", "inv_grid_width");
+	l.grid_size.y = cells("grid_height", "inv_grid_height");
+
+	if (own("inv_scale"))
+	{
+		l.scale = pSettings->r_float(icon_section, key);
+		l.custom = true;
+	}
+	else
+		l.scale = READ_IF_EXISTS(pSettings, r_float, addon_section, "inv_scale", 1.0f);
+
+	const float unit = scaled_offsets ? weapon_scale : 1.0f;
+	if (scaled_offsets)
+		l.custom = true;
+
+	l.offset.set(0.0f, 0.0f);
+	if (l.custom)
+	{
+		xr_sprintf(key, "%s_x", prefix);
+		l.offset.x = float(pSettings->r_s32(icon_section, key)) / unit;
+		xr_sprintf(key, "%s_y", prefix);
+		l.offset.y = float(pSettings->r_s32(icon_section, key)) / unit;
+	}
+
+	l.shift.x = own("weapon_offset_x") ? pSettings->r_float(icon_section, key) / unit : 0.0f;
+	l.shift.y = own("weapon_offset_y") ? pSettings->r_float(icon_section, key) / unit : 0.0f;
+}
+
+// Where the weapon's own sprite goes for a shift in logical units (50 per cell). A headed
+// cell draws the sprite turned by 90 degrees and squeezed by kx across the screen: the
+// weapon's x runs up the screen and its y to the right, the way InitAddon places the
+// overlays.
+IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, const Ivector2& grid, bool heading, float kx)
+{
+	Fvector2 res;
+	if (heading)
+		res.set(shift.y * wnd.x / (INV_GRID_HEIGHT(1.0f) * grid.y) * kx, -shift.x * wnd.y / (INV_GRID_WIDTH(1.0f) * grid.x));
+	else
+		res.set(shift.x * wnd.x / (INV_GRID_WIDTH(1.0f) * grid.x), shift.y * wnd.y / (INV_GRID_HEIGHT(1.0f) * grid.y));
+	return res;
+}
+
 
 CUIInventoryCellItem::CUIInventoryCellItem(CInventoryItem* itm)
 {
@@ -284,6 +362,10 @@ CUIWeaponCellItem::CUIWeaponCellItem(CWeapon* itm)
 	m_addons[eScope]		= nullptr;
 	m_addons[eLauncher]		= nullptr;
 
+	// One switch for the whole weapon, variants inherit it: every addon offset of the
+	// icon is in pixels of the weapon's atlas rather than at scale 1.
+	m_scaled_offsets		= !!READ_IF_EXISTS(pSettings, r_bool, itm->cNameSect(), "addon_offsets_use_inv_scale", false);
+
 	if(itm->SilencerAttachable())
 	{
 		m_addon_offset[eSilencer].set(object()->GetSilencerX(), object()->GetSilencerY());
@@ -333,7 +415,7 @@ void CUIWeaponCellItem::CreateIcon(eAddonType t)
 	else if (t == eScope) sect = *object()->GetScopeName();
 	else if (t == eLauncher) sect = *object()->GetGrenadeLauncherName();
 
-	m_addons[t]->SetShader(GetEquipmentIconsShader(object()->IconsTexture.c_str()));
+	m_addons[t]->SetShader		(InventoryUtilities::GetEquipmentIconsShader(AddonIconsTexture(t)));
 
 	u32 color = GetTextureColor	();
 	m_addons[t]->SetTextureColor(color);
@@ -348,6 +430,69 @@ void CUIWeaponCellItem::DestroyIcon(eAddonType t)
 CUIStatic* CUIWeaponCellItem::GetIcon(eAddonType t)
 {
 	return m_addons[t];
+}
+
+const SAddonIconLayout& CUIWeaponCellItem::RefreshLayout(eAddonType t)
+{
+	shared_str icon_section, addon_section;
+	LPCSTR prefix;
+	switch (t)
+	{
+	case eSilencer:
+		icon_section	= object()->GetSilencerIconSection();
+		addon_section	= object()->GetSilencerName();
+		prefix			= "silencer";
+		break;
+	case eScope:
+		icon_section	= object()->GetScopeIconSection();
+		addon_section	= object()->GetScopeName();
+		prefix			= "scope";
+		break;
+	default:
+		icon_section	= object()->GetGrenadeLauncherIconSection();
+		addon_section	= object()->GetGrenadeLauncherName();
+		prefix			= "grenade_launcher";
+		break;
+	}
+
+	// Read again only when the scope, an upgrade or the addon changed the sections.
+	SAddonIconLayout& l = m_layout[t];
+	if (!l.addon_section.size() || l.icon_section != icon_section || l.addon_section != addon_section)
+	{
+		read_addon_icon_layout(*icon_section, prefix, *addon_section, m_scaled_offsets, object()->ScaleIcon, l);
+		l.icon_section	= icon_section;
+		l.addon_section	= addon_section;
+	}
+	return l;
+}
+
+LPCSTR CUIWeaponCellItem::AddonIconsTexture(eAddonType t)
+{
+	const SAddonIconLayout& l = RefreshLayout(t);
+	return l.texture.size() ? l.texture.c_str() : object()->IconsTexture.c_str();
+}
+
+// Sum of the shifts of the addons that are on: the silencer's and the scope's together
+// with all three.
+Fvector2 CUIWeaponCellItem::AttachedAddonsShift()
+{
+	Fvector2 res;
+	res.set(0.0f, 0.0f);
+	if (is_silencer())
+		res.add(RefreshLayout(eSilencer).shift);
+	if (is_scope())
+		res.add(RefreshLayout(eScope).shift);
+	if (is_launcher())
+		res.add(RefreshLayout(eLauncher).shift);
+	return res;
+}
+
+// Moves only the drawn sprite: the cell, its hit area, count, condition bar and upgrade
+// mark stay where the grid put them.
+void CUIWeaponCellItem::ApplyWeaponShift()
+{
+	const Fvector2 offset = weapon_shift_offset(m_shift, GetWndSize(), m_grid_size, Heading(), UI().get_current_kx());
+	SetTextureOffset(offset.x, offset.y);
 }
 void CUIWeaponCellItem::RefreshOffset()
 {
@@ -400,6 +545,18 @@ void CUIWeaponCellItem::Update()
 	bool reinit_3d_icon = false;
 
 	static const bool enable3DIcons = EngineExternal()[EEngineExternalGame::Enable3DIcons];
+
+	// The placed overlays carry the shift, so a new one places them all again. 3D icons
+	// draw the model with its addons and get no overlays, so they keep the stock sprite.
+	Fvector2 shift;
+	shift.set(0.0f, 0.0f);
+	if (!enable3DIcons)
+		shift					= AttachedAddonsShift();
+	if (shift.x != m_shift.x || shift.y != m_shift.y)
+	{
+		m_shift					= shift;
+		bForceReInitAddons		= true;
+	}
 	if (object()->SilencerAttachable())
 	{
 		if (object()->IsSilencerAttached() && !enable3DIcons)
@@ -408,7 +565,7 @@ void CUIWeaponCellItem::Update()
 			{
 				CreateIcon	(eSilencer);
 				RefreshOffset();
-				InitAddon	(GetIcon(eSilencer), *object()->GetSilencerName(), m_addon_offset[eSilencer], Heading());
+				InitAddon	(GetIcon(eSilencer), eSilencer, Heading());
 
 				reinit_3d_icon = true;
 			}
@@ -437,7 +594,7 @@ void CUIWeaponCellItem::Update()
 			{
 				CreateIcon(eScope);
 				RefreshOffset();
-				InitAddon(GetIcon(eScope), *object()->GetScopeName(), m_addon_offset[eScope], Heading());
+				InitAddon(GetIcon(eScope), eScope, Heading());
 				reinit_3d_icon = true;
 			}
 		}
@@ -451,7 +608,7 @@ void CUIWeaponCellItem::Update()
 			{
 				CreateIcon	(eLauncher);
 				RefreshOffset();
-				InitAddon	(GetIcon(eLauncher), *object()->GetGrenadeLauncherName(), m_addon_offset[eLauncher], Heading());
+				InitAddon	(GetIcon(eLauncher), eLauncher, Heading());
 				reinit_3d_icon = true;
 			}
 		}
@@ -483,6 +640,8 @@ void CUIWeaponCellItem::Update()
 			SetBonesVisible(pItem->object().Visual()->dcast_PKinematics());
 		}
 	}
+
+	ApplyWeaponShift			();
 }
 
 void CUIWeaponCellItem::SetTextureColor( u32 color )
@@ -506,17 +665,17 @@ void CUIWeaponCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
 {
 	if(is_silencer() && GetIcon(eSilencer))
 	{
-		InitAddon(GetIcon(eSilencer), *object()->GetSilencerName(), m_addon_offset[eSilencer], parent_list->GetVerticalPlacement());
+		InitAddon(GetIcon(eSilencer), eSilencer, parent_list->GetVerticalPlacement());
 	}
 
 	if(is_scope() && GetIcon(eScope))
 	{
-		InitAddon(GetIcon(eScope), *object()->GetScopeName(), m_addon_offset[eScope], parent_list->GetVerticalPlacement());
+		InitAddon(GetIcon(eScope), eScope, parent_list->GetVerticalPlacement());
 	}
 
 	if(is_launcher() && GetIcon(eLauncher))
 	{
-		InitAddon(GetIcon(eLauncher), *object()->GetGrenadeLauncherName(), m_addon_offset[eLauncher], parent_list->GetVerticalPlacement());
+		InitAddon(GetIcon(eLauncher), eLauncher, parent_list->GetVerticalPlacement());
 	}
 
 	if (auto pItem = (CInventoryItem*)m_pData)
@@ -536,13 +695,13 @@ void CUIWeaponCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
 	}
 }
 
-void CUIWeaponCellItem::InitAddon(CUIStatic* s, const char* section, Fvector2 addon_offset, bool b_rotate)
+void CUIWeaponCellItem::InitAddon(CUIStatic* s, eAddonType t, bool b_rotate)
 {
+	const SAddonIconLayout& l = RefreshLayout(t);
 	Frect tex_rect;
 	Fvector2 base_scale;
 
-	InventoryIconParams icons_struct = GetInventoryIconParams(section);
-	float scaleIcon = icons_struct.scaleIcon;
+	float scaleIcon = l.scale;
 	if (Heading())
 	{
 		base_scale.x = GetHeight() / (INV_GRID_WIDTH(scaleIcon) * m_grid_size.x);
@@ -555,15 +714,25 @@ void CUIWeaponCellItem::InitAddon(CUIStatic* s, const char* section, Fvector2 ad
 	}
 
 	Fvector2 cell_size;
-	cell_size.x = icons_struct.inv_grid_width * INV_GRID_WIDTH(scaleIcon);
-	cell_size.y = icons_struct.inv_grid_height * INV_GRID_HEIGHT(scaleIcon);
+	cell_size.x = l.grid_size.x * INV_GRID_WIDTH(scaleIcon);
+	cell_size.y = l.grid_size.y * INV_GRID_HEIGHT(scaleIcon);
 
-	tex_rect.x1 = icons_struct.inv_grid_x * INV_GRID_WIDTH(scaleIcon);
-	tex_rect.y1 = icons_struct.inv_grid_y * INV_GRID_HEIGHT(scaleIcon);
+	tex_rect.x1 = l.grid_pos.x * INV_GRID_WIDTH(scaleIcon);
+	tex_rect.y1 = l.grid_pos.y * INV_GRID_HEIGHT(scaleIcon);
 
 	tex_rect.rb.add(tex_rect.lt, cell_size);
 
 	cell_size.mul(base_scale);
+
+	// Legacy _x/_y come premultiplied by the weapon's inv_scale and base_scale divides by
+	// the overlay's, which is right only while the two match. Custom ones are logical
+	// units and get the overlay's own scale, which base_scale takes out again; so does
+	// the shift of the whole icon.
+	Fvector2 addon_offset = m_addon_offset[t];
+	if (l.custom)
+		addon_offset.set(l.offset.x * scaleIcon, l.offset.y * scaleIcon);
+	addon_offset.x += m_shift.x * scaleIcon;
+	addon_offset.y += m_shift.y * scaleIcon;
 
 	if (b_rotate)
 	{
@@ -606,12 +775,17 @@ CUIDragItem* CUIWeaponCellItem::CreateDragItem()
 	CUIDragItem* i		= inherited::CreateDragItem();
 	CUIStatic* s		= nullptr;
 
+	if (i)
+	{
+		const Fvector2 offset = weapon_shift_offset(m_shift, i->wnd()->GetWndSize(), m_grid_size, false, UI().get_current_kx());
+		i->wnd()->SetTextureOffset(offset.x, offset.y);
+	}
+
 	if(GetIcon(eSilencer))
 	{
 		s				= new CUIStatic(); s->SetAutoDelete(true);
-		auto section = *object()->GetSilencerName();
-		s->SetShader	(GetEquipmentIconsShader(*object()->IconsTexture));
-		InitAddon		(s, section, m_addon_offset[eSilencer], false);
+		s->SetShader	(InventoryUtilities::GetEquipmentIconsShader(AddonIconsTexture(eSilencer)));
+		InitAddon		(s, eSilencer, false);
 		s->SetTextureColor(i->wnd()->GetTextureColor());
 		i->wnd			()->AttachChild	(s);
 	}
@@ -619,9 +793,8 @@ CUIDragItem* CUIWeaponCellItem::CreateDragItem()
 	if(GetIcon(eScope))
 	{
 		s				= new CUIStatic(); s->SetAutoDelete(true);
-		auto section = *object()->GetScopeName();
-		s->SetShader	(GetEquipmentIconsShader(*object()->IconsTexture));
-		InitAddon		(s,	*object()->GetScopeName(),		m_addon_offset[eScope], false);
+		s->SetShader	(InventoryUtilities::GetEquipmentIconsShader(AddonIconsTexture(eScope)));
+		InitAddon		(s,	eScope, false);
 		s->SetTextureColor(i->wnd()->GetTextureColor());
 		i->wnd			()->AttachChild	(s);
 	}
@@ -629,9 +802,8 @@ CUIDragItem* CUIWeaponCellItem::CreateDragItem()
 	if(GetIcon(eLauncher))
 	{
 		s				= new CUIStatic(); s->SetAutoDelete(true);
-		auto section = *object()->GetGrenadeLauncherName();
-		s->SetShader	(GetEquipmentIconsShader(*object()->IconsTexture));
-		InitAddon		(s, *object()->GetGrenadeLauncherName(),m_addon_offset[eLauncher], false);
+		s->SetShader	(InventoryUtilities::GetEquipmentIconsShader(AddonIconsTexture(eLauncher)));
+		InitAddon		(s, eLauncher, false);
 		s->SetTextureColor(i->wnd()->GetTextureColor());
 		i->wnd			()->AttachChild	(s);
 	}
