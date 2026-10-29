@@ -313,6 +313,11 @@ public:
 	void RefreshScopeNightVision();
 	bool InstallScopeEffectsUpgrade(const char* Section, bool IsTest);
 	const shared_str& GetSilencerName			() const{return m_sSilencerName;}
+	// Sections the optional inventory icon keys of each addon (<addon>_icons_texture,
+	// _grid_*, _inv_scale, _weapon_offset_*) are read from: the ones that gave its _x/_y.
+	const shared_str& GetSilencerIconSection		() const{return m_sSilencerIconSection;}
+	const shared_str& GetGrenadeLauncherIconSection	() const{return m_sGrenadeLauncherIconSection;}
+	shared_str GetScopeIconSection();
 
 	IC void	ForceUpdateAmmo						()		{ m_BriefInfo_CalcFrame = 0; }
 
@@ -495,6 +500,8 @@ protected:
 	int	m_iScopeX, m_iScopeY;
 	int	m_iSilencerX, m_iSilencerY;
 	int	m_iGrenadeLauncherX, m_iGrenadeLauncherY;
+	shared_str		m_sSilencerIconSection;
+	shared_str		m_sGrenadeLauncherIconSection;
 
 	struct SZoomParams
 	{
