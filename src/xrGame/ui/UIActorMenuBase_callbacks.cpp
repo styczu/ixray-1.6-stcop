@@ -96,11 +96,13 @@ bool CUIActorMenuBase::OnItemDrop(CUICellItem* itm)
 					return false;
 				}
 			}
-			else if (!CurrentIItem() || !DropAttachTarget(CurrentIItem(), new_owner, old_owner))
+			else if (!CurrentIItem() || (!DropAttachTarget(CurrentIItem(), new_owner, old_owner)
+				&& !DropLoadTarget(CurrentIItem(), new_owner, old_owner)))
 			{
 				// Without the script callback the list moves the item to the cell it was
 				// dropped on (custom placement), as in IX-Ray 1.3.6. An addon dropped on a
-				// weapon that takes it goes on through OnItemDropped below.
+				// weapon that takes it, or ammo on a weapon that loads it, goes on through
+				// OnItemDropped below.
 				return false;
 			}
 		}
@@ -246,6 +248,12 @@ bool CUIActorMenuBase::OnItemDrop(CUICellItem* itm)
 
 bool CUIActorMenuBase::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
 {
+	// Ammo onto a weapon that loads it: loaded in steps, not moved.
+	if (PIItem weapon = DropLoadTarget(itm, new_owner, old_owner))
+	{
+		return LoadAmmoInto(weapon, itm);
+	}
+
 	PIItem _iitem	= DropAttachTarget(itm, new_owner, old_owner);
 
 	if (!_iitem)
@@ -278,6 +286,25 @@ PIItem CUIActorMenuBase::DropAttachTarget(PIItem itm, CUIDragDropListEx* new_own
 	}
 
 	return							_iitem;
+}
+
+PIItem CUIActorMenuBase::DropLoadTarget(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
+{
+	// Only ammo from the actor's backpack, onto a weapon in the backpack or in a slot;
+	// trade and the other lists move it as before.
+	if (!itm || !itm->cast_weapon_ammo() || !old_owner || old_owner != GetActorList())
+	{
+		return nullptr;
+	}
+	if (new_owner != GetActorList() && GetListType(new_owner) != iActorSlot)
+	{
+		return nullptr;
+	}
+
+	CUICellItem*	_citem	= (new_owner->ItemsCount()==1) ? new_owner->GetItemIdx(0) : new_owner->GetItemAtPos(UI().GetUICursor().GetCursorPosition());
+	PIItem _iitem	= _citem ? (PIItem)_citem->m_pData : nullptr;
+
+	return CanLoadAmmoInto(_iitem, itm) ? _iitem : nullptr;
 }
 
 bool CUIActorMenuBase::OnItemFocusedUpdate(CUICellItem* itm)
