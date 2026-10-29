@@ -59,6 +59,7 @@ protected:
 
 	virtual void			UpdateItemText			();
 			void			UpdateItemTextAnchor	();
+			void			PlaceCornerText			(CUIStatic* text, const Fvector2& inset);
 			void			init					();
 public:
 							CUICellItem				();
