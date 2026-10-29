@@ -383,6 +383,68 @@ void CUIActorMenuBase::QueueUnload(CWeaponMagazined* weapon)
 	m_unload_steps.push_back(step);
 }
 
+bool CUIActorMenuBase::CanLoadAmmoInto(PIItem weapon, PIItem ammo) const
+{
+	// One loading or unloading at a time.
+	if (!weapon || !ammo || !ammo->cast_weapon_ammo() || !m_unload_steps.empty())
+		return false;
+
+	CWeapon* wpn = weapon->cast_weapon();
+	CWeaponMagazined* magazined = wpn ? wpn->cast_weapon_magazined() : nullptr;
+	return magazined && magazined->CanLoadAmmo(ammo->object().cNameSect());
+}
+
+bool CUIActorMenuBase::LoadAmmoInto(PIItem weapon, PIItem ammo)
+{
+	if (!CanLoadAmmoInto(weapon, ammo))
+		return false;
+
+	CWeaponMagazined* magazined = weapon->cast_weapon()->cast_weapon_magazined();
+	const shared_str sect = ammo->object().cNameSect();
+
+	// The kind of sound by the side the ammo goes in, as for unloading; the RG-6 and the
+	// RPG-7 load at once.
+	const bool grenade = magazined->IsGrenadeAmmo(sect);
+	const bool shotgun = !grenade && (magazined->IsTriStateReload() || magazined->cast_weapon_shotgun());
+	u8 sound = eUnloadSndRifle;
+	if (grenade)
+		sound = eUnloadSndGrenade;
+	else if (shotgun)
+		sound = eUnloadSndShotgun;
+	else if (IsSidearmPhysicalSlot(magazined->BaseSlot()))
+		sound = eUnloadSndPistol;
+
+	// Another ammo out first; a shotgun gives it up and takes the new one round by round.
+	if (magazined->HoldsOtherAmmo(sect))
+		QueueLoad(magazined, shotgun ? eLoadUnloadSideCartridge : eLoadUnloadSide, sect, sound);
+	QueueLoad(magazined, shotgun ? eLoadCartridge : eLoadMagazine, sect, sound);
+
+	// The box may be the one emptied and dropped.
+	SetCurrentItem(nullptr);
+
+	StartUnloadStep();
+	return true;
+}
+
+void CUIActorMenuBase::QueueLoad(CWeaponMagazined* weapon, EUnloadStep action, const shared_str& ammo, u8 sound)
+{
+	SUnloadStep step;
+	step.weapon	= weapon->ID();
+	step.parent	= weapon->parent_id();
+	step.place	= weapon->m_ItemCurrPlace.value;
+	step.action	= action;
+	step.sound	= sound;
+	step.ammo	= ammo;
+	m_unload_steps.push_back(step);
+}
+
+ref_sound& CUIActorMenuBase::StepSound(const SUnloadStep& step)
+{
+	// The other ammo coming out first sounds as an unloading.
+	const bool load = step.action == eLoadMagazine || step.action == eLoadCartridge;
+	return load ? m_load_snd[step.sound] : m_unload_snd[step.sound];
+}
+
 CWeaponMagazined* CUIActorMenuBase::UnloadStepWeapon(const SUnloadStep& step)
 {
 	// Still there, with the same owner and in the same place: moved, taken or gone cancels.
@@ -399,7 +461,7 @@ void CUIActorMenuBase::StartUnloadStep()
 {
 	while (!m_unload_steps.empty())
 	{
-		ref_sound& sound = m_unload_snd[m_unload_steps.front().sound];
+		ref_sound& sound = StepSound(m_unload_steps.front());
 		if (sound._handle())
 		{
 			sound.play(nullptr, sm_2D);
@@ -425,6 +487,10 @@ bool CUIActorMenuBase::FinishUnloadStep()
 		return false;
 	}
 
+	// A loading: the actor's weapon and ammo.
+	if (step.action != eUnloadWeapon && step.action != eUnloadCartridge)
+		return FinishLoadStep(weapon, step);
+
 	// The rounds of a corpse's or a stash's weapon go to the actor.
 	CInventoryOwner* actor = GetInventoryOwner();
 	if (actor && step.parent != actor->object_id())
@@ -445,6 +511,38 @@ bool CUIActorMenuBase::FinishUnloadStep()
 	return true;
 }
 
+bool CUIActorMenuBase::FinishLoadStep(CWeaponMagazined* weapon, const SUnloadStep& step)
+{
+	bool done = true;
+	switch (step.action)
+	{
+	case eLoadUnloadSide:
+		weapon->UnloadAmmoSide(step.ammo);
+		break;
+	case eLoadUnloadSideCartridge:
+		// The next round while the magazine holds the other ammo; the chamber stays.
+		if (weapon->HoldsOtherAmmo(step.ammo) && weapon->UnloadCartridge() && weapon->HoldsOtherAmmo(step.ammo))
+			m_unload_steps.insert(m_unload_steps.begin(), step);
+		break;
+	case eLoadMagazine:
+		done = weapon->LoadAmmo(step.ammo);
+		break;
+	case eLoadCartridge:
+		done = weapon->LoadAmmoCartridge(step.ammo);
+		// The next round while there is room and ammo.
+		if (done && weapon->CanLoadAmmo(step.ammo))
+			m_unload_steps.insert(m_unload_steps.begin(), step);
+		break;
+	default:
+		break;
+	}
+
+	// No ammo left or the weapon busy: the rest is dropped.
+	if (!done)
+		StopUnloadSteps();
+	return done;
+}
+
 void CUIActorMenuBase::UpdateUnloadSteps()
 {
 	if (m_unload_steps.empty() || Device.dwTimeGlobal < m_unload_step_end)
@@ -457,7 +555,7 @@ void CUIActorMenuBase::UpdateUnloadSteps()
 void CUIActorMenuBase::StopUnloadSteps()
 {
 	if (!m_unload_steps.empty())
-		m_unload_snd[m_unload_steps.front().sound].stop();
+		StepSound(m_unload_steps.front()).stop();
 	m_unload_steps.clear();
 }
 
