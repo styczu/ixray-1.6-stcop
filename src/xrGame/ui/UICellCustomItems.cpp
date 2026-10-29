@@ -2,6 +2,8 @@
 #include "UICellCustomItems.h"
 #include "UIInventoryUtilities.h"
 #include "../Weapon.h"
+#include "../WeaponMagazinedWGrenade.h"
+#include "../../xrUI/UIXmlInit.h"
 #include "UIDragDropListEx.h"
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrUI/Widgets/UI3dStatic.h"
@@ -552,6 +554,90 @@ CUIWeaponCellItem::CUIWeaponCellItem(CWeapon* itm)
 	if(itm->GrenadeLauncherAttachable())
 	{
 		m_addon_offset[eLauncher].set(object()->GetGrenadeLauncherX(), object()->GetGrenadeLauncherY());
+	}
+
+	m_ammo_text				= CreateCornerText();
+}
+
+// Looks like the count: the cell_item_text node, without its plate; its x/y are the inset
+// from the corner.
+CUIStatic* CUIWeaponCellItem::CreateCornerText()
+{
+	static CUIXml xml;
+	static bool is_xml_ready = false;
+	if (!is_xml_ready)
+	{
+		xml.Load			(CONFIG_PATH, UI_PATH, "actor_menu_item.xml");
+		is_xml_ready		= true;
+	}
+
+	CUIStatic* text			= new CUIStatic();
+	text->SetAutoDelete		(true);
+	AttachChild				(text);
+	CUIXmlInit::InitStatic	(xml, "cell_item_text", 0, text);
+	text->TextureOff		();
+	text->Show				(false);
+	m_ammo_inset			= text->GetWndPos();
+	return text;
+}
+
+// The rounds in the weapon's own magazine and its size; an emptied or unloaded weapon
+// reads 0/15. With a grenade launcher it is the rifle side in either mode (in grenade
+// mode GetCurrentElapsed() reads the swapped rifle magazine and iMagazineSize2 holds its
+// size). False without a magazine: knife, binoculars.
+bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity)
+{
+	if (!weapon || !weapon->cast_weapon_magazined())
+		return false;
+
+	CWeaponMagazinedWGrenade* launcher	= weapon->cast_weapon_magazined_w_grenade();
+	capacity							= launcher && launcher->IsGrenadeMode() ? launcher->iMagazineSize2 : weapon->GetAmmoMagSize();
+	count								= weapon->GetCurrentElapsed(false) + weapon->GetAmmoChamberElapsed();
+	return capacity > 0;
+}
+
+// Every frame, from CUIInventoryCellItem::Update. A weapon never stacks, so the count
+// stays hidden; the bottom right corner shows the rounds instead.
+void CUIWeaponCellItem::UpdateItemText()
+{
+	inherited::UpdateItemText	();
+	UpdateCornerTexts			();
+}
+
+// The loaded rounds in the bottom right corner, in lists that show bars (bag, trade,
+// boxes, bodies); the condition is the bar along the bottom edge, as for other items.
+// Slots show no rounds in the cell: they go to the slot's slot_ammo
+// (CUIActorMenuBase::UpdateSlotAmmo).
+void CUIWeaponCellItem::UpdateCornerTexts()
+{
+	const bool bars			= m_pParentList && m_pParentList->GetConditionProgBarVisibility();
+	string64 str;
+
+	int count = 0, capacity = 0;
+	const bool magazine		= bars && weapon_loaded_ammo(object(), count, capacity);
+	if (magazine)
+	{
+		xr_sprintf			(str, "%d/%d", count, capacity);
+		m_ammo_text->TextItemControl()->SetText(str);
+		PlaceCornerText		(m_ammo_text, m_ammo_inset);
+	}
+	m_ammo_text->Show		(magazine);
+
+	// The bar and the rounds last among the children, so they are drawn over the addon
+	// icons, which attach later; only when something has come after them.
+	WINDOW_LIST& children	= GetChildWndList();
+	const size_t n			= children.size();
+	if (n >= 2 && children[n - 2] == m_pConditionState && children[n - 1] == m_ammo_text)
+		return;
+	CUIWindow* const on_top[] = { m_pConditionState, m_ammo_text };
+	for (CUIWindow* child : on_top)
+	{
+		if (!child)
+			continue;
+		child->SetAutoDelete(false);
+		DetachChild			(child);
+		child->SetAutoDelete(true);
+		AttachChild			(child);
 	}
 }
 
