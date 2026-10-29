@@ -62,6 +62,23 @@ struct SAddonIconLayout
 								// offset above is used instead of the legacy one
 };
 
+// One cosmetic layer of a weapon's inventory icon: a section listed in the weapon's
+// inv_layers, drawn while all of its conditions hold.
+struct SWeaponIconLayer
+{
+	shared_str				section;
+	SAddonIconLayout		icon;			// always custom, texture always set
+	bool					below = false;	// below_weapon
+	xr_vector<shared_str>	upgrades;		// on only while one of them is installed
+	xr_vector<shared_str>	no_upgrades;	// off while one of them is installed
+	u8						addons = 0;		// on only while all of these are on, a bit per
+											// CUIWeaponCellItem::eAddonType
+	u8						no_addons = 0;	// off while one of these is on, bits as addons
+	xr_vector<shared_str>	scopes;			// on only while one of these scopes is attached
+	s8						loaded = -1;	// on only with ammo in the magazine or chamber (1),
+											// only without (0), either way (-1)
+};
+
 class CUIWeaponCellItem final :public CUIInventoryCellItem
 {
 	typedef  CUIInventoryCellItem	inherited;
@@ -74,6 +91,9 @@ protected:
 	Fvector2					m_shift{};
 	bool						m_scaled_offsets = false;	// addon_offsets_use_inv_scale
 	Ivector2					m_base_grid;				// inv_grid_width/height
+	xr_vector<SWeaponIconLayer>	m_layers;					// inv_layers, at most 32
+	xr_vector<CUIStatic*>		m_layer_icons;				// one per layer, null while it is off
+	u32							m_layers_on = 0;			// a bit per layer
 	bool mScopeBack = false;
 	void						CreateIcon					(eAddonType);
 	void						DestroyIcon					(eAddonType);
@@ -83,8 +103,14 @@ protected:
 	Fvector2					AttachedAddonsShift			();
 	Ivector2					AttachedAddonsExtra			();
 	void						ApplyWeaponShift			();
+	u32							ActiveLayers				();
+	Fvector2					LayersShift					(u32 layers_on);
+	Ivector2					LayersExtra					(u32 layers_on);
+	void						InitLayers					(bool b_rotate);
+	void						DrawLayers					(bool below);
 	CUIStatic*					GetIcon						(eAddonType);
 	void						InitAddon					(CUIStatic* s, eAddonType t, bool use_heading);
+	void						PlaceIcon					(CUIStatic* s, const SAddonIconLayout& l, const Fvector2& legacy_offset, bool b_rotate);
 	bool						is_scope					();
 	bool						is_silencer					();
 	bool						is_launcher					();
