@@ -772,6 +772,71 @@ void CWeaponMagazinedWGrenade::ReloadMagazine()
 	}
 }
 
+bool CWeaponMagazinedWGrenade::OtherModeAmmo(const shared_str& ammo_sect) const
+{
+	return IsGrenadeLauncherAttached() && std::find(m_ammoTypes2.begin(), m_ammoTypes2.end(), ammo_sect) != m_ammoTypes2.end();
+}
+
+bool CWeaponMagazinedWGrenade::CanLoadAmmo(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::CanLoadAmmo(ammo_sect);
+
+	// The other side as PerformSwitchGL would make it, without switching: this is asked
+	// on every frame of a drag and on a hover.
+	return CanLoadAmmoSide(ammo_sect, m_ammoTypes2, m_magazine2, m_bGrenadeMode ? iMagazineSize2 : 1, !m_bGrenadeMode);
+}
+
+bool CWeaponMagazinedWGrenade::LoadAmmo(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::LoadAmmo(ammo_sect);
+
+	// The idle state LoadAmmo asks for is an event, handled once the mode is back.
+	PerformSwitchGL();
+	const bool loaded = inherited::LoadAmmo(ammo_sect);
+	PerformSwitchGL();
+	return loaded;
+}
+
+bool CWeaponMagazinedWGrenade::LoadAmmoCartridge(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::LoadAmmoCartridge(ammo_sect);
+
+	PerformSwitchGL();
+	const bool loaded = inherited::LoadAmmoCartridge(ammo_sect);
+	PerformSwitchGL();
+	return loaded;
+}
+
+bool CWeaponMagazinedWGrenade::HoldsOtherAmmo(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+		return inherited::HoldsOtherAmmo(ammo_sect);
+
+	return !m_magazine2.empty() && m_magazine2.back().m_ammoSect != ammo_sect;
+}
+
+void CWeaponMagazinedWGrenade::UnloadAmmoSide(const shared_str& ammo_sect)
+{
+	if (!OtherModeAmmo(ammo_sect))
+	{
+		inherited::UnloadAmmoSide(ammo_sect);
+		return;
+	}
+
+	PerformSwitchGL();
+	inherited::UnloadAmmoSide(ammo_sect);
+	PerformSwitchGL();
+}
+
+bool CWeaponMagazinedWGrenade::IsGrenadeAmmo(const shared_str& ammo_sect)
+{
+	const xr_vector<shared_str>& grenades = m_bGrenadeMode ? m_ammoTypes : m_ammoTypes2;
+	return std::find(grenades.begin(), grenades.end(), ammo_sect) != grenades.end();
+}
+
 void CWeaponMagazinedWGrenade::UnloadMagazine(bool spawn_ammo)
 {
 	inherited::UnloadMagazine(spawn_ammo);
