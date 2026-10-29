@@ -96,6 +96,13 @@ bool CUIActorMenuBase::OnItemDrop(CUICellItem* itm)
 					return false;
 				}
 			}
+			else if (!CurrentIItem() || !DropAttachTarget(CurrentIItem(), new_owner, old_owner))
+			{
+				// Without the script callback the list moves the item to the cell it was
+				// dropped on (custom placement), as in IX-Ray 1.3.6. An addon dropped on a
+				// weapon that takes it goes on through OnItemDropped below.
+				return false;
+			}
 		}
 		else
 		{
@@ -239,19 +246,9 @@ bool CUIActorMenuBase::OnItemDrop(CUICellItem* itm)
 
 bool CUIActorMenuBase::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
 {
-	CUICellItem*	_citem	= (new_owner->ItemsCount()==1) ? new_owner->GetItemIdx(0) : new_owner->GetItemAtPos(UI().GetUICursor().GetCursorPosition());
-	PIItem _iitem	= _citem ? (PIItem)_citem->m_pData : nullptr;
+	PIItem _iitem	= DropAttachTarget(itm, new_owner, old_owner);
 
 	if (!_iitem)
-	{
-		return false;
-	}
-	if (!_iitem->CanAttach(itm))
-	{
-		return false;
-	}
-
-	if (old_owner != GetActorList() && old_owner != GetTradeActorBagList())
 	{
 		return false;
 	}
@@ -259,6 +256,28 @@ bool CUIActorMenuBase::OnItemDropped(PIItem itm, CUIDragDropListEx* new_owner, C
 	AttachAddon						(_iitem);
 
 	return							true;
+}
+
+PIItem CUIActorMenuBase::DropAttachTarget(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner)
+{
+	CUICellItem*	_citem	= (new_owner->ItemsCount()==1) ? new_owner->GetItemIdx(0) : new_owner->GetItemAtPos(UI().GetUICursor().GetCursorPosition());
+	PIItem _iitem	= _citem ? (PIItem)_citem->m_pData : nullptr;
+
+	if (!_iitem)
+	{
+		return nullptr;
+	}
+	if (!_iitem->CanAttach(itm))
+	{
+		return nullptr;
+	}
+
+	if (old_owner != GetActorList() && old_owner != GetTradeActorBagList())
+	{
+		return nullptr;
+	}
+
+	return							_iitem;
 }
 
 bool CUIActorMenuBase::OnItemFocusedUpdate(CUICellItem* itm)
