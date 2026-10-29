@@ -440,6 +440,7 @@ void CWeapon::Load		(const char* section)
 
 		m_iSilencerX = pSettings->r_s32(section, "silencer_x") * ScaleIcon;
 		m_iSilencerY = pSettings->r_s32(section, "silencer_y") * ScaleIcon;
+		m_sSilencerIconSection = section;
 	}
     
 	if ( m_eGrenadeLauncherStatus == ALife::eAddonAttachable )
@@ -448,6 +449,7 @@ void CWeapon::Load		(const char* section)
 
 		m_iGrenadeLauncherX = pSettings->r_s32(section, "grenade_launcher_x") * ScaleIcon;
 		m_iGrenadeLauncherY = pSettings->r_s32(section, "grenade_launcher_y") * ScaleIcon;
+		m_sGrenadeLauncherIconSection = section;
 	}
 
 	m_sAimBlendParams[0].Load(hud_sect, "anim_aim_start");
@@ -4227,6 +4229,15 @@ int CWeapon::GetScopeY()
 	return pSettings->r_s32(m_scopes[m_cur_scope], "scope_y") * ScaleIcon;
 }
 
+
+// The section GetScopeX/GetScopeY read scope_x/scope_y from.
+shared_str CWeapon::GetScopeIconSection()
+{
+	if (bUseAltScope)
+		return GetNameWithAttachmentScope();
+
+	return m_scopes[m_cur_scope];
+}
 
 const shared_str CWeapon::GetScopeName() const
 {
