@@ -958,6 +958,16 @@ void CUICellItem::UpdateItemTextAnchor()
 		m_text_anchor_inset));
 }
 
+// Another label in the bottom right corner of the icon, inset by the x/y of its XML node
+// as the count with an anchor; the width follows the string, so it is called after the
+// text is set.
+void CUICellItem::PlaceCornerText(CUIStatic* text, const Fvector2& inset)
+{
+	text->AdjustWidthToText();
+	text->SetWndPos(CalcInvCellAnchorPos(GetWndSize(), text->GetWndSize(),
+		CInventoryItem::EInvCellAnchor::BottomRight, inset));
+}
+
 void CUICellItem::Mark( bool status )
 {
 	m_cur_mark = status;
