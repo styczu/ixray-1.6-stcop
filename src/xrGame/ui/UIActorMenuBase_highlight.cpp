@@ -424,6 +424,13 @@ bool CUIActorMenuBase::AddonFitsSlotWeapon(PIItem addon, u16 slot)
 	return weapon && weapon->CanAttach(addon);
 }
 
+bool CUIActorMenuBase::AmmoFitsSlotWeapon(PIItem ammo, u16 slot)
+{
+	CInventory* inv = GetInventory();
+	PIItem weapon = inv ? inv->ItemFromSlot(slot) : nullptr;
+	return CanLoadAmmoInto(weapon, ammo);
+}
+
 void CUIActorMenuBase::highlight_item_slot(CUICellItem* cell_item)
 {
 	PIItem item = (PIItem)cell_item->m_pData;
@@ -443,6 +450,19 @@ void CUIActorMenuBase::highlight_item_slot(CUICellItem* cell_item)
 		for (const u16 slot : { u16(INV_SLOT_2), u16(INV_SLOT_3), u16(PISTOL_SLOT_NEW) })
 		{
 			if (m_pInvSlotHighlight[slot] && AddonFitsSlotWeapon(item, slot))
+			{
+				m_pInvSlotHighlight[slot]->Show(true);
+			}
+		}
+		return;
+	}
+
+	// Ammo in the backpack lights up the weapon slots whose weapon loads it on a drop.
+	if (item->cast_weapon_ammo() && cell_item->OwnerList() && cell_item->OwnerList() == GetActorList())
+	{
+		for (const u16 slot : { u16(INV_SLOT_2), u16(INV_SLOT_3), u16(PISTOL_SLOT_NEW) })
+		{
+			if (m_pInvSlotHighlight[slot] && AmmoFitsSlotWeapon(item, slot))
 			{
 				m_pInvSlotHighlight[slot]->Show(true);
 			}
