@@ -79,6 +79,10 @@ struct SWeaponIconLayer
 											// only without (0), either way (-1)
 };
 
+// The rounds in the weapon's own magazine (the rifle side with a grenade launcher) and
+// its size; false without a magazine.
+bool weapon_loaded_ammo(CWeapon* weapon, int& count, int& capacity);
+
 class CUIWeaponCellItem final :public CUIInventoryCellItem
 {
 	typedef  CUIInventoryCellItem	inherited;
@@ -95,6 +99,11 @@ protected:
 	xr_vector<CUIStatic*>		m_layer_icons;				// one per layer, null while it is off
 	u32							m_layers_on = 0;			// a bit per layer
 	bool mScopeBack = false;
+	CUIStatic*					m_ammo_text = nullptr;		// loaded rounds, "15/15"
+	Fvector2					m_ammo_inset{};				// x/y of its cell_item_text node
+	CUIStatic*					CreateCornerText			();
+	void						UpdateCornerTexts			();
+	virtual	void				UpdateItemText				() override;
 	void						CreateIcon					(eAddonType);
 	void						DestroyIcon					(eAddonType);
 	void						RefreshOffset				();
