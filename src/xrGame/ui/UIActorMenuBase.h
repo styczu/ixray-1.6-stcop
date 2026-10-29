@@ -164,6 +164,7 @@ protected:
 
 	void						UpdateItemsPlace			();
 	void						UpdateConditionProgressBars	();
+	void						UpdateSlotAmmo				();
 	void						TryRepairItem				(CUIWindow* w, void* d);
 	virtual void				UpdateDeadBodyBag			() {}
 	void						SetAuxMode					(eActorMenuControllerAuxMode mode);
@@ -321,6 +322,7 @@ protected:
 	CUIStatic*					m_pInvSlotHighlight[LAST_SLOT + 1]{};
 	CUIProgressBar*				m_pInvSlotProgressLegacy[LAST_SLOT + 1]{};
 	CUIItemStateDisplay*		m_pInvSlotProgressPercent[LAST_SLOT + 1]{};
+	CUIStatic*					m_pInvSlotAmmo[LAST_SLOT + 1]{};		// slot_ammo: rounds of the weapon in the slot
 	CUIDragDropListEx*			m_pInvList[LAST_SLOT + 1]{};
 	CUIDragDropListEx*			m_pTrashList = nullptr;
 
