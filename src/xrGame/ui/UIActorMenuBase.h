@@ -206,6 +206,8 @@ protected:
 	void						SendEvent_Item_Eat			(PIItem	pItem, u16 parent);
 	void						SendEvent_ActivateSlot		(u16 slot, u16 recipient);
 	bool						OnItemDropped				(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner);
+	// The item under the cursor that takes itm as an addon when it is dropped there, if any.
+	PIItem						DropAttachTarget			(PIItem itm, CUIDragDropListEx* new_owner, CUIDragDropListEx* old_owner);
 
 	bool						OnItemFocusedUpdate			(CUICellItem* itm);
 	bool						OnItemFocusLost				(CUICellItem* itm);
