@@ -118,6 +118,140 @@ IC Fvector2 weapon_shift_offset(const Fvector2& shift, const Fvector2& wnd, cons
 	return res;
 }
 
+// A layer section of a weapon's inv_layers:
+// - icons_texture (the weapon's atlas when missing), inv_grid_x/_y/_width/_height
+//   (required), inv_scale (the weapon's when on its atlas, else 1);
+// - inv_layer_x, inv_layer_y: where it goes on the weapon's sprite, weapon_offset_x/_y:
+//   shift of the whole icon, both in the units of the addons' <prefix>_x/_y with icon
+//   keys; weapon_extra_width/_height: cells the weapon's cell grows by, as the addons'
+//   <prefix>_weapon_extra_width/_height;
+// - below_weapon, and the conditions upgrades, no_upgrades (upgrade ids, up_...),
+//   addons, no_addons (silencer, scope, grenade_launcher), scopes (scope names as
+//   the weapon's scopes or scope_name give them) and loaded (true or false).
+// False with the reason in error when the layer can't be used.
+IC bool read_weapon_icon_layer(LPCSTR section, LPCSTR weapon_texture, bool scaled_offsets, float weapon_scale, SWeaponIconLayer& l, string256& error)
+{
+	if (!pSettings->section_exist(section))
+	{
+		xr_strcpy(error, "no such section");
+		return false;
+	}
+
+	static const LPCSTR required[] = { "inv_grid_x", "inv_grid_y", "inv_grid_width", "inv_grid_height" };
+	for (LPCSTR key : required)
+	{
+		if (!pSettings->line_exist(section, key))
+		{
+			xr_sprintf(error, "no %s", key);
+			return false;
+		}
+	}
+
+	auto addon_bits = [&](LPCSTR key, u8& bits)
+	{
+		bits = 0;
+		if (!pSettings->line_exist(section, key))
+			return true;
+		static const LPCSTR addons[] = { "silencer", "scope", "grenade_launcher" };	// eAddonType order
+		LPCSTR list = pSettings->r_string(section, key);
+		for (int i = 0, count = _GetItemCount(list); i < count; ++i)
+		{
+			string128 name;
+			_GetItem(list, i, name);
+			u8 bit = 0;
+			for (u8 a = 0; a < 3; ++a)
+				if (!xr_strcmp(name, addons[a]))
+					bit = u8(1 << a);
+			if (!bit)
+			{
+				xr_sprintf(error, "unknown addon '%s' in %s", name, key);
+				return false;
+			}
+			bits |= bit;
+		}
+		return true;
+	};
+	if (!addon_bits("addons", l.addons) || !addon_bits("no_addons", l.no_addons))
+		return false;
+
+	auto ids = [&](LPCSTR key, xr_vector<shared_str>& res)
+	{
+		res.clear();
+		if (!pSettings->line_exist(section, key))
+			return;
+		LPCSTR list = pSettings->r_string(section, key);
+		for (int i = 0, count = _GetItemCount(list); i < count; ++i)
+		{
+			string128 id;
+			res.push_back(_GetItem(list, i, id));
+		}
+	};
+	ids("upgrades", l.upgrades);
+	ids("no_upgrades", l.no_upgrades);
+	ids("scopes", l.scopes);
+	l.loaded = pSettings->line_exist(section, "loaded") ? s8(!!pSettings->r_bool(section, "loaded")) : s8(-1);
+
+	l.section = section;
+	l.below = !!READ_IF_EXISTS(pSettings, r_bool, section, "below_weapon", false);
+
+	SAddonIconLayout& icon = l.icon;
+	const bool own_texture = !!pSettings->line_exist(section, "icons_texture");
+	icon.texture = own_texture ? pSettings->r_string(section, "icons_texture") : weapon_texture;
+	icon.scale = READ_IF_EXISTS(pSettings, r_float, section, "inv_scale", own_texture ? 1.0f : weapon_scale);
+	icon.grid_pos.set(float(pSettings->r_u32(section, "inv_grid_x")), float(pSettings->r_u32(section, "inv_grid_y")));
+	icon.grid_size.set(float(pSettings->r_u32(section, "inv_grid_width")), float(pSettings->r_u32(section, "inv_grid_height")));
+
+	const float unit = scaled_offsets ? weapon_scale : 1.0f;
+	icon.offset.set(READ_IF_EXISTS(pSettings, r_float, section, "inv_layer_x", 0.0f) / unit,
+					READ_IF_EXISTS(pSettings, r_float, section, "inv_layer_y", 0.0f) / unit);
+	icon.shift.set(READ_IF_EXISTS(pSettings, r_float, section, "weapon_offset_x", 0.0f) / unit,
+				   READ_IF_EXISTS(pSettings, r_float, section, "weapon_offset_y", 0.0f) / unit);
+	icon.extra.set(int(READ_IF_EXISTS(pSettings, r_u32, section, "weapon_extra_width", 0)),
+				   int(READ_IF_EXISTS(pSettings, r_u32, section, "weapon_extra_height", 0)));
+	icon.custom = true;
+	return true;
+}
+
+// A layer is on while all of its conditions hold: one of upgrades is installed, none of
+// no_upgrades is, all of addons are on, none of no_addons is, the attached scope is one
+// of scopes, the weapon holds ammo in its magazine or chamber (loaded = true) or none
+// (loaded = false); with a grenade launcher only the weapon's own ammo counts. A layer
+// without conditions is always on.
+IC bool weapon_icon_layer_on(const SWeaponIconLayer& l, u8 addons_on, CWeapon& weapon)
+{
+	if ((l.addons & addons_on) != l.addons)
+		return false;
+	if (l.no_addons & addons_on)
+		return false;
+	if (!l.scopes.empty())
+	{
+		if (!(addons_on & (1 << CUIWeaponCellItem::eScope)))
+			return false;
+		if (std::find(l.scopes.begin(), l.scopes.end(), weapon.GetScopeName()) == l.scopes.end())
+			return false;
+	}
+	if (l.loaded >= 0 && (weapon.GetCurrentElapsed(false) + weapon.GetAmmoChamberElapsed() > 0) != !!l.loaded)
+		return false;
+	CInventoryItem& item = weapon;
+	for (const shared_str& id : l.no_upgrades)
+		if (item.has_upgrade(id))
+			return false;
+	if (l.upgrades.empty())
+		return true;
+	for (const shared_str& id : l.upgrades)
+		if (item.has_upgrade(id))
+			return true;
+	return false;
+}
+
+// A broken layer is reported once per section, not every time a cell is made.
+static void report_weapon_icon_layer(LPCSTR weapon, LPCSTR layer, LPCSTR error)
+{
+	static xr_set<shared_str> reported;
+	if (reported.insert(shared_str(layer)).second)
+		Msg("! Inventory icon layer [%s] of [%s] skipped: %s", layer, weapon, error);
+}
+
 
 CUIInventoryCellItem::CUIInventoryCellItem(CInventoryItem* itm)
 {
@@ -384,6 +518,26 @@ CUIWeaponCellItem::CUIWeaponCellItem(CWeapon* itm)
 	m_scaled_offsets		= !!READ_IF_EXISTS(pSettings, r_bool, itm->cNameSect(), "addon_offsets_use_inv_scale", false);
 	m_base_grid				= m_grid_size;
 
+	// Cosmetic layers of the icon, read once: variants inherit the list, upgrades only
+	// switch the layers on and off.
+	LPCSTR layers			= READ_IF_EXISTS(pSettings, r_string, itm->cNameSect(), "inv_layers", nullptr);
+	for (int i = 0, count = _GetItemCount(layers); i < count; ++i)
+	{
+		string128 section;
+		string256 error;
+		_GetItem(layers, i, section);
+		SWeaponIconLayer layer;
+		if (m_layers.size() == 32)
+			xr_strcpy(error, "more than 32 layers");
+		else if (read_weapon_icon_layer(section, itm->IconsTexture.c_str(), m_scaled_offsets, itm->ScaleIcon, layer, error))
+		{
+			m_layers.push_back(layer);
+			continue;
+		}
+		report_weapon_icon_layer(itm->cNameSect().c_str(), section, error);
+	}
+	m_layer_icons.resize	(m_layers.size(), nullptr);
+
 	if(itm->SilencerAttachable())
 	{
 		m_addon_offset[eSilencer].set(object()->GetSilencerX(), object()->GetSilencerY());
@@ -519,10 +673,11 @@ Ivector2 CUIWeaponCellItem::AttachedAddonsExtra()
 	return res;
 }
 
-// Base size plus <p>_weapon_extra_width/_height of the addons that are on, never beyond
-// the list's columns, nor its rows unless it grows. Vertical lists (the weapon slots)
-// keep the base size. 3D icons draw the model with its addons in the stock cell, which
-// only the 3D icon editor resizes (SetGridSize), so they keep whatever size they have.
+// Base size plus <p>_weapon_extra_width/_height of the addons and weapon_extra_width/
+// _height of the layers that are on, never beyond the list's columns, nor its rows unless
+// it grows. Vertical lists (the weapon slots) keep the base size. 3D icons draw the model
+// with its addons in the stock cell, which only the 3D icon editor resizes (SetGridSize),
+// so they keep whatever size they have.
 Ivector2 CUIWeaponCellItem::DesiredGridSize(CUIDragDropListEx* list)
 {
 	static const bool enable3DIcons = EngineExternal()[EEngineExternalGame::Enable3DIcons];
@@ -533,7 +688,8 @@ Ivector2 CUIWeaponCellItem::DesiredGridSize(CUIDragDropListEx* list)
 	if (!list || list->GetVerticalPlacement())
 		return size;
 
-	const Ivector2 extra		= AttachedAddonsExtra();
+	Ivector2 extra				= AttachedAddonsExtra();
+	extra.add					(LayersExtra(ActiveLayers()));
 	const Ivector2& capacity	= list->CellsCapacity();
 	size.x						= weapon_grid_len(m_base_grid.x, extra.x, capacity.x);
 	size.y						= list->IsAutoGrow() ? m_base_grid.y + extra.y
@@ -542,11 +698,14 @@ Ivector2 CUIWeaponCellItem::DesiredGridSize(CUIDragDropListEx* list)
 }
 
 // A cell grown for its addons draws the weapon at its own size instead of stretching it.
+// The layers not below the weapon go right over its sprite, before the children draw
+// the addon overlays on top.
 void CUIWeaponCellItem::DrawTexture()
 {
 	if (Heading() || (m_grid_size.x == m_base_grid.x && m_grid_size.y == m_base_grid.y))
 	{
 		inherited::DrawTexture();
+		DrawLayers(false);
 		return;
 	}
 
@@ -554,6 +713,7 @@ void CUIWeaponCellItem::DrawTexture()
 	SetWndSize(weapon_sprite_size(full, m_grid_size, m_base_grid));
 	inherited::DrawTexture();
 	SetWndSize(full);
+	DrawLayers(false);
 }
 
 // Moves only the drawn sprite: the cell, its hit area, count, condition bar and upgrade
@@ -562,6 +722,84 @@ void CUIWeaponCellItem::ApplyWeaponShift()
 {
 	const Fvector2 offset = weapon_shift_offset(m_shift, GetWndSize(), m_grid_size, Heading(), UI().get_current_kx());
 	SetTextureOffset(offset.x, offset.y);
+}
+
+// A bit per layer of inv_layers whose conditions hold right now.
+u32 CUIWeaponCellItem::ActiveLayers()
+{
+	u8 addons_on = 0;
+	if (is_silencer())
+		addons_on |= 1 << eSilencer;
+	if (is_scope())
+		addons_on |= 1 << eScope;
+	if (is_launcher())
+		addons_on |= 1 << eLauncher;
+
+	u32 res = 0;
+	for (u32 i = 0; i < m_layers.size(); ++i)
+		if (weapon_icon_layer_on(m_layers[i], addons_on, *object()))
+			res |= 1u << i;
+	return res;
+}
+
+// Sum of the weapon_offset_x/_y of the layers that are on, added to the addons' one.
+Fvector2 CUIWeaponCellItem::LayersShift(u32 layers_on)
+{
+	Fvector2 res;
+	res.set(0.0f, 0.0f);
+	for (u32 i = 0; i < m_layers.size(); ++i)
+		if (layers_on & (1u << i))
+			res.add(m_layers[i].icon.shift);
+	return res;
+}
+
+// Sum of the weapon_extra_width/_height of the layers that are on.
+Ivector2 CUIWeaponCellItem::LayersExtra(u32 layers_on)
+{
+	Ivector2 res;
+	res.set(0, 0);
+	for (u32 i = 0; i < m_layers.size(); ++i)
+		if (layers_on & (1u << i))
+			res.add(m_layers[i].icon.extra);
+	return res;
+}
+
+// A static for every layer that is on, placed the way the addon overlays are. They are
+// children for their position and color only: Draw and DrawTexture draw them in order.
+void CUIWeaponCellItem::InitLayers(bool b_rotate)
+{
+	for (u32 i = 0; i < m_layers.size(); ++i)
+	{
+		CUIStatic*& s = m_layer_icons[i];
+		if (!(m_layers_on & (1u << i)))
+		{
+			if (s)
+			{
+				DetachChild(s);
+				s = nullptr;
+			}
+			continue;
+		}
+
+		if (!s)
+		{
+			s = new CUIStatic();
+			s->SetAutoDelete(true);
+			s->SetCustomDraw(true);
+			AttachChild(s);
+			s->SetShader(InventoryUtilities::GetEquipmentIconsShader(m_layers[i].icon.texture.c_str()));
+			s->SetTextureColor(GetTextureColor());
+		}
+		PlaceIcon(s, m_layers[i].icon, Fvector2().set(0.0f, 0.0f), b_rotate);
+	}
+}
+
+// The layers below the weapon (below) or the others, in the order of inv_layers.
+void CUIWeaponCellItem::DrawLayers(bool below)
+{
+	for (u32 i = 0; i < m_layers.size(); ++i)
+		if (m_layer_icons[i] && m_layers[i].below == below)
+			m_layer_icons[i]->Draw();
 }
 void CUIWeaponCellItem::RefreshOffset()
 {
@@ -584,6 +822,8 @@ void CUIWeaponCellItem::RefreshOffset()
 
 void CUIWeaponCellItem::Draw()
 {
+	DrawLayers(true);
+
 	if (GetIcon(eScope) && mScopeBack)
 	{
 		GetIcon(eScope)->Draw();
@@ -616,16 +856,26 @@ void CUIWeaponCellItem::Update()
 	static const bool enable3DIcons = EngineExternal()[EEngineExternalGame::Enable3DIcons];
 
 	// The placed overlays carry the shift, so a new one places them all again. 3D icons
-	// draw the model with its addons and get no overlays, so they keep the stock sprite.
+	// draw the model with its addons and get no overlays or layers, so they keep the
+	// stock sprite.
+	const u32 layers_on			= enable3DIcons ? 0 : ActiveLayers();
 	Fvector2 shift;
 	shift.set(0.0f, 0.0f);
 	if (!enable3DIcons)
 		shift					= AttachedAddonsShift();
+	shift.add					(LayersShift(layers_on));
 	if (shift.x != m_shift.x || shift.y != m_shift.y)
 	{
 		m_shift					= shift;
 		bForceReInitAddons		= true;
 	}
+
+	if (layers_on != m_layers_on || bForceReInitAddons)
+	{
+		m_layers_on				= layers_on;
+		InitLayers				(Heading());
+	}
+
 	if (object()->SilencerAttachable())
 	{
 		if (object()->IsSilencerAttached() && !enable3DIcons)
@@ -728,6 +978,11 @@ void CUIWeaponCellItem::SetTextureColor( u32 color )
 	{
 		m_addons[eLauncher]->SetTextureColor( color );
 	}
+	for (CUIStatic* s : m_layer_icons)
+	{
+		if (s)
+			s->SetTextureColor(color);
+	}
 }
 
 void CUIWeaponCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
@@ -746,6 +1001,8 @@ void CUIWeaponCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
 	{
 		InitAddon(GetIcon(eLauncher), eLauncher, parent_list->GetVerticalPlacement());
 	}
+
+	InitLayers(parent_list->GetVerticalPlacement());
 
 	if (auto pItem = (CInventoryItem*)m_pData)
 	{
@@ -766,7 +1023,13 @@ void CUIWeaponCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
 
 void CUIWeaponCellItem::InitAddon(CUIStatic* s, eAddonType t, bool b_rotate)
 {
-	const SAddonIconLayout& l = RefreshLayout(t);
+	PlaceIcon(s, RefreshLayout(t), m_addon_offset[t], b_rotate);
+}
+
+// Places one overlay of the weapon's icon, an addon's or a layer's. legacy_offset (the
+// addon's _x/_y) is used only while the layout is not custom.
+void CUIWeaponCellItem::PlaceIcon(CUIStatic* s, const SAddonIconLayout& l, const Fvector2& legacy_offset, bool b_rotate)
+{
 	Frect tex_rect;
 	Fvector2 base_scale;
 
@@ -797,7 +1060,7 @@ void CUIWeaponCellItem::InitAddon(CUIStatic* s, eAddonType t, bool b_rotate)
 	// the overlay's, which is right only while the two match. Custom ones are logical
 	// units and get the overlay's own scale, which base_scale takes out again; so does
 	// the shift of the whole icon.
-	Fvector2 addon_offset = m_addon_offset[t];
+	Fvector2 addon_offset = legacy_offset;
 	if (l.custom)
 		addon_offset.set(l.offset.x * scaleIcon, l.offset.y * scaleIcon);
 	addon_offset.x += m_shift.x * scaleIcon;
@@ -850,6 +1113,31 @@ CUIDragItem* CUIWeaponCellItem::CreateDragItem()
 		i->wnd()->SetTextureOffset(offset.x, offset.y);
 		if (!Heading())
 			i->wnd()->SetWndSize(weapon_sprite_size(i->wnd()->GetWndSize(), m_grid_size, m_base_grid));
+
+		// The layers in the cell's order: the ones below the weapon go to the drag window
+		// before its sprite, the others onto the sprite before the addon overlays.
+		bool below		= false;
+		for (u32 n = 0; n < m_layers.size(); ++n)
+		{
+			if (!(m_layers_on & (1u << n)))
+				continue;
+			s				= new CUIStatic(); s->SetAutoDelete(true);
+			s->SetShader	(InventoryUtilities::GetEquipmentIconsShader(m_layers[n].icon.texture.c_str()));
+			PlaceIcon		(s, m_layers[n].icon, Fvector2().set(0.0f, 0.0f), false);
+			s->SetTextureColor(i->wnd()->GetTextureColor());
+			if (m_layers[n].below)
+			{
+				i->AttachChild	(s);
+				below		= true;
+			}
+			else
+				i->wnd		()->AttachChild	(s);
+		}
+		if (below)
+		{
+			i->DetachChild	(i->wnd());
+			i->AttachChild	(i->wnd());
+		}
 	}
 
 	if(GetIcon(eSilencer))
