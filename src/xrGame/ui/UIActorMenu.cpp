@@ -357,6 +357,7 @@ void CUIActorMenu::Update()
 	{ // all mode
 		m_last_time = Device.dwTimeGlobal;
 		m_ActorStateInfo->UpdateActorInfo( m_pActorInvOwner );
+		UpdateSlotAmmo();
 
 		if (!IsGameTypeSingle())
 			UpdateActorMoneyMP();
