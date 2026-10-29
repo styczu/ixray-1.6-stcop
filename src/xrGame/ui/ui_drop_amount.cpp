@@ -24,6 +24,8 @@
 #include "../../xrEngine/string_table.h"
 #include "../../xrEngine/xr_input.h"
 #include "UITalkWnd.h"
+
+#include <algorithm>
 #include "UICellCustomItems.h"
 #include "UITradeWnd.h"
 
@@ -96,6 +98,43 @@ void WriteAmountToTrackBar(CUITrackBar* trackBar, int amount, int maxSelectable)
     trackBar->SetFValue(static_cast<float>(amount));
 }
 
+// The items a stack gives away for an amount, in the order it gives them. A stack of
+// ammo hands out its fullest boxes first in every mode (CUIAmmoCellItem::ArrangeBoxes),
+// so the label and the weight have to count those, not the top box and the first
+// children: 63 rounds as 6 x 10 + 3 would show 13 for two boxes and then drop 20.
+void CollectGivenItems(CUICellItem* cellItem, PIItem item, int amount, xr_vector<PIItem>& out)
+{
+    out.clear();
+    if (cellItem == nullptr)
+    {
+        out.push_back(item);
+        return;
+    }
+
+    out.push_back((PIItem)cellItem->m_pData);
+    for (u32 i = 0; i < cellItem->ChildsCount(); ++i)
+    {
+        out.push_back((PIItem)cellItem->Child(i)->m_pData);
+    }
+
+    if (out.front()->cast_weapon_ammo() != nullptr)
+    {
+        std::stable_sort(out.begin(), out.end(), [](PIItem a, PIItem b)
+        {
+            return a->cast_weapon_ammo()->m_boxCurr > b->cast_weapon_ammo()->m_boxCurr;
+        });
+    }
+
+    if (amount < 1)
+    {
+        amount = 1;
+    }
+    if (u32(amount) < out.size())
+    {
+        out.resize(u32(amount));
+    }
+}
+
 void UpdateItemNameText(CUIStatic* itemNameText, CUICellItem* cellItem, CInventoryItem* item, int amount)
 {
 	if (itemNameText == nullptr || cellItem == nullptr || item == nullptr)
@@ -110,13 +149,13 @@ void UpdateItemNameText(CUIStatic* itemNameText, CUICellItem* cellItem, CInvento
     CWeaponAmmo* weaponAmmo = item->cast_weapon_ammo();
     if (weaponAmmo != nullptr)
     {
-		s32 count = weaponAmmo->m_boxCurr;
-        for (u32 i = 1; i < amount; i++)
-        {
-			CUICellItem* itm = cellItem->Child(i-1);
-			CInventoryItem* iitm = (PIItem)itm->m_pData;
-			count += iitm->cast_weapon_ammo()->m_boxCurr;
-        }
+		s32 count = 0;
+		xr_vector<PIItem> given;
+		CollectGivenItems(cellItem, item, amount, given);
+		for (PIItem box : given)
+		{
+			count += box->cast_weapon_ammo()->m_boxCurr;
+		}
 
         string256 ammoNameText;
         xr_sprintf(ammoNameText, "%s (%d)", *g_pStringTable->translate(invName.c_str()),
@@ -355,13 +394,11 @@ void CUIItemDropAmountWnd::UpdateWeightText()
     if (!_pItem)
         return;
 
-    float itemWeight = _pItem->m_pInventory ? _pItem->m_pInventory->CalcItemWeight(_pItem) : _pItem->Weight();
-    float weight = itemWeight;
-
-    for (u32 i = 1; i < _currentAmount; i++)
+    float weight = 0.0f;
+    xr_vector<PIItem> given;
+    CollectGivenItems(_pCellItem, _pItem, _currentAmount, given);
+    for (PIItem iitm : given)
 	{
-		CUICellItem* itm = _pCellItem->Child(i - 1);
-		CInventoryItem* iitm = (PIItem)itm->m_pData;
 		weight += iitm->m_pInventory ? iitm->m_pInventory->CalcItemWeight(iitm) : iitm->Weight();
 	}
 
