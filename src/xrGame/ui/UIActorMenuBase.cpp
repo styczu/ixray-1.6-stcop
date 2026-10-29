@@ -120,6 +120,7 @@ void CUIActorMenuBase::InitSlots(CUIXml& uiXml)
 		m_pInvSlotHighlight[i] = nullptr;
 		m_pInvSlotProgressLegacy[i] = nullptr;
 		m_pInvSlotProgressPercent[i] = nullptr;
+		m_pInvSlotAmmo[i] = nullptr;
 	}
 
 	XML_NODE* stored_root = uiXml.GetLocalRoot();
@@ -161,6 +162,15 @@ void CUIActorMenuBase::InitSlots(CUIXml& uiXml)
 			CUIXmlInit::InitStatic(uiXml, "slot_highlight", 0, m_pInvSlotHighlight[i]);
 			m_pInvSlotHighlight[i]->SetAutoDelete(true);
 			m_pInvSlotHighlight[i]->Show(false);
+		}
+
+		if (uiXml.NavigateToNode("slot_ammo"))
+		{
+			m_pInvSlotAmmo[i] = new CUIStatic();
+			AttachChild(m_pInvSlotAmmo[i]);
+			CUIXmlInit::InitStatic(uiXml, "slot_ammo", 0, m_pInvSlotAmmo[i]);
+			m_pInvSlotAmmo[i]->SetAutoDelete(true);
+			m_pInvSlotAmmo[i]->Show(false);
 		}
 
 		const bool hasSlotProgress = uiXml.GetNodesNum(slot_node, "slot_progress") > 0;
@@ -598,6 +608,30 @@ void CUIActorMenuBase::UpdateConditionProgressBars()
 			else
 				ci->m_select_equipped = false;
 		}
+	}
+}
+
+// The rounds of the weapon in each slot that has a slot_ammo node, "15/15", placed by
+// the XML outside the slot's grid; only while the slot is on screen.
+void CUIActorMenuBase::UpdateSlotAmmo()
+{
+	for (u8 i = 1; i <= LAST_SLOT; ++i)
+	{
+		CUIStatic* text = m_pInvSlotAmmo[i];
+		if (!text)
+			continue;
+
+		PIItem itm			= GetInventoryOwner()->inventory().ItemFromSlot(i);
+		CWeapon* weapon		= itm ? itm->cast_weapon() : nullptr;
+		int count = 0, capacity = 0;
+		const bool shown	= m_pInvList[i] && m_pInvList[i]->IsShown() && weapon_loaded_ammo(weapon, count, capacity);
+		if (shown)
+		{
+			string32 str;
+			xr_sprintf(str, "%d/%d", count, capacity);
+			text->TextItemControl()->SetText(str);
+		}
+		text->Show(shown);
 	}
 }
 
