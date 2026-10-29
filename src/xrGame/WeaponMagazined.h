@@ -96,6 +96,9 @@ protected:
 protected:
 	virtual void	ReloadMagazine();
 	bool			HaveCartridgeInInventory(u8 cnt);
+	// CanLoadAmmo for one side of the weapon: its ammo types, magazine and size.
+	bool			CanLoadAmmoSide	(const shared_str& ammo_sect, const xr_vector<shared_str>& types,
+									 const xr_vector<CCartridge>& magazine, int mag_size, bool grenade_mode);
 	virtual u8		AddCartridge(u8 cnt);
 			void	ApplySilencerKoeffs();
 			void	ResetSilencerKoeffs();
@@ -145,6 +148,18 @@ public:
 	// One round out, as a shotgun gives them up in the inventory: the magazine first, then
 	// the chamber. False when there is none.
 			bool	UnloadCartridge	();
+
+	// Ammo dropped onto the weapon in the inventory: loaded at once, as the inventory unloads.
+	virtual bool	CanLoadAmmo		(const shared_str& ammo_sect);
+	virtual bool	LoadAmmo		(const shared_str& ammo_sect);
+	// One round of it, as a tube takes them; the side has to hold this ammo or none.
+	virtual bool	LoadAmmoCartridge(const shared_str& ammo_sect);
+	// The side this ammo goes in holds another ammo, which has to come out first.
+	virtual bool	HoldsOtherAmmo	(const shared_str& ammo_sect);
+	// Unloads the side this ammo goes in, the chamber stays (as a reload leaves it).
+	virtual void	UnloadAmmoSide	(const shared_str& ammo_sect);
+	// It goes in a grenade launcher: the underslung one, an RG-6 or an RPG-7.
+	virtual bool	IsGrenadeAmmo	(const shared_str& ammo_sect);
 
 	virtual bool	GetBriefInfo	(II_BriefInfo& info);
 
