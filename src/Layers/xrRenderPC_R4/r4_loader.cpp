@@ -203,17 +203,21 @@ void CRender::LoadPuddles()
 
 		Fvector2 size_xz = ini.r_fvector2(sect_name, "size_xz");
 
-		float rotX, rotY, rotZ = 0.0f;
-		int rotArg = sscanf(ini.r_string(sect_name, "rotation"), "%0.3f, %0.3f, %0.3f", &rotX, &rotY, &rotZ);
+		// "%0.3f" is a printf format: sscanf assigned nothing and the angles
+		// stayed uninitialized, so a garbage matrix drew a puddle over the screen
+		Fvector rotation;
+		rotation.set(0.0f, 0.0f, 0.0f);
+		int rotArg = sscanf(ini.r_string(sect_name, "rotation"), "%f , %f , %f", &rotation.x, &rotation.y, &rotation.z);
 		if (rotArg == 3)
 		{
-			m_puddle.m_world.rotateX(-rotX);
-			m_puddle.m_world.rotateY(-rotY);
-			m_puddle.m_world.rotateZ(-rotZ);
+			// The level editor builds the object matrix with setXYZ(FRotation);
+			// rotateX/Y/Z each overwrite the whole matrix
+			m_puddle.m_world.setXYZ(rotation);
 		}
 		else
 		{
-			m_puddle.m_world.rotateY(rotX); // actually Y, just named X because it's the first one
+			// Old format: one angle about Y, already negated by the builder
+			m_puddle.m_world.rotateY(rotation.x);
 		}
 
 		m_puddle.m_world.mulB_43(Fmatrix().scale(size_xz.x, 1.0f, size_xz.y));
