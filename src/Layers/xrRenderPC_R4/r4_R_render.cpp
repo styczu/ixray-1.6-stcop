@@ -829,6 +829,11 @@ void CRender::render_forward()
 	{
 		Target->u_setrt(Target->rt_Accumulator, 0, 0, 0);
 
+		// rt_Generic_0 has been a render target since s_image last read it, so
+		// D3D11 unbound it but the caches did not: without this the special
+		// combine (puddles in rain) read nothing and wrote a dark grey frame
+		RCache.forget_PS_textures();
+
 		RCache.set_Element(Target->s_combine->E[1]);
 		RCache.set_Geometry(Target->FSTriangleGeom);
 

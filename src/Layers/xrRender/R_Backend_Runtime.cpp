@@ -114,6 +114,17 @@ void CBackend::Invalidate	()
 #endif
 }
 
+// Binding a resource as a render target makes D3D11 drop it from the shader
+// resource slots, while textures_ps and the shader resource cache still list it
+// as bound and skip the next bind. Forget the pixel shader textures so the next
+// set_Textures binds every one again.
+void CBackend::forget_PS_textures()
+{
+	T = nullptr;
+	for (u32 ps_it = 0; ps_it < mtMaxPixelShaderTextures;)	textures_ps[ps_it++] = nullptr;
+	GRHI->ShaderResourceCache->ResetDeviceState();
+}
+
 void CBackend::set_Textures(STextureList* _T)
 {
 	PROF_EVENT("set_Textures");

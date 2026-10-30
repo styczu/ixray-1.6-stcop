@@ -196,6 +196,7 @@ public:
 
 		void						set_Textures		(STextureList* T);
 	IC	void						set_Textures		(ref_texture_list& T_)				{ set_Textures(T_ ? &*T_ : nullptr);			}
+		void						forget_PS_textures	();
 
 #ifdef _EDITOR
 	IC	void						set_Matrices		(SMatrixList* M);
