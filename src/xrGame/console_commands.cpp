@@ -130,6 +130,18 @@ u32 particles_workers_count = 1;
 extern bool g_autosaves_enabled;
 extern int g_autosaves_interval;
 
+// Krycie mapy na minimapie w procentach (hud-minimap-opacity); -1 = alfa
+// z zone_map.xml (level_frame, domyslnie 0x7f). Wartosc trzyma skrypt opcji
+// ixray-hud-layout i ustawia ja przy starcie, wiec bez zapisu do user.ltx.
+extern int g_hud_minimap_opacity;
+
+class CCC_HudMinimapOpacity : public CCC_Integer
+{
+public:
+	CCC_HudMinimapOpacity(LPCSTR N, int* V) : CCC_Integer(N, V, -1, 100) {}
+	virtual void Save(IWriter*) {}
+};
+
 void register_mp_console_commands();
 //-----------------------------------------------------------
 
@@ -2642,6 +2654,7 @@ void CCC_RegisterCommands()
 	CMD3(CCC_Mask32, "hud_minimap", &psHUD_Flags, HUD_MINIMAP);
 	CMD3(CCC_Mask32, "hud_hide_quick_slots", &psHUD_Flags, HUD_HIDE_QUICK_SLOTS);
 	CMD3(CCC_Mask32, "hud_contextual_status", &psHUD_Flags, HUD_CONTEXTUAL_STATUS);
+	CMD2(CCC_HudMinimapOpacity, "hud_minimap_opacity", &g_hud_minimap_opacity);
 
     // Cursor
     CMD2(CCC_Boolean, "ui_3d_cursor", &ui_3d_cursor);

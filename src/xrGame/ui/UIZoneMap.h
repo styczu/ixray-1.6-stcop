@@ -47,5 +47,6 @@ public:
 private:
 	void						SetHeading		(float angle);
 	void						UpdateRadar		(Fvector pos);
+	u32							MapTextureColor	() const;
 
 };
