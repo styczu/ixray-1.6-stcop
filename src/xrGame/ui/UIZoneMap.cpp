@@ -20,6 +20,9 @@
 #include "../game_cl_single.h"
 //////////////////////////////////////////////////////////////////////////
 
+// hud_minimap_opacity: krycie mapy w procentach, -1 = alfa z zone_map.xml
+int g_hud_minimap_opacity = -1;
+
 namespace
 {
 constexpr u32 kDefaultMinimapTextureColor = 0x7fffffff;
@@ -232,6 +235,18 @@ void CUIZoneMap::Update()
 
 	if (m_clock_wnd)
 		m_clock_wnd->TextItemControl()->SetText(InventoryUtilities::GetGameTimeAsString(InventoryUtilities::etpTimeToMinutes).c_str());
+
+	// Komenda moze zmienic krycie w trakcie gry, nie tylko przy zmianie mapy.
+	m_activeMap->SetTextureColor(MapTextureColor());
+}
+
+u32 CUIZoneMap::MapTextureColor() const
+{
+	if (g_hud_minimap_opacity < 0)
+		return m_mapTextureColor;
+
+	const u32 alpha = (u32(g_hud_minimap_opacity) * 255 + 50) / 100;
+	return subst_alpha(m_mapTextureColor, alpha);
 }
 
 void CUIZoneMap::SetHeading		(float angle)
@@ -298,7 +313,7 @@ void CUIZoneMap::SetupCurrentMap()
 	wnd_size.x						= m_activeMap->BoundRect().width()*zoom_factor;
 	wnd_size.y						= m_activeMap->BoundRect().height()*zoom_factor;
 	m_activeMap->SetWndSize			(wnd_size);
-	m_activeMap->SetTextureColor	(m_mapTextureColor);
+	m_activeMap->SetTextureColor	(MapTextureColor());
 }
 
 void CUIZoneMap::OnSectorChanged(int sector)
