@@ -170,6 +170,9 @@ bool CWeapon::install_upgrade_disp(const char* section, bool test)
 	result |= process_if_exists(section, "zoom_pattern_damping", zoom_cam_recoil.Pattern.Damping, test);
 	result |= process_if_exists(section, "zoom_pattern_impulse", zoom_cam_recoil.Pattern.Impulse, test);
 	result |= process_if_exists(section, "zoom_pattern_return_speed", zoom_cam_recoil.Pattern.ReturnSpeed, test);
+	// Relative recoil: a share of the weapon's own factor, after the additions above.
+	result |= process_if_exists_mul(section, "pattern_factor_mul", cam_recoil.Pattern.Factor, test);
+	result |= process_if_exists_mul(section, "zoom_pattern_factor_mul", zoom_cam_recoil.Pattern.Factor, test);
 
 
 	result |= process_if_exists(section, "PDM_disp_base", m_pdm.m_fPDM_disp_base, test);
