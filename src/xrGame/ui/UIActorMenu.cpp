@@ -320,6 +320,7 @@ void CUIActorMenu::Show(bool status)
 	inherited::Show							(status);
 	if(status)
 	{
+		m_compare_slot						= NO_ACTIVE_SLOT;
 		SetMenuMode							(m_currMenuMode);
 		PlaySnd								(eSndOpen);
 		m_ActorStateInfo->UpdateActorInfo	(m_pActorInvOwner);
@@ -536,6 +537,9 @@ void CUIActorMenu::InfoCurItem( CUICellItem* cell_item )
 
 	PIItem compare_item = nullptr;
 	u16    compare_slot = current_item->BaseSlot();
+	// A weapon compares with the slot picked by its key (ui-weapon-compare).
+	if ( m_compare_slot != NO_ACTIVE_SLOT && current_item->cast_weapon() )
+		compare_slot = m_compare_slot;
 	if ( compare_slot != NO_ACTIVE_SLOT )
 	{
 		compare_item = m_pActorInvOwner->inventory().ItemFromSlot(compare_slot);
