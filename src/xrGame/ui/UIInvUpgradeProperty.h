@@ -11,6 +11,7 @@
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "inventory_item.h"
 #include "inventory_upgrade_property.h"
+#include "UIWeaponParams.h"
 
 class CCustomOutfit;
 
@@ -41,6 +42,10 @@ protected:
 	CCustomOutfit* m_armor_outfit = nullptr;
 	bool m_armor_installed = true;
 
+	// Wiersze broni (ui-upgrade-weapon-rows): miary dymka broni przed i po
+	// liczonych ulepszeniach; nullptr, gdy przedmiot nie jest bronia.
+	const CUIWeaponParams::SUpgradeRow* m_weapon_rows = nullptr;
+
 public:
 	UIProperty() = default;
 	virtual	~UIProperty() = default;
@@ -58,10 +63,15 @@ public:
 	bool is_protection() const;
 	bool is_physical() const;
 	// Ochrony, regeneracja i wiersze fizyczne maja dluzsza wartosc z jednostka, wiec zajmuja caly wiersz.
-	bool is_full_width_row() const { return is_regeneration() || is_protection() || is_physical(); }
+	bool is_full_width_row() const { return is_regeneration() || is_protection() || is_physical() || weapon_row() >= 0; }
 	void set_armor_context(CInventoryItem* item, bool installed);
 	bool show_armor(const char* values);
 	bool show_physical(const char* values);
+	// Indeks wiersza broni (CUIWeaponParams::EUpgradeRow) albo -1.
+	int weapon_row() const;
+	bool is_weapon_label() const;
+	void set_weapon_context(const CUIWeaponParams::SUpgradeRow* rows) { m_weapon_rows = rows; }
+	bool show_weapon_row(const CUIWeaponParams::SUpgradeRow& row);
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -88,6 +98,9 @@ protected:
 	float BaseWidth = 0.0f;
 	float AvailableWidth = 0.0f;
 	bool CanExpand = false;
+	// Czy addon zdefiniowal wiersze broni; bez nich bron zostaje przy etykietach skryptu.
+	bool m_has_weapon_rows = false;
+	CUIWeaponParams::SUpgradeRow m_weapon_values[CUIWeaponParams::eUpgradeRowCount];
 
 public:
 	UIInvUpgPropertiesWnd();
