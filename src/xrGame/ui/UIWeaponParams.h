@@ -95,9 +95,41 @@ public:
 		float	impair					= 1.0f;
 	};
 
+	// The upgrade window's rows (ui-upgrade-weapon-rows): what upgrades change in
+	// this weapon, in the tooltip's measures, in the tooltip's order.
+	enum EUpgradeRow
+	{
+		eUpgradeRpm,
+		eUpgradeSpeed,
+		eUpgradeAccuracy,
+		eUpgradeHandling,
+		eUpgradeRecoil,
+		eUpgradeHold,
+		eUpgradeReliability,
+		eUpgradeDurability,
+		eUpgradeWeight,
+		eUpgradeCapacity,
+		eUpgradeImpulse,
+		eUpgradeRowCount
+	};
+
+	// One row: after - before (bars in points, impulse in % of the weapon's),
+	// and for the bars with no finite value ("max") which side has none.
+	struct SUpgradeRow
+	{
+		float	delta		= 0.0f;
+		float	after		= 0.0f;
+		bool	before_max	= false;
+		bool	after_max	= false;
+	};
+
 	static	SAmmo	RifleAmmo			(CWeapon& weapon);
 	static	void	Read				(CWeapon& weapon, const SAmmo& ammo, SParams& params);
 	static	void	Score				(const SParams& params, SScore (&scores)[eBarCount], float& dispersion);
+	// Effect sections of upgrades: a preview adds them to the weapon as it is now,
+	// installed ones are taken off it.
+	static	void	MeasureUpgrades		(CWeapon& weapon, const xr_vector<LPCSTR>& sections, bool installed,
+										 SUpgradeRow (&rows)[eUpgradeRowCount]);
 
 					CUIWeaponParams		();
 	virtual			~CUIWeaponParams	();
@@ -133,6 +165,7 @@ private:
 
 	static	void	Measure				(CWeapon& weapon, const SAmmo& ammo, SScore (&scores)[eBarCount], float& dispersion);
 	static	float	MeasureRange		(CWeapon& weapon, const SAmmo& ammo, float dispersion);
+	static	void	AddUpgrade			(CWeapon& weapon, LPCSTR section, float sign, SParams& params);
 			void	Place				(CUIWindow* wnd, float& h);
 			void	PlaceSeparator		(u32 index, float& h);
 			void	SetRow				(ERow row, LPCSTR text, float& h);
