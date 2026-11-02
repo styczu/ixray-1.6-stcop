@@ -269,6 +269,9 @@ protected:
 
 	bool						m_highlight_clear = true;
 	bool						m_item_info_view = false;
+	// ui-weapon-compare: the slot the weapon tooltip compares with, picked with the
+	// weapon slot keys until the menu closes; NO_ACTIVE_SLOT: the weapon's own slot.
+	u16							m_compare_slot = NO_ACTIVE_SLOT;
 	bool						m_bIgnoreInventoryAction = false;
 
 	CUICellItem*				_tradeHoverCell = nullptr;
