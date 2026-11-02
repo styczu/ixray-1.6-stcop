@@ -174,6 +174,7 @@ private:
 			void	SetAmmoIcons		(const SAmmo& ammo, float& h);
 
 	CUIStatic*		m_Prop_line			= nullptr;
+	CUIStatic*		m_compare			= nullptr;	// "Compared with: <weapon>" (ui-weapon-compare)
 	CUIStatic*		m_separators[3]		= {};
 	SCondition		m_condition;
 	SBar			m_bars[eBarCount];
