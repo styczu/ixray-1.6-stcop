@@ -20,6 +20,7 @@
 #include "../../xrUI/ui_base.h"
 #include "../../xrUI/Widgets/UIStatic.h"
 #include "../../xrUI/Widgets/UIDoubleProgressBar.h"
+#include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrEngine/string_table.h"
 
 static LPCSTR weapon_bar_node[] =
@@ -28,6 +29,7 @@ static LPCSTR weapon_bar_node[] =
 	"accuracy",
 	"handling",
 	"recoil",
+	"hold",
 	"reliability",
 	"durability",
 };
@@ -38,6 +40,7 @@ static LPCSTR weapon_bar_caption[] =
 	"ui_uip_wpn_accuracy",
 	"ui_uip_wpn_handling",
 	"ui_uip_wpn_recoil",
+	"ui_uip_wpn_hold",
 	"ui_uip_wpn_reliability",
 	"ui_uip_wpn_durability",
 };
@@ -62,6 +65,7 @@ CUIWeaponParams::~CUIWeaponParams()
 	xr_delete(m_Prop_line);
 	for (CUIStatic*& separator : m_separators)
 		xr_delete(separator);
+	xr_delete(m_condition.wnd);
 	for (u32 i = 0; i < eBarCount; ++i)
 		xr_delete(m_bars[i].wnd);
 	for (u32 i = 0; i < eRowCount; ++i)
@@ -71,11 +75,14 @@ CUIWeaponParams::~CUIWeaponParams()
 }
 
 // <weapon_params gap=""> holds a <row> template (caption, value), one node per
-// bar (<damage>, <accuracy>, <handling>, <recoil>, <reliability>, <durability>:
-// optional icon, caption, progress as a double bar with color_less/color_more,
-// overflow, overflow_fill, value), an optional <separator> after the gap between the
-// groups and <ammo_icons x="" cell="" gap=""> (cell: the height of one inventory
-// grid cell) with a <dim> colour for the ammo the numbers are not for.
+// bar (<damage>, <accuracy>, <handling>, <recoil>, <hold>, <reliability>,
+// <durability>: optional icon, caption, progress as a double bar with
+// color_less/color_more, overflow, overflow_fill, value; a bar without its node
+// is left out), the wear group's <condition> (optional icon, caption, progress
+// with min_color/middle_color/max_color, value; without it the condition is a
+// row), an optional <separator> after the gap between the groups and
+// <ammo_icons x="" cell="" gap=""> (cell: the height of one inventory grid
+// cell) with a <dim> colour for the ammo the numbers are not for.
 void CUIWeaponParams::InitFromXml(CUIXml& xml)
 {
 	LPCSTR base = "weapon_params";
@@ -114,10 +121,24 @@ void CUIWeaponParams::InitFromXml(CUIXml& xml)
 	}
 
 	string256 buf;
+	if (xml.NavigateToNode("condition"))
+	{
+		m_condition.wnd = new CUIWindow();
+		m_condition.wnd->SetAutoDelete(false);
+		CUIXmlInit::InitWindow(xml, "condition", 0, m_condition.wnd);
+		if (xml.NavigateToNode("condition:icon"))
+			UIHelper::CreateStatic(xml, "condition:icon", m_condition.wnd);
+		UIHelper::CreateStatic(xml, "condition:caption", m_condition.wnd)->SetTextST(weapon_row_caption[eRowCondition]);
+		m_condition.bar = UIHelper::CreateProgressBar(xml, "condition:progress", m_condition.wnd);
+		m_condition.value = UIHelper::CreateStatic(xml, "condition:value", m_condition.wnd);
+	}
+
 	for (u32 i = 0; i < eBarCount; ++i)
 	{
 		SBar& bar = m_bars[i];
 		LPCSTR node = weapon_bar_node[i];
+		if (!xml.NavigateToNode(node))
+			continue;
 		bar.wnd = new CUIWindow();
 		bar.wnd->SetAutoDelete(false);
 		CUIXmlInit::InitWindow(xml, node, 0, bar.wnd);
@@ -208,60 +229,100 @@ CUIWeaponParams::SAmmo CUIWeaponParams::RifleAmmo(CWeapon& weapon)
 	return ammo;
 }
 
-void CUIWeaponParams::Measure(CWeapon& weapon, const SAmmo& ammo, SScore (&scores)[eBarCount], float& dispersion)
+void CUIWeaponParams::Read(CWeapon& weapon, const SAmmo& ammo, SParams& params)
 {
 	using namespace WeaponUi;
 	LPCSTR sect = ammo.section.size() ? ammo.section.c_str() : nullptr;
-	const float k_hit = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_hit", 1.0f) : 1.0f;
-	const float k_disp = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_disp", 1.0f) : 1.0f;
-	const float impair = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "impair", 1.0f) : 1.0f;
-	const int pellets = sect ? READ_IF_EXISTS(pSettings, r_s32, sect, "buck_shot", 1) : 1;
+	params.k_hit = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_hit", 1.0f) : 1.0f;
+	params.k_disp = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_disp", 1.0f) : 1.0f;
+	params.impair = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "impair", 1.0f) : 1.0f;
+	params.pellets = sect ? READ_IF_EXISTS(pSettings, r_s32, sect, "buck_shot", 1) : 1;
 	const auto& silencer = weapon.cur_silencer_koef;
-	const float condition = weapon.GetCondition();
+	params.condition = weapon.GetCondition();
 
 	// The player's shot (CShootingObject::FireBullet).
-	const float hit_power = weapon.fvHitPower[IsGameTypeSingle() ? g_SingleGameDifficulty : egdMaster];
-	scores[eBarDamage].value = DamageScore(Damage(hit_power, k_hit, silencer.hit_power, pellets));
+	params.hit_power = weapon.fvHitPower[IsGameTypeSingle() ? g_SingleGameDifficulty : egdMaster];
+	params.silencer_hit = silencer.hit_power;
 
-	dispersion = Dispersion(weapon.fireDispersionBase * RadToDeg, k_disp, silencer.fire_dispersion,
-		weapon.fireDispersionConditionFactor, condition);
-	scores[eBarAccuracy].value = AccuracyScore(dispersion);
+	params.dispersion_deg = weapon.fireDispersionBase * RadToDeg;
+	params.silencer_dispersion = silencer.fire_dispersion;
+	params.condition_factor = weapon.fireDispersionConditionFactor;
 
-	scores[eBarHandling].value = Handling(weapon.m_crosshair_inertion, weapon.m_zoom_params.m_fZoomRotateTime,
-		weapon.GetControlInertionFactor());
+	params.crosshair_inertion = weapon.m_crosshair_inertion;
+	params.zoom_rotate_time = weapon.m_zoom_params.m_fZoomRotateTime;
+	params.control_inertion = weapon.GetControlInertionFactor();
+	params.pdm_base = weapon.Get_PDM_Base();
+	params.pdm_velocity = weapon.Get_PDM_Vel_F();
 
 	// CWeaponShotEffector::Shot: a weapon with a recoil pattern kicks by the
 	// pattern (no silencer factor), the others by cam_dispersion.
 	const xr_vector<CWeapon::SRecoilPoint>& pattern = weapon.m_hipfire_pattern.bullet_patterns;
-	float recoil;
+	params.pattern_step = 0.0f;
 	if (!pattern.empty())
 	{
 		float steps = 0.0f;
 		for (const CWeapon::SRecoilPoint& point : pattern)
 			steps += _sqrt(point.x * point.x + point.y * point.y);
-		recoil = PatternRecoil(steps / pattern.size(), weapon.cam_recoil.Pattern.Factor,
-			weapon.zoom_cam_recoil.Pattern.Factor);
+		params.pattern_step = steps / pattern.size();
 	}
-	else
-	{
-		recoil = LegacyRecoil(weapon.cam_recoil.Dispersion * silencer.cam_dispersion,
-			weapon.cam_recoil.DispersionInc * silencer.cam_disper_inc,
-			weapon.zoom_cam_recoil.Dispersion * silencer.cam_dispersion,
-			weapon.zoom_cam_recoil.DispersionInc * silencer.cam_disper_inc);
-	}
+	params.pattern_factor = weapon.cam_recoil.Pattern.Factor;
+	params.zoom_pattern_factor = weapon.zoom_cam_recoil.Pattern.Factor;
+	params.cam[0] = weapon.cam_recoil.Dispersion * silencer.cam_dispersion;
+	params.cam[1] = weapon.cam_recoil.DispersionInc * silencer.cam_disper_inc;
+	params.cam[2] = weapon.zoom_cam_recoil.Dispersion * silencer.cam_dispersion;
+	params.cam[3] = weapon.zoom_cam_recoil.DispersionInc * silencer.cam_disper_inc;
+
+	params.legacy_misfire = weapon.useLegacyMisfire;
+	params.misfire_probability = weapon.misfireProbability;
+	params.misfire_condition_k = weapon.misfireConditionK;
+	params.misfire_start_condition = weapon.misfireStartCondition;
+	params.misfire_end_condition = weapon.misfireEndCondition;
+	params.misfire_start_prob = weapon.misfireStartProbability;
+	params.misfire_end_prob = weapon.misfireEndProbability;
+
+	params.shot_dec = weapon.conditionDecreasePerShot;
+}
+
+void CUIWeaponParams::Score(const SParams& params, SScore (&scores)[eBarCount], float& dispersion)
+{
+	using namespace WeaponUi;
+	scores[eBarDamage].value = DamageScore(Damage(params.hit_power, params.k_hit, params.silencer_hit, params.pellets));
+
+	dispersion = Dispersion(params.dispersion_deg, params.k_disp, params.silencer_dispersion,
+		params.condition_factor, params.condition);
+	scores[eBarAccuracy].value = AccuracyScore(dispersion);
+
+	// The player's actor (CActor::Load reads disp_base in degrees).
+	const float hip = HipDispersion(READ_IF_EXISTS(pSettings, r_float, "actor", "disp_base", 0.0f), params.pdm_base,
+		READ_IF_EXISTS(pSettings, r_float, "actor", "disp_vel_factor", 0.0f), params.pdm_velocity);
+	scores[eBarHandling].value = Handling(params.crosshair_inertion, params.zoom_rotate_time,
+		params.control_inertion, hip);
+
+	const float recoil = params.pattern_step > 0.0f
+		? PatternRecoil(params.pattern_step, params.pattern_factor, params.zoom_pattern_factor)
+		: LegacyRecoil(params.cam[0], params.cam[1], params.cam[2], params.cam[3]);
 	scores[eBarRecoil].value = RecoilScore(recoil);
 
-	const float misfire = weapon.useLegacyMisfire
-		? LegacyMisfireMean(weapon.misfireProbability, weapon.misfireConditionK, condition)
-		: MisfireMean(weapon.misfireStartCondition, weapon.misfireEndCondition,
-			weapon.misfireStartProbability, weapon.misfireEndProbability, condition);
+	scores[eBarHold].value = HoldScore(params.condition_factor);
+
+	const float misfire = params.legacy_misfire
+		? LegacyMisfireMean(params.misfire_probability, params.misfire_condition_k, params.condition)
+		: MisfireMean(params.misfire_start_condition, params.misfire_end_condition,
+			params.misfire_start_prob, params.misfire_end_prob, params.condition);
 	scores[eBarReliability].max = misfire <= 0.0f;
 	scores[eBarReliability].value = scores[eBarReliability].max ? 0.0f : ReliabilityScore(misfire);
 
 	// Wear per shot is condition_shot_dec x the cartridge's impair (CWeapon::FireTrace).
-	scores[eBarDurability].max = weapon.conditionDecreasePerShot * impair <= 0.0f;
+	scores[eBarDurability].max = params.shot_dec * params.impair <= 0.0f;
 	scores[eBarDurability].value = scores[eBarDurability].max ? 0.0f
-		: DurabilityScore(ShotsPerLife(weapon.conditionDecreasePerShot, impair));
+		: DurabilityScore(ShotsPerLife(params.shot_dec, params.impair));
+}
+
+void CUIWeaponParams::Measure(CWeapon& weapon, const SAmmo& ammo, SScore (&scores)[eBarCount], float& dispersion)
+{
+	SParams params;
+	Read(weapon, ammo, params);
+	Score(params, scores, dispersion);
 }
 
 // Effective range (model V4, docs/features/ui-weapon-params.md): the 50% hit
@@ -336,6 +397,8 @@ void CUIWeaponParams::SetRow(ERow index, LPCSTR text, float& h)
 void CUIWeaponParams::SetBar(EBar index, const SScore& cur, const SScore& slot, float& h)
 {
 	SBar& bar = m_bars[index];
+	if (!bar.wnd)
+		return;
 	auto fill = [&bar](const SScore& score)
 	{
 		return score.max ? 100.0f : WeaponUi::Clamp100(score.value * 100.0f / bar.full);
@@ -355,6 +418,17 @@ void CUIWeaponParams::SetBar(EBar index, const SScore& cur, const SScore& slot, 
 		bar.value->SetText(text);
 	}
 	Place(bar.wnd, h);
+}
+
+// The condition shown like the slot's bar (GetConditionToShow), coloured by its
+// min/middle/max colours, with no comparison: two weapons' wear is not a merit.
+void CUIWeaponParams::SetCondition(float condition, float& h)
+{
+	m_condition.bar->SetProgressPos(condition * 100.0f);
+	string32 text;
+	xr_sprintf(text, "%d%%", iFloor(condition * 100.0f + 0.5f));
+	m_condition.value->SetText(text);
+	Place(m_condition.wnd, h);
 }
 
 // One row of the rifle's ammo icons at their inventory size, wrapped at the
@@ -471,14 +545,23 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 		SetRow(eRowRange, text, h);
 	}
 
-	xr_sprintf(text, "%d%%", iFloor(item.GetConditionToShow() * 100.0f + 0.5f));
-	SetRow(eRowCondition, text, h);
+	if (!m_condition.wnd)
+	{
+		xr_sprintf(text, "%d%%", iFloor(item.GetConditionToShow() * 100.0f + 0.5f));
+		SetRow(eRowCondition, text, h);
+	}
 
 	PlaceSeparator(0, h);
-	for (u32 i = 0; i < eBarCount; ++i)
+	for (u32 i = 0; i < eFirstWearBar; ++i)
 		SetBar(EBar(i), cur[i], slot[i], h);
 
 	PlaceSeparator(1, h);
+	if (m_condition.wnd)
+		SetCondition(item.GetConditionToShow(), h);
+	for (u32 i = eFirstWearBar; i < eBarCount; ++i)
+		SetBar(EBar(i), cur[i], slot[i], h);
+
+	PlaceSeparator(2, h);
 	SetAmmoIcons(ammo, h);
 
 	SetHeight(h);
