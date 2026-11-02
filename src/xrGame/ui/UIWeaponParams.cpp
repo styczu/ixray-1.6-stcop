@@ -325,6 +325,113 @@ void CUIWeaponParams::Measure(CWeapon& weapon, const SAmmo& ammo, SScore (&score
 	Score(params, scores, dispersion);
 }
 
+// A number an upgrade adds (CInventoryItem::process_if_exists: present and not empty).
+static float UpgradeValue(LPCSTR section, LPCSTR key)
+{
+	if (!pSettings->line_exist(section, key))
+		return 0.0f;
+	LPCSTR value = pSettings->r_string(section, key);
+	return value && *value ? pSettings->r_float(section, key) : 0.0f;
+}
+
+// The keys the bars read, added like CWeapon::install_upgrade_disp and
+// CInventoryItem::install_upgrade_impl (cam_* in degrees); sign -1 takes an
+// installed section off.
+void CUIWeaponParams::AddUpgrade(CWeapon& weapon, LPCSTR section, float sign, SParams& params)
+{
+	const auto& silencer = weapon.cur_silencer_koef;
+	auto add = [&](LPCSTR key, float& value, float scale = 1.0f)
+	{
+		value += sign * scale * UpgradeValue(section, key);
+	};
+	add("fire_dispersion_base", params.dispersion_deg);
+	add("fire_dispersion_condition_factor", params.condition_factor);
+	add("crosshair_inertion", params.crosshair_inertion);
+	add("zoom_rotate_time", params.zoom_rotate_time);
+	add("control_inertion_factor", params.control_inertion);
+	add("PDM_disp_base", params.pdm_base);
+	add("PDM_disp_vel_factor", params.pdm_velocity);
+	add("pattern_factor", params.pattern_factor);
+	add("zoom_pattern_factor", params.zoom_pattern_factor);
+	add("cam_dispersion", params.cam[0], deg2rad(1.0f) * silencer.cam_dispersion);
+	add("cam_dispersion_inc", params.cam[1], deg2rad(1.0f) * silencer.cam_disper_inc);
+	add("zoom_cam_dispersion", params.cam[2], deg2rad(1.0f) * silencer.cam_dispersion);
+	add("zoom_cam_dispersion_inc", params.cam[3], deg2rad(1.0f) * silencer.cam_disper_inc);
+	add("misfire_probability", params.misfire_probability);
+	add("misfire_condition_k", params.misfire_condition_k);
+	add("misfire_start_condition", params.misfire_start_condition);
+	add("misfire_end_condition", params.misfire_end_condition);
+	add("misfire_start_prob", params.misfire_start_prob);
+	add("misfire_end_prob", params.misfire_end_prob);
+	add("condition_shot_dec", params.shot_dec);
+
+	// The engine's clamps (weapon-upgrade-aim-params). Taking a section off
+	// cannot undo one: a clamped installed value counts as it is.
+	params.crosshair_inertion = std::max(params.crosshair_inertion, 0.0f);
+	params.zoom_rotate_time = std::max(params.zoom_rotate_time, EPS_L);
+}
+
+void CUIWeaponParams::MeasureUpgrades(CWeapon& weapon, const xr_vector<LPCSTR>& sections, bool installed,
+	SUpgradeRow (&rows)[eUpgradeRowCount])
+{
+	const float sign = installed ? -1.0f : 1.0f;
+	const SAmmo now_ammo = RifleAmmo(weapon);
+	SAmmo other_ammo = now_ammo;
+	float rpm = 0.0f, speed = 0.0f, weight = 0.0f, capacity = 0.0f, impulse = 0.0f;
+	for (LPCSTR section : sections)
+	{
+		// A calibre change sets the ammo types and loads the first one; taken
+		// off, the weapon's own first type is back.
+		if (pSettings->line_exist(section, "ammo_class"))
+		{
+			LPCSTR types = installed ? READ_IF_EXISTS(pSettings, r_string, weapon.cNameSect(), "ammo_class", "")
+				: pSettings->r_string(section, "ammo_class");
+			string128 first;
+			other_ammo.section = _GetItem(types, 0, first);
+		}
+		rpm += UpgradeValue(section, "rpm");
+		speed += UpgradeValue(section, "bullet_speed");
+		weight += UpgradeValue(section, "inv_weight");
+		capacity += UpgradeValue(section, "ammo_mag_size");
+		impulse += UpgradeValue(section, "hit_impulse");
+	}
+
+	SParams now, other;
+	Read(weapon, now_ammo, now);
+	Read(weapon, other_ammo, other);
+	for (LPCSTR section : sections)
+		AddUpgrade(weapon, section, sign, other);
+
+	SScore now_scores[eBarCount], other_scores[eBarCount];
+	float dispersion;
+	Score(now, now_scores, dispersion);
+	Score(other, other_scores, dispersion);
+	const SScore* before = installed ? other_scores : now_scores;
+	const SScore* after = installed ? now_scores : other_scores;
+
+	static const struct { EUpgradeRow row; EBar bar; } bars[] = {
+		{ eUpgradeAccuracy, eBarAccuracy }, { eUpgradeHandling, eBarHandling },
+		{ eUpgradeRecoil, eBarRecoil }, { eUpgradeHold, eBarHold },
+		{ eUpgradeReliability, eBarReliability }, { eUpgradeDurability, eBarDurability } };
+	for (const auto& bar : bars)
+	{
+		SUpgradeRow& row = rows[bar.row];
+		row.delta = after[bar.bar].value - before[bar.bar].value;
+		row.after = after[bar.bar].value;
+		row.before_max = before[bar.bar].max;
+		row.after_max = after[bar.bar].max;
+	}
+
+	// The rows' units: rpm is added as shots per minute, the speed is the
+	// tooltip's (with the silencer), the impulse a share of the weapon's.
+	rows[eUpgradeRpm] = { rpm, 0.0f, false, false };
+	rows[eUpgradeSpeed] = { speed * weapon.cur_silencer_koef.bullet_speed, 0.0f, false, false };
+	rows[eUpgradeWeight] = { weight, 0.0f, false, false };
+	rows[eUpgradeCapacity] = { capacity, 0.0f, false, false };
+	const float base_impulse = weapon.getHitImpulse() - (installed ? impulse : 0.0f);
+	rows[eUpgradeImpulse] = { base_impulse > 0.0f ? 100.0f * impulse / base_impulse : 0.0f, 0.0f, false, false };
+}
+
 // Effective range (model V4, docs/features/ui-weapon-params.md): the 50% hit
 // distance from the weapon's dispersion and the practical aiming dispersion of
 // its platform and sight, capped by the bullet's flight and the shot's reach.
