@@ -22,6 +22,7 @@
 #include "../../xrUI/Widgets/UIDoubleProgressBar.h"
 #include "../../xrUI/Widgets/UIProgressBar.h"
 #include "../../xrEngine/string_table.h"
+#include "../../xrEngine/xr_input.h"
 
 static LPCSTR weapon_bar_node[] =
 {
@@ -609,9 +610,23 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 
 	CWeapon& weapon = *item.cast_weapon();
 	const SAmmo ammo = RifleAmmo(weapon);
+	// Ctrl held: the weapon and the compared one as new, condition 100% (the
+	// tooltip is built every frame while hovered, so it follows the key); no Ctrl
+	// on a gamepad.
+	const bool as_new = !pInput->GetControllerMode() &&
+		(pInput->iGetAsyncKeyState(SDL_SCANCODE_LCTRL) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RCTRL));
+	const float condition = as_new ? 1.0f : item.GetConditionToShow();
+	auto measure = [as_new](CWeapon& measured, const SAmmo& measured_ammo, SScore (&scores)[eBarCount], float& disp)
+	{
+		SParams params;
+		Read(measured, measured_ammo, params);
+		if (as_new)
+			params.condition = 1.0f;
+		Score(params, scores, disp);
+	};
 	SScore cur[eBarCount];
 	float dispersion = 0.0f;
-	Measure(weapon, ammo, cur, dispersion);
+	measure(weapon, ammo, cur, dispersion);
 
 	SScore slot[eBarCount];
 	for (u32 i = 0; i < eBarCount; ++i)
@@ -620,7 +635,7 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	{
 		CWeapon& other = *slot_item->cast_weapon();
 		float other_dispersion = 0.0f;
-		Measure(other, RifleAmmo(other), slot, other_dispersion);
+		measure(other, RifleAmmo(other), slot, other_dispersion);
 	}
 
 	string32 number;
@@ -660,7 +675,7 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 
 	if (!m_condition.wnd)
 	{
-		xr_sprintf(text, "%d%%", iFloor(item.GetConditionToShow() * 100.0f + 0.5f));
+		xr_sprintf(text, "%d%%", iFloor(condition * 100.0f + 0.5f));
 		SetRow(eRowCondition, text, h);
 	}
 
@@ -682,7 +697,7 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 
 	PlaceSeparator(1, h);
 	if (m_condition.wnd)
-		SetCondition(item.GetConditionToShow(), h);
+		SetCondition(condition, h);
 	for (u32 i = eFirstWearBar; i < eBarCount; ++i)
 		SetBar(EBar(i), cur[i], slot[i], h);
 
