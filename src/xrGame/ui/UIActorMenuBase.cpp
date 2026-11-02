@@ -1756,6 +1756,17 @@ bool CUIActorMenuBase::OnMouseAction( float x, float y, EUIMessages mouse_action
 bool CUIActorMenuBase::OnKeyboardAction(int dik, EUIMessages keyboard_action)
 {
 	InfoCurItem( nullptr );
+	// A weapon slot key (the same binding that draws the weapon) picks the slot the
+	// weapon tooltip compares with; the same key again goes back to the weapon's own.
+	if ( WINDOW_KEY_PRESSED == keyboard_action )
+	{
+		const u16 slot = InventoryWeaponHotkeyToInventorySlot(u16(get_binded_action(dik)));
+		if ( slot == INV_SLOT_2 || slot == INV_SLOT_3 || slot == PISTOL_SLOT_NEW )
+		{
+			m_compare_slot = m_compare_slot == slot ? u16(NO_ACTIVE_SLOT) : slot;
+			return true;
+		}
+	}
 	if ( is_binded(kDROP, dik) )
 	{
 		if ( WINDOW_KEY_PRESSED == keyboard_action && CurrentIItem() && !CurrentIItem()->IsQuestItem()
