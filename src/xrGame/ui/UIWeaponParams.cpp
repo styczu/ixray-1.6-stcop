@@ -368,7 +368,7 @@ void CUIWeaponParams::AddUpgrade(CWeapon& weapon, LPCSTR section, float sign, SP
 			add(added, value);
 		}
 	};
-	add("fire_dispersion_base", params.dispersion_deg);
+	mul("fire_dispersion_base_mul", "fire_dispersion_base", params.dispersion_deg);
 	add("fire_dispersion_condition_factor", params.condition_factor);
 	add("crosshair_inertion", params.crosshair_inertion);
 	add("zoom_rotate_time", params.zoom_rotate_time);
@@ -423,8 +423,14 @@ void CUIWeaponParams::MeasureUpgrades(CWeapon& weapon, const xr_vector<LPCSTR>& 
 	SParams now, other;
 	Read(weapon, now_ammo, now);
 	Read(weapon, other_ammo, other);
-	for (LPCSTR section : sections)
-		AddUpgrade(weapon, section, sign, other);
+	// The engine installs in list order. An added and a relative key on the same
+	// value do not commute, so installed sections come off in reverse.
+	if (installed)
+		for (auto it = sections.rbegin(); it != sections.rend(); ++it)
+			AddUpgrade(weapon, *it, sign, other);
+	else
+		for (LPCSTR section : sections)
+			AddUpgrade(weapon, section, sign, other);
 
 	SScore now_scores[eBarCount], other_scores[eBarCount];
 	float dispersion;
