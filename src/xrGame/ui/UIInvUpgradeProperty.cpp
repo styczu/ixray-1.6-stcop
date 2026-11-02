@@ -16,6 +16,7 @@
 #include "../ActorCondition.h"
 #include "../CustomOutfit.h"
 #include "../Weapon.h"
+#include "../../xrEngine/xr_input.h"
 #include "../../Include/xrRender/Kinematics.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
@@ -43,6 +44,7 @@ void UIProperty::init_from_xml(CUIXml& ui_xml)
 	SetWndPos(Fvector2().set(0, 0));
 	CUIXmlInit::InitStatic(ui_xml, "properties:icon", 0, m_ui_icon);
 	CUIXmlInit::InitStatic(ui_xml, "properties:text", 0, m_ui_text);
+	m_text_color = m_ui_text->GetTextColor();
 }
 
 bool UIProperty::init_property(shared_str const& property_id)
@@ -90,6 +92,7 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 	{
 		return false;
 	}
+	m_ui_text->SetTextColor(m_text_color);
 	const int weapon = weapon_row();
 	if (weapon >= 0)
 	{
@@ -400,7 +403,8 @@ bool UIProperty::is_weapon_label() const
 // Zmiana miary dymka broni; bez wiersza, gdy po zaokragleniu jest zerem.
 // Jednostki jak w dymku: paski w pkt, masa w kg z dwoma miejscami, impuls
 // w % wartosci broni. Pasek bez skonczonej wartosci (bez zaciec, bez zuzycia)
-// po ulepszeniu: "max".
+// po ulepszeniu: "max". Pogorszenie (mniej, a przy masie wiecej) na czerwono,
+// kolorem "Nie mozna zainstalowac" z UIInvUpgradeInfo.
 bool UIProperty::show_weapon_row(const CUIWeaponParams::SUpgradeRow& row)
 {
 	const int index = weapon_row();
@@ -428,6 +432,7 @@ bool UIProperty::show_weapon_row(const CUIWeaponParams::SUpgradeRow& row)
 			return true;
 		}
 		ConditionUi::FormatNumber(number, row.after, separator, false, 0);
+		m_ui_text->SetTextColor(color_rgba(255, 90, 90, 255));
 	}
 	else
 	{
@@ -435,6 +440,9 @@ bool UIProperty::show_weapon_row(const CUIWeaponParams::SUpgradeRow& row)
 		if (std::fabs(row.delta) < 0.5f * std::pow(10.0f, -float(decimals)))
 			return false;
 		ConditionUi::FormatNumber(number, row.delta, separator, true, decimals, decimals > 0);
+		const float better = index == CUIWeaponParams::eUpgradeWeight ? -row.delta : row.delta;
+		if (better < 0.0f)
+			m_ui_text->SetTextColor(color_rgba(255, 90, 90, 255));
 	}
 	xr_strconcat(m_text, get_property()->name(), ": ", number, index == CUIWeaponParams::eUpgradeImpulse ? "" : " ", unit.c_str());
 	m_ui_text->SetText(m_text);
@@ -539,6 +547,8 @@ void UIInvUpgPropertiesWnd::init_from_xml(const char* xml_name)
 	{
 		m_Upgr_line = UIHelper::CreateStatic(ui_xml, "properties:upgr_line", this);
 	}
+	m_hint = UIHelper::CreateStatic(ui_xml, "properties:text", this);
+	m_hint->Show(false);
 
 	BaseWidth = GetWidth();
 	AvailableWidth = BaseWidth;
@@ -593,6 +603,7 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, CIn
 		CUIWeaponParams::MeasureUpgrades(*Weapon, Sections, installed, m_weapon_values);
 	}
 
+	m_hint->Show(false);
 	xr_vector<UIProperty*> VisibleProperties;
 	float RequiredColumnWidth = 0.0f;
 	for (auto* Property : m_properties_ui)
@@ -663,7 +674,39 @@ void UIInvUpgPropertiesWnd::set_upgrade_info(Upgrade_type& upgrade, CInventoryIt
 
 void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 {
+	if (set_item_hint(item))
+		return;
 	set_info(item.upgardes(), &item, true);
+}
+
+// Dymek broni z wierszami broni: do 11 wierszy plus dodatki nie miesci sie na
+// ekranie, wiec bez przytrzymanego Shift jest jedna linia "Ulepszenia: N
+// (przytrzymaj Shift)". Dymek buduje sie co klatke (OnItemFocusedUpdate), wiec
+// lista pojawia sie od razu po wcisnieciu. Bez tekstow addonu i przy padzie
+// (bez Shift) zawsze pelna lista.
+bool UIInvUpgPropertiesWnd::set_item_hint(CInventoryItem& item)
+{
+	if (!m_has_weapon_rows || !smart_cast<CWeapon*>(&item) || pInput->GetControllerMode() ||
+		pInput->iGetAsyncKeyState(SDL_SCANCODE_LSHIFT) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RSHIFT))
+		return false;
+	const shared_str label = g_pStringTable->translate("ui_uip_upgrades");
+	const shared_str hold = g_pStringTable->translate("ui_uip_upgrades_shift");
+	if (xr_strcmp(label.c_str(), "ui_uip_upgrades") == 0 || xr_strcmp(hold.c_str(), "ui_uip_upgrades_shift") == 0)
+		return false;
+
+	for (auto* Property : m_properties_ui)
+		Property->Show(false);
+	SetWidth(std::max(BaseWidth, AvailableWidth));
+	string256 text;
+	xr_sprintf(text, "%s: %u %s", label.c_str(), u32(item.upgardes().size()), hold.c_str());
+	const float Top = m_Upgr_line ? m_Upgr_line->GetWndSize().y + 1.0f : 0.0f;
+	m_hint->SetWndPos(Fvector2().set(m_hint->GetWndPos().x, Top));
+	m_hint->SetWidth(GetWidth() - m_hint->GetWndPos().x);
+	m_hint->SetText(text);
+	m_hint->Show(true);
+	m_iNumUpgr = 0;
+	SetHeight(Top + std::max(m_fnext_line_pos, m_hint->GetHeight()));
+	return true;
 }
 
 // Wiersze show_physical maja tekst jak ochrony srodowiskowe ("Nazwa: +N pkt"),
