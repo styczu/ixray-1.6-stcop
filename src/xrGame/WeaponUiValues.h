@@ -22,6 +22,12 @@ namespace WeaponUi
     constexpr float MisfireWorst = 0.08f;       // mean misfire chance: 0
     constexpr float ShotsWorst = 100.0f;        // shots from 100% to 0%: 0
     constexpr float ShotsBest = 3000.0f;        // shots from 100% to 0%: 100
+    constexpr float HipBest = 1.0f;             // degrees of hip fire spread walking: 100
+    constexpr float HipWorst = 8.0f;            // degrees: 0
+    // v / VEL_MAX of a walk, about 3 m/s (CActor::GetWeaponAccuracy, VEL_MAX 10):
+    // a model of the tooltip, not measured in game.
+    constexpr float WalkVelocity = 0.3f;
+    constexpr float HoldWorst = 3.0f;           // fire_dispersion_condition_factor: 0
 
     // 100 at best, 0 at worst, logarithmic, unclamped.
     inline float LogScore(float value, float best, float worst)
@@ -58,13 +64,32 @@ namespace WeaponUi
         return value < 0.0f ? 0.0f : (value > 100.0f ? 100.0f : value);
     }
 
-    // Mean of the crosshair settling, the time to raise the sights and the
-    // turn slowdown (control_inertion_factor divides the mouse sensitivity).
-    inline float Handling(float crosshairInertion, float zoomRotateTime, float controlInertion)
+    // The player's hip fire spread while walking (CActor::GetWeaponAccuracy:
+    // the actor's disp_base x PDM_disp_base, x (1 + v / VEL_MAX x the actor's
+    // disp_vel_factor x PDM_disp_vel_factor)), degrees. Aiming uses disp_aim.
+    inline float HipDispersion(float actorBaseDeg, float pdmBase, float actorVelocityFactor, float pdmVelocity)
     {
-        return (Clamp100(100.0f * (11.9f - crosshairInertion) / 10.5f)
+        return actorBaseDeg * pdmBase * (1.0f + WalkVelocity * actorVelocityFactor * pdmVelocity);
+    }
+
+    // Crosshair settling, the time to raise the sights and the turn slowdown
+    // (control_inertion_factor divides the mouse sensitivity), 2/9 each, and
+    // the hip fire spread, 1/3. No spread at all (an upgrade took
+    // PDM_disp_base to 0 or below; the engine does not clamp it) reads as 100.
+    inline float Handling(float crosshairInertion, float zoomRotateTime, float controlInertion, float hipDeg)
+    {
+        const float sights = Clamp100(100.0f * (11.9f - crosshairInertion) / 10.5f)
             + Clamp100(100.0f * (0.5f - zoomRotateTime) / 0.4f)
-            + Clamp100(112.0f / controlInertion - 40.0f)) / 3.0f;
+            + Clamp100(112.0f / controlInertion - 40.0f);
+        const float hip = hipDeg > 0.0f ? Clamp100(LogScore(hipDeg, HipBest, HipWorst)) : 100.0f;
+        return sights * 2.0f / 9.0f + hip / 3.0f;
+    }
+
+    // Accuracy hold: how little the spread grows with wear, linear in
+    // fire_dispersion_condition_factor (the spread is x (1 + k x (1 - condition))).
+    inline float HoldScore(float conditionFactor)
+    {
+        return 100.0f * (1.0f - conditionFactor / HoldWorst);
     }
 
     // Recoil pattern weapons (CWeaponShotEffector::ShotFromPattern): mean step
