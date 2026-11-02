@@ -150,3 +150,27 @@ IC bool CInventoryItem::process_if_exists_deg2rad(const char* section, const cha
 
 	return true;
 }
+
+// A relative change: the value is scaled by (1 + the key), so -0.1 takes 10% off
+// whatever the weapon has, the same share on every weapon of a shared tree.
+template <XRay::Concepts::FloatPoint T>
+IC bool CInventoryItem::process_if_exists_mul(const char* section, const char* name, T& value, bool test)
+{
+	if (!pSettings->line_exist(section, name))
+	{
+		return false;
+	}
+
+	const char* str = pSettings->r_string(section, name);
+	if (!str || !xr_strlen(str))
+	{
+		return false;
+	}
+
+	if (!test)
+	{
+		value *= 1.0f + pSettings->r_float(section, name);
+	}
+
+	return true;
+}
