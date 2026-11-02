@@ -36,6 +36,8 @@ protected:
 	CUIStatic* m_ui_icon = nullptr;
 	CUIStatic* m_ui_text = nullptr;
 	string256 m_text = {};
+	// Kolor tekstu z XML; wiersz broni z pogorszeniem dostaje czerwony.
+	u32 m_text_color = 0;
 
 	// Kontekst przedmiotu dla wiersza "Pancerz" (show_armor): kombinezon
 	// i czy liczone ulepszenia sa juz na nim zainstalowane.
@@ -91,6 +93,8 @@ protected:
 	Properties_type m_properties_ui = {};
 	ItemUpgrades_type m_temp_upgrade_vector = {};
 	CUIStatic* m_Upgr_line = nullptr;
+	// Dymek broni bez Shift: jedna linia z liczba ulepszen zamiast wierszy.
+	CUIStatic* m_hint = nullptr;
 	int	m_iNumUpgr = 0;
 	float m_fsec_col_pos = 0.0f;
 	float m_fnext_line_pos = 0.0f;
@@ -109,6 +113,7 @@ public:
 
 	void set_upgrade_info(Upgrade_type& upgrade, CInventoryItem* item = nullptr);
 	void set_item_info(CInventoryItem& item);
+	bool set_item_hint(CInventoryItem& item);
 	void SetAvailableWidth(float Width, bool AllowExpansion);
 	void UpdateStatsPos(float& h, Fvector2& pos, UIProperty* pWnd, int& counter) const;
 
