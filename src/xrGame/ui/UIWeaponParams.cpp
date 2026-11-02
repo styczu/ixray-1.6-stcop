@@ -63,6 +63,7 @@ CUIWeaponParams::CUIWeaponParams()
 CUIWeaponParams::~CUIWeaponParams()
 {
 	xr_delete(m_Prop_line);
+	xr_delete(m_compare);
 	for (CUIStatic*& separator : m_separators)
 		xr_delete(separator);
 	xr_delete(m_condition.wnd);
@@ -99,6 +100,11 @@ void CUIWeaponParams::InitFromXml(CUIXml& xml)
 	{
 		m_Prop_line = UIHelper::CreateStatic(xml, "prop_line", nullptr);
 		m_Prop_line->SetAutoDelete(false);
+	}
+	if (xml.NavigateToNode("compare"))
+	{
+		m_compare = UIHelper::CreateStatic(xml, "compare", nullptr);
+		m_compare->SetAutoDelete(false);
 	}
 	if (xml.NavigateToNode("separator"))
 	{
@@ -659,6 +665,18 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	}
 
 	PlaceSeparator(0, h);
+	// What the bars compare with: the weapon in the compared slot, none, or this one
+	// (the actor menu picks the slot, ui-weapon-compare).
+	if (m_compare)
+	{
+		const bool other = slot_item && slot_item != &item && Check(*slot_item);
+		const shared_str none = g_pStringTable->translate(slot_item == &item ? "ui_uip_wpn_compare_self" : "ui_uip_wpn_compare_none");
+		LPCSTR name = other ? slot_item->NameShort() : none.c_str();
+		string256 compare;
+		xr_strconcat(compare, g_pStringTable->translate("ui_uip_wpn_compare").c_str(), ": ", name);
+		m_compare->SetText(compare);
+		Place(m_compare, h);
+	}
 	for (u32 i = 0; i < eFirstWearBar; ++i)
 		SetBar(EBar(i), cur[i], slot[i], h);
 
