@@ -666,6 +666,10 @@ void CUIWeaponCellItem::CreateIcon(eAddonType t)
 	if(m_addons[t])				return;
 	m_addons[t]					= new CUIStatic();	
 	m_addons[t]->SetAutoDelete	(true);
+	// Rounded like the cell's own sprite (CUICellItem: SetPixelSnap), not floored:
+	// otherwise an overlay lands up to a pixel and a half above and left of the place
+	// its offset gives against the weapon.
+	m_addons[t]->GetUIStaticItem().SetPixelSnap(true);
 	AttachChild					(m_addons[t]);
 
 	const char* sect = nullptr;
@@ -872,6 +876,7 @@ void CUIWeaponCellItem::InitLayers(bool b_rotate)
 			s = new CUIStatic();
 			s->SetAutoDelete(true);
 			s->SetCustomDraw(true);
+			s->GetUIStaticItem().SetPixelSnap(true);	// as the addons, see CreateIcon
 			AttachChild(s);
 			s->SetShader(InventoryUtilities::GetEquipmentIconsShader(m_layers[i].icon.texture.c_str()));
 			s->SetTextureColor(GetTextureColor());
