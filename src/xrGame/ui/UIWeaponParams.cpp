@@ -351,6 +351,23 @@ void CUIWeaponParams::AddUpgrade(CWeapon& weapon, LPCSTR section, float sign, SP
 	{
 		value += sign * scale * UpgradeValue(section, key);
 	};
+	// A relative key (CInventoryItem::process_if_exists_mul) scales after the
+	// section's additions, so taking the section off divides before they are undone.
+	auto mul = [&](LPCSTR key, LPCSTR added, float& value)
+	{
+		const float factor = 1.0f + UpgradeValue(section, key);
+		if (sign > 0.0f)
+		{
+			add(added, value);
+			value *= factor;
+		}
+		else
+		{
+			if (factor > 0.0f)
+				value /= factor;
+			add(added, value);
+		}
+	};
 	add("fire_dispersion_base", params.dispersion_deg);
 	add("fire_dispersion_condition_factor", params.condition_factor);
 	add("crosshair_inertion", params.crosshair_inertion);
@@ -358,8 +375,8 @@ void CUIWeaponParams::AddUpgrade(CWeapon& weapon, LPCSTR section, float sign, SP
 	add("control_inertion_factor", params.control_inertion);
 	add("PDM_disp_base", params.pdm_base);
 	add("PDM_disp_vel_factor", params.pdm_velocity);
-	add("pattern_factor", params.pattern_factor);
-	add("zoom_pattern_factor", params.zoom_pattern_factor);
+	mul("pattern_factor_mul", "pattern_factor", params.pattern_factor);
+	mul("zoom_pattern_factor_mul", "zoom_pattern_factor", params.zoom_pattern_factor);
 	add("cam_dispersion", params.cam[0], deg2rad(1.0f) * silencer.cam_dispersion);
 	add("cam_dispersion_inc", params.cam[1], deg2rad(1.0f) * silencer.cam_disper_inc);
 	add("zoom_cam_dispersion", params.cam[2], deg2rad(1.0f) * silencer.cam_dispersion);
