@@ -467,6 +467,9 @@ protected:
 	template <XRay::Concepts::FloatPoint T>
 	IC static bool process_if_exists_deg2rad(const char* section, const char* name, T& value, bool test);
 
+	template <XRay::Concepts::FloatPoint T>
+	IC static bool process_if_exists_mul(const char* section, const char* name, T& value, bool test);
+
 	void net_Export_PH_Params(NET_Packet& P, SPHNetState& State, mask_inv_num_items& num_items);
 	void net_Import_PH_Params(NET_Packet& P, net_update_IItem& N, mask_inv_num_items& num_items);
 
