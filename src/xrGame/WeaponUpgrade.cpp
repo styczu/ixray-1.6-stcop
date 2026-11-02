@@ -117,6 +117,8 @@ bool CWeapon::install_upgrade_disp(const char* section, bool test)
 	cam_recoil.StopReturn = (rm == 1);
 
 	result |= process_if_exists_deg2rad(section, "fire_dispersion_base", fireDispersionBase, test);
+	// Relative accuracy: a share of the weapon's own dispersion, after the addition above.
+	result |= process_if_exists_mul(section, "fire_dispersion_base_mul", fireDispersionBase, test);
 
 	result |= process_if_exists_deg2rad(section, "cam_relax_speed", cam_recoil.RelaxSpeed, test);
 	result |= process_if_exists_deg2rad(section, "cam_relax_speed_ai", cam_recoil.RelaxSpeed_AI, test);
