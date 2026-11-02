@@ -15,6 +15,7 @@
 #include "../Actor.h"
 #include "../ActorCondition.h"
 #include "../CustomOutfit.h"
+#include "../Weapon.h"
 #include "../../Include/xrRender/Kinematics.h"
 
 #include "../../xrUI/Widgets/UIStatic.h"
@@ -86,6 +87,15 @@ bool UIProperty::read_value_from_section(const char* section, const char* param,
 bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
 {
 	if (!get_property())
+	{
+		return false;
+	}
+	const int weapon = weapon_row();
+	if (weapon >= 0)
+	{
+		return m_weapon_rows && show_weapon_row(m_weapon_rows[weapon]);
+	}
+	if (m_weapon_rows && is_weapon_label())
 	{
 		return false;
 	}
@@ -350,6 +360,87 @@ bool UIProperty::show_physical(LPCSTR values)
     return true;
 }
 
+// Wiersze broni (ui-upgrade-weapon-rows), w kolejnosci CUIWeaponParams::EUpgradeRow.
+// Sekcje wlasciwosci z addonu (funktor bez tekstu), zadne ulepszenie ich nie
+// deklaruje: wiersz liczy sie z faktycznej zmiany, nie z listy property.
+static LPCSTR weapon_row_property[] =
+{
+	"prop_wpn_rpm", "prop_wpn_speed", "prop_wpn_accuracy", "prop_wpn_handling", "prop_wpn_recoil", "prop_wpn_hold",
+	"prop_wpn_reliability", "prop_wpn_durability", "prop_wpn_weight", "prop_wpn_capacity", "prop_wpn_impulse"
+};
+static_assert(std::size(weapon_row_property) == CUIWeaponParams::eUpgradeRowCount);
+
+// Etykiety skryptu (jedna wartosc value na wezel), ktore na broni zastepuja wiersze broni.
+static LPCSTR weapon_label_property[] =
+{
+	"prop_rpm", "prop_bullet_speed", "prop_dispersion", "prop_inertion", "prop_recoil", "prop_reliability",
+	"prop_weight", "prop_ammo_size"
+};
+
+int UIProperty::weapon_row() const
+{
+	for (int i = 0; i < CUIWeaponParams::eUpgradeRowCount; ++i)
+	{
+		if (xr_strcmp(m_property_id.c_str(), weapon_row_property[i]) == 0)
+			return i;
+	}
+	return -1;
+}
+
+bool UIProperty::is_weapon_label() const
+{
+	for (LPCSTR id : weapon_label_property)
+	{
+		if (xr_strcmp(m_property_id.c_str(), id) == 0)
+			return true;
+	}
+	return false;
+}
+
+// Zmiana miary dymka broni; bez wiersza, gdy po zaokragleniu jest zerem.
+// Jednostki jak w dymku: paski w pkt, masa w kg z dwoma miejscami, impuls
+// w % wartosci broni. Pasek bez skonczonej wartosci (bez zaciec, bez zuzycia)
+// po ulepszeniu: "max".
+bool UIProperty::show_weapon_row(const CUIWeaponParams::SUpgradeRow& row)
+{
+	const int index = weapon_row();
+	shared_str unit;
+	switch (index)
+	{
+	case CUIWeaponParams::eUpgradeRpm:		unit = g_pStringTable->translate("ui_uip_wpn_unit_rpm"); break;
+	case CUIWeaponParams::eUpgradeSpeed:	unit = g_pStringTable->translate("ui_uip_wpn_unit_speed"); break;
+	case CUIWeaponParams::eUpgradeWeight:	unit = g_pStringTable->translate("st_kg"); break;
+	case CUIWeaponParams::eUpgradeCapacity:	unit = g_pStringTable->translate("ui_uip_wpn_unit_rounds"); break;
+	case CUIWeaponParams::eUpgradeImpulse:	unit = "%"; break;
+	default:								unit = TranslatedOr("ui_uip_unit_protection", "pt"); break;
+	}
+
+	const char separator = ConditionUi::DecimalSeparator();
+	string32 number;
+	if (row.before_max || row.after_max)
+	{
+		if (row.before_max == row.after_max)
+			return false;
+		if (row.after_max)
+		{
+			xr_strconcat(m_text, get_property()->name(), ": ", g_pStringTable->translate("ui_uip_wpn_max").c_str());
+			m_ui_text->SetText(m_text);
+			return true;
+		}
+		ConditionUi::FormatNumber(number, row.after, separator, false, 0);
+	}
+	else
+	{
+		const int decimals = index == CUIWeaponParams::eUpgradeWeight ? 2 : 0;
+		if (std::fabs(row.delta) < 0.5f * std::pow(10.0f, -float(decimals)))
+			return false;
+		ConditionUi::FormatNumber(number, row.delta, separator, true, decimals, decimals > 0);
+	}
+	xr_strconcat(m_text, get_property()->name(), ": ", number, index == CUIWeaponParams::eUpgradeImpulse ? "" : " ", unit.c_str());
+	m_ui_text->SetText(m_text);
+	return true;
+}
+
 bool UIProperty::show_result(LPCSTR values)
 {
 	if (show_physical(values))
@@ -478,6 +569,7 @@ void UIInvUpgPropertiesWnd::init_from_xml(const char* xml_name)
 
 			m_properties_ui.push_back(ui_property);
 			AttachChild(ui_property);
+			m_has_weapon_rows |= ui_property->weapon_row() >= 0;
 		} // for ib
 	}
 	ui_xml.SetLocalRoot(stored_root);
@@ -491,12 +583,23 @@ void UIInvUpgPropertiesWnd::SetAvailableWidth(float Width, bool AllowExpansion)
 
 void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, CInventoryItem* item, bool installed)
 {
+	// Bron: miary dymka przed i po tych ulepszeniach, raz dla wszystkich wierszy.
+	CWeapon* Weapon = m_has_weapon_rows && item && ai().get_alife() ? smart_cast<CWeapon*>(item) : nullptr;
+	if (Weapon)
+	{
+		xr_vector<LPCSTR> Sections;
+		for (const shared_str& UpgradeId : item_upgrades)
+			Sections.push_back(Level().m_upgrade_manager->get_upgrade(UpgradeId)->section());
+		CUIWeaponParams::MeasureUpgrades(*Weapon, Sections, installed, m_weapon_values);
+	}
+
 	xr_vector<UIProperty*> VisibleProperties;
 	float RequiredColumnWidth = 0.0f;
 	for (auto* Property : m_properties_ui)
 	{
 		Property->Show(false);
 		Property->set_armor_context(item, installed);
+		Property->set_weapon_context(Weapon ? m_weapon_values : nullptr);
 		if (Property->compute_value(item_upgrades))
 		{
 			VisibleProperties.push_back(Property);
@@ -504,6 +607,12 @@ void UIInvUpgPropertiesWnd::set_info(ItemUpgrades_type const& item_upgrades, CIn
 				RequiredColumnWidth = std::max(RequiredColumnWidth, Property->GetRequiredWidth());
 		}
 	}
+	// Wiersze broni na poczatku, w kolejnosci dymka broni; reszta jak w liscie.
+	std::stable_sort(VisibleProperties.begin(), VisibleProperties.end(), [](UIProperty* Left, UIProperty* Right)
+	{
+		const int LeftRow = Left->weapon_row(), RightRow = Right->weapon_row();
+		return LeftRow >= 0 && (RightRow < 0 || LeftRow < RightRow);
+	});
 	m_iNumUpgr = (int)VisibleProperties.size();
 	PendingRowHeight = 0.0f;
 	float Height = m_Upgr_line ? m_Upgr_line->GetWndSize().y + 1.0f : 0.0f;
