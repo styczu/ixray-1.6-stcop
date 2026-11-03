@@ -856,8 +856,8 @@ void CUICellItem::UpdateConditionProgressBar()
 	}
 
 	CEatableItem* eatableItem = itm->cast_eatable_item();
-	if (m_pConditionState->GetPercentFormat() == CUIItemStateDisplay::EPercentFormat::Portion &&
-		eatableItem != nullptr &&
+	if ((m_pConditionState->GetPercentFormat() == CUIItemStateDisplay::EPercentFormat::Portion ||
+		m_pConditionState->HasPortionBar()) && eatableItem != nullptr &&
 		display.usePortion &&
 		display.portionMax > 1)
 	{
