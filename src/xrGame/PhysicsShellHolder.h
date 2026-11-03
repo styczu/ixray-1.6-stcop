@@ -16,6 +16,14 @@ class CCharacterPhysicsSupport;
 class ICollisionDamageInfo;
 class TIKLimbsController;
 
+struct TelekineticHitData
+{
+	float Novice;
+	float Stalker;
+	float Veteran;
+	float Master;
+};
+
 class CPhysicsShellHolder:
 	public CGameObject,
 	public IObjectPhysicsCollision,
@@ -39,10 +47,30 @@ public:
 	virtual	~CPhysicsShellHolder						();
 
 private:
+	// Value-owned hit data survives the telekinesis controller without changing physics CallbackData.
+	TelekineticHitData TelekineticHit = {};
+	bool HasTelekineticHit = false;
 	Fvector					m_overriden_activation_speed;
 	bool					m_activation_speed_is_overriden;
 
 public:
+	void SetTelekineticHit(const TelekineticHitData& Hit)
+	{
+		TelekineticHit = Hit;
+		HasTelekineticHit = true;
+	}
+
+	bool TakeTelekineticHit(TelekineticHitData& Hit)
+	{
+		if (!HasTelekineticHit)
+		{
+			return false;
+		}
+		Hit = TelekineticHit;
+		HasTelekineticHit = false;
+		return true;
+	}
+
 	virtual bool ActivationSpeedOverriden(Fvector& dest, bool clear_override);
 	virtual void SetActivationSpeedOverride(Fvector const& speed);
 
