@@ -5,6 +5,7 @@
 #include "../InventoryOwner.h"
 #include "../../xrUI/UICursor.h"
 #include "UICellItem.h"
+#include "UIDragDropReferenceList.h"
 #include "../medkit.h"
 #include "../eatable_item_object.h"
 #include "../WeaponMagazined.h"
@@ -216,8 +217,7 @@ void CUIActorMenuBase::PropertiesBoxForQuickSlots(CUICellItem* cell_item, PIItem
 		return;
 	}
 
-	const Ivector2 itemGrid = item->GetInvGridRect().rb;
-	if (itemGrid.x > 1 || itemGrid.y > 1)
+	if (!m_pQuickSlot->CanHoldGridSize(item->GetInvGridRect().rb))
 	{
 		return;
 	}
