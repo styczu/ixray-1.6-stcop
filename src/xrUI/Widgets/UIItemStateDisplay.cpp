@@ -7,6 +7,9 @@ CUIItemStateDisplay::CUIItemStateDisplay()
 	: _mode(EDisplayMode::Bar),
 	  _value(0.0f),
 	  _progressBar(nullptr),
+	  PortionBar(nullptr),
+	  PortionBarSegments(8),
+	  PortionBarCut(0.5f),
 	  _showBackground(true),
 	  _percentFormat(EPercentFormat::Percent),
 	  _fractionMax(100),
@@ -29,6 +32,7 @@ CUIItemStateDisplay::CUIItemStateDisplay()
 CUIItemStateDisplay::~CUIItemStateDisplay()
 {
 	_progressBar = nullptr;
+	PortionBar = nullptr;
 	_percentBackground = nullptr;
 	_percentText = nullptr;
 }
@@ -56,9 +60,22 @@ void CUIItemStateDisplay::SetPortion(int current, int max)
 {
 	_portionCurrent = current;
 	_portionMax = max;
-	clamp(_portionCurrent, 0, _portionMax);
 	clamp(_portionMax, 1, 255);
+	clamp(_portionCurrent, 0, _portionMax);
 	_hasPortionData = true;
+
+	if (HasPortionBar())
+	{
+		_value = 0.0f;
+		if (_portionCurrent > 0)
+		{
+			_value = _portionMax <= PortionBarSegments
+				? (static_cast<float>(_portionCurrent - 1) + PortionBarCut) / static_cast<float>(PortionBarSegments)
+				: static_cast<float>(_portionCurrent) / static_cast<float>(_portionMax);
+		}
+		// Discrete charges must not animate through fractions of the next dash.
+		PortionBar->SetProgressPosImmediate(_value);
+	}
 
 	if (_mode == EDisplayMode::Percent && _percentText)
 	{
@@ -165,10 +182,11 @@ void CUIItemStateDisplay::Draw()
 
 	if (_mode == EDisplayMode::Bar && _progressBar)
 	{
-		_progressBar->ShowBackground(_showBackground);
-		_progressBar->m_bUseGradient = m_bUseGradient;
+		CUIProgressBar* ActiveBar = _hasPortionData && PortionBar ? PortionBar : _progressBar;
+		ActiveBar->ShowBackground(_showBackground);
+		ActiveBar->m_bUseGradient = m_bUseGradient;
 		UI().PushScissor(rect);
-		_progressBar->Draw();
+		ActiveBar->Draw();
 		UI().PopScissor();
 		return;
 	}
