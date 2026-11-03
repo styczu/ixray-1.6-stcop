@@ -106,6 +106,10 @@ public:
 
 	xr_vector<CUI3dStatic* > m_quick_slots_icons;
 	xr_vector<u32> m_quick_slots_counter_base_color;
+	// Box of each quick slot icon and of its counter as the XML gives them; an icon
+	// that is not square is fitted into the box (FitQuickSlotIcon).
+	xr_vector<Frect> m_quick_slots_rects;
+	xr_vector<Fvector2> m_quick_slots_counter_pos;
 	CUIStatic* m_QuickSlotText1;
 	CUIStatic* m_QuickSlotText2;
 	CUIStatic* m_QuickSlotText3;
@@ -237,6 +241,7 @@ public:
 
 protected:
 	void				UpdateQuickSlots();
+	void				FitQuickSlotIcon(u32 index, const Frect& texture_rect);
 	void				SetWarningIconColorUI(CUIStatic* s, const u32 cl);
 	void				InitFlashingIcons(CUIXml* node);
 	void				DestroyFlashingIcons();
