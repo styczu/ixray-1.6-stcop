@@ -17,6 +17,8 @@ using namespace InventoryUtilities;
 CUIDragDropReferenceList::CUIDragDropReferenceList()
 {
 	m_references_scale.set(0.0f, 0.0f);
+	m_references_origin.set(0.0f, 0.0f);
+	SetColumnCentred(true);
 	AddCallbackStr("cell_item_reference", WINDOW_LBUTTON_DB_CLICK, CUIWndCallback::void_function(this, &CUIDragDropReferenceList::OnItemDBClick));
 }
 CUIDragDropReferenceList::~CUIDragDropReferenceList()
@@ -31,22 +33,43 @@ void CUIDragDropReferenceList::Initialize()
 		AttachChild(m_references.back());
 		m_references.back()->SetWindowName("cell_item_reference");
 		Register(m_references.back());
+		m_reference_rows.push_back(1);
 	}
 
 	PlaceReferences();
 }
 
-// Through the container, so a reference icon lies exactly on its cell.
+// Through the container, so a reference icon lies exactly on its cell item. The
+// references are children of the list and the container sits at ContainerOrigin in it.
 void CUIDragDropReferenceList::PlaceReferences()
 {
 	m_references_scale = m_container->m_metricsScale;
+	m_references_origin = m_container->GetWndPos();
 
 	for(u32 i=0; i<m_references.size(); ++i)
-	{
-		m_references[i]->SetWndPos(m_container->CellOffsetUI(Ivector2().set(int(i),0)));
-		m_references[i]->SetWndSize(m_container->CellSize());
-		m_references[i]->GetUIStaticItem().SetPixelSnap(true);
-	}
+		PlaceReference(i);
+}
+
+void CUIDragDropReferenceList::PlaceReference(u32 index)
+{
+	const Ivector2 size = Ivector2().set(1, m_reference_rows[index]);
+	Fvector2 pos = m_container->ColumnCentredOffsetUI(Ivector2().set(int(index), 0), size);
+	pos.add(m_container->GetWndPos());
+
+	CUI3dStatic* ref = m_references[index];
+	ref->SetWndPos(pos);
+	ref->SetWndSize(Fvector2().set(m_container->CellSize().x, m_container->CellSize().y * float(size.y)));
+	ref->GetUIStaticItem().SetPixelSnap(true);
+}
+
+void CUIDragDropReferenceList::SetReferenceRows(u32 index, int rows)
+{
+	rows = std::max(1, std::min(rows, m_container->CellsCapacity().y));
+	if (m_reference_rows[index] == rows)
+		return;
+
+	m_reference_rows[index] = rows;
+	PlaceReference(index);
 }
 
 void CUIDragDropReferenceList::Update()
@@ -54,11 +77,23 @@ void CUIDragDropReferenceList::Update()
 	inherited::Update();
 
 	// CUICellContainer::RefreshItemsPos only covers what sits inside the container.
-	if(!m_references.empty() && !m_references_scale.similar(m_container->m_metricsScale))
+	if(!m_references.empty() && (!m_references_scale.similar(m_container->m_metricsScale) || !m_references_origin.similar(m_container->GetWndPos())))
 		PlaceReferences();
 }
+
+// The automatic placement of the base list would put an item in a free lower cell of
+// a slot; take the top cell of the first empty slot instead.
 void CUIDragDropReferenceList::SetItem(CUICellItem* itm)
 {
+	for (int x = 0; x < m_container->CellsCapacity().x; ++x)
+	{
+		const Ivector2 cell = Ivector2().set(x, 0);
+		if (GetCellAt(cell).Empty() && m_container->IsRoomFree(cell, itm->GetGridSize()))
+		{
+			SetItem(itm, cell);
+			return;
+		}
+	}
 	inherited::SetItem(itm);
 }
 
@@ -69,22 +104,26 @@ EDropPreview CUIDragDropReferenceList::PredictDrop(CUICellItem* itm, const Fvect
 {
 	out_cells.set(0, 0, -1, -1);
 
-	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
-	if (!m_container->ValidCell(dest_cell_pos))
+	const Ivector2 picked = m_container->PickCell(abs_pos);
+	if (!m_container->ValidCell(picked))
 		return dpAuto;
 
 	const Ivector2 size = itm->GetGridSize();
 	if (size.x > m_container->m_cellsCapacity.x || size.y > m_container->m_cellsCapacity.y)
 		return dpAuto;
 
-	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, dest_cell_pos.y + size.y - 1);
+	// The whole slot: the item lands in the top cell of the column and is centred in it.
+	const Ivector2 dest_cell_pos = SlotCell(picked);
+	out_cells.set(dest_cell_pos.x, dest_cell_pos.y, dest_cell_pos.x + size.x - 1, m_container->m_cellsCapacity.y - 1);
 
 	return dpPlace;
 }
 
 bool CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)
 {
-	const Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
+	Ivector2 dest_cell_pos = m_container->PickCell(abs_pos);
+	if (dest_cell_pos.x != -1 && dest_cell_pos.y != -1)
+		dest_cell_pos = SlotCell(dest_cell_pos);
 
 	Ivector2 ItmGridSize = itm->GetGridSize();
 	bool bGridIsFull = m_container->IsRoomFree(dest_cell_pos, ItmGridSize);
@@ -100,7 +139,8 @@ bool CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)
 			return false;
 		}
 
-		RemoveItem(old_itm, false);
+		if (old_itm != nullptr)
+			RemoveItem(old_itm, false);
 		SetItem(itm, dest_cell_pos);
 	}
 
@@ -178,6 +218,7 @@ void CUIDragDropReferenceList::SetItem(CUICellItem* itm, Ivector2 cell_pos)
 	ref->TextureOn();
 	ref->SetTextureColor(color_rgba(255,255,255,255));
 	ref->SetStretchTexture(true);
+	SetReferenceRows(u32(cell_pos.x), itm->GetGridSize().y);
 
 	CUICell& C = m_container->GetCellAt(cell_pos);
 	if(C.m_item!=itm)
@@ -230,6 +271,7 @@ void CUIDragDropReferenceList::LoadItemTexture(const char* section, Ivector2 cel
 	ref->TextureOn();
 	ref->SetTextureColor(color_rgba(255,255,255,255));
 	ref->SetStretchTexture(true);
+	SetReferenceRows(u32(cell_pos.x), iFloor(icons_struct.inv_grid_height + 0.5f));
 }
 
 void CUIDragDropReferenceList::ReloadReferences(CInventoryOwner* pActor)

@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "UIActorMenuBase.h"
 #include "UICellItem.h"
+#include "UIDragDropReferenceList.h"
 #include "../PowerCell.h"
 #include "../WeaponMagazinedWGrenade.h"
 #include "../InventoryWeaponSlotLayout.h"
@@ -512,7 +513,8 @@ void CUIActorMenuBase::highlight_item_slot(CUICellItem* cell_item)
 			return;
 		}
 
-		if (m_QuickSlotsHighlight[0])
+		// Only what ToQuickSlot takes: one cell wide, no taller than a slot.
+		if (m_QuickSlotsHighlight[0] && m_pQuickSlot && m_pQuickSlot->CanHoldGridSize(item->GetInvGridRect().rb))
 		{
 			for (u8 i = 0; i < 4; i++)
 			{
