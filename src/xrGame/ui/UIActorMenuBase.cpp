@@ -577,8 +577,8 @@ void CUIActorMenuBase::UpdateConditionProgressBars()
 			stateDisplay->Show(true);
 
 			CEatableItem* eatableItem = itm->cast_eatable_item();
-			if (stateDisplay->GetPercentFormat() == CUIItemStateDisplay::EPercentFormat::Portion &&
-				eatableItem != nullptr &&
+			if ((stateDisplay->GetPercentFormat() == CUIItemStateDisplay::EPercentFormat::Portion ||
+				stateDisplay->HasPortionBar()) && eatableItem != nullptr &&
 				display.usePortion &&
 				display.portionMax > 1)
 			{
