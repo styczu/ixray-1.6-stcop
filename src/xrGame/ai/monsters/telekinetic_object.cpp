@@ -109,15 +109,14 @@ void STelekineticObject::collision_callback(bool& do_colide, bool bo1, dContact&
 		return;
 	}
 
-	auto tele = static_cast<STelekineticObject*>(self->callback_data);
-
-	if (tele == nullptr)
+	CPhysicsShellHolder* ph_self_object = smart_cast<CPhysicsShellHolder*>(self->ph_ref_object);
+	if (ph_self_object == nullptr || ph_self_object->m_pPhysicsShell == nullptr)
 	{
 		return;
 	}
 
-	CPhysicsShellHolder* ph_self_object = smart_cast<CPhysicsShellHolder*>(self->ph_ref_object);
-	if (ph_self_object == nullptr || ph_self_object->m_pPhysicsShell == nullptr)
+	TelekineticHitData HitData;
+	if (!ph_self_object->TakeTelekineticHit(HitData))
 	{
 		return;
 	}
@@ -151,25 +150,25 @@ void STelekineticObject::collision_callback(bool& do_colide, bool bo1, dContact&
 			switch (g_SingleGameDifficulty)
 			{
 				case egdNovice:
-					health_loss = tele->params.novice_difficulty_object_hit_factor;
+					health_loss = HitData.Novice;
 					break;
 
 				case egdStalker:
-					health_loss = tele->params.stalker_difficulty_object_hit_factor;
+					health_loss = HitData.Stalker;
 					break;
 
 				case egdVeteran:
-					health_loss = tele->params.veteran_difficulty_object_hit_factor;
+					health_loss = HitData.Veteran;
 					break;
 
 				case egdMaster:
-					health_loss = tele->params.master_difficulty_object_hit_factor;
+					health_loss = HitData.Master;
 					break;
 			}
 		}
 		else if (ai_stalker)
 		{
-			health_loss = tele->params.stalker_difficulty_object_hit_factor;
+			health_loss = HitData.Stalker;
 		}
 
 		health_loss *= entity_alive->conditions().GetMaxHealth();
@@ -407,7 +406,12 @@ void STelekineticObject::throw_object_time(const Fvector& target, float time)
 	// Aphile: хак, задаём new SCollisionHitCallback, чтобы физика не считала урон от столкновения, 
 	// а все рассчёт проходили в кастомном collide_callback.
 	params.object->set_collision_hit_callback(new SCollisionHitCallback(params.object));
-	params.object->m_pPhysicsShell->set_CallbackData(this);
+	params.object->SetTelekineticHit({
+		params.novice_difficulty_object_hit_factor,
+		params.stalker_difficulty_object_hit_factor,
+		params.veteran_difficulty_object_hit_factor,
+		params.master_difficulty_object_hit_factor
+	});
 	params.object->m_pPhysicsShell->add_ObjectContactCallback(collision_callback);
 
 	params.object->m_pPhysicsShell->applyImpulseTrace(params.object->Position(), transference, params.object->m_pPhysicsShell->getMass());
