@@ -1390,6 +1390,10 @@ void CUICellContainer::UpdateItemBounds(CUICellItem* Item, const Ivector2& Posit
 		AlignedPosition.div(2.0f);
 		Item->SetWndPos(AlignedPosition);
 	}
+	else if (m_pParentDragDropList->GetColumnCentred())
+	{
+		Item->SetWndPos(ColumnCentredOffsetUI(Position, Size));
+	}
 	else
 	{
 		Item->SetWndPos(CellOffsetUI(Position));
@@ -1625,6 +1629,20 @@ Fvector2 CUICellContainer::CellOffsetUI(const Ivector2& cell_pos) const
 
 	res.x		/= m_metricsScale.x;
 	res.y		/= m_metricsScale.y;
+
+	return res;
+}
+
+Fvector2 CUICellContainer::ColumnCentredOffsetUI(const Ivector2& cell_pos, const Ivector2& size) const
+{
+	Fvector2 res			= CellOffsetUI(cell_pos);
+
+	const int rows			= m_cellsCapacity.y - cell_pos.y;
+	const int column_px		= rows * m_cellSizeScreen.y + (rows - 1) * m_cellSpacingScreen.y;
+	// The height UpdateItemBounds gives the item.
+	const int item_px		= size.y * m_cellSizeScreen.y;
+	if (column_px > item_px)
+		res.y				+= float((column_px - item_px) / 2) / m_metricsScale.y;
 
 	return res;
 }
