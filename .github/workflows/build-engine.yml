@@ -152,7 +152,7 @@ jobs:
         platform:
           - x64
         config:
-          - RelWithDebInfo
+          - Debug
 
     runs-on: ${{ matrix.system }}
 
