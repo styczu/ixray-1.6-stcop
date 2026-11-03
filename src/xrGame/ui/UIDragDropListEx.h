@@ -58,6 +58,9 @@ private:
 		// The cell comes from the screen height and the capacity from the window,
 		// see FitCellsToWindow.
 		flFitCells			=	(1<<7),
+		// One column a slot: an item goes to the top cell of its column and is
+		// centred down it (the quick slots, where a 1x1 item shares a 1x2 slot).
+		flColumnCentred		=	(1<<8),
 	};
 	Flags16					m_flags;
 	Ivector2				m_orig_cell_capacity;
@@ -150,6 +153,8 @@ public:
 			// and down as well when its capacity is fixed; the top left corner otherwise.
 			Fvector2		ContainerOrigin		();
 			bool			GetFitCells			() {return !!m_flags.test(flFitCells);};
+			bool			GetColumnCentred	() {return !!m_flags.test(flColumnCentred);};
+			void			SetColumnCentred	(bool b) {m_flags.set(flColumnCentred, b);};
 			bool			GetVirtualCells		();
 			void			SetVirtualCells		(bool b);
 
@@ -297,6 +302,9 @@ protected:
 				// The single place the grid step enters geometry: offset of a cell's top
 				// left corner from the container origin, in UI base units.
 				Fvector2		CellOffsetUI		(const Ivector2& cell_pos) const;
+				// CellOffsetUI of an item of `size` cells at `cell_pos`, moved down to the
+				// middle of the cells below it in its column (whole screen pixels).
+				Fvector2		ColumnCentredOffsetUI(const Ivector2& cell_pos, const Ivector2& size) const;
 				// Rebuilds the four metrics above from the current UI scale. True when
 				// they changed, which means the caller owes a ReinitSize + RefreshItemsPos.
 				bool			UpdateCellMetrics	();
