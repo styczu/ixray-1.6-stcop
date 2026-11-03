@@ -1809,11 +1809,9 @@ bool CUIActorMenuBase::ToQuickSlot(CUICellItem* itm)
 	if(!eat_item)
 		return false;
 
-	//Alundaio: Prevent icons greater then 1x1 to be quick slotted
-	Ivector2 iWH = iitem->GetInvGridRect().rb;
-	if (iWH.x > 1 || iWH.y > 1)
+	// One cell wide and no taller than a quick slot (rows_num of the list).
+	if (!m_pQuickSlot->CanHoldGridSize(iitem->GetInvGridRect().rb))
 		return false;
-	//Alundaio: END
 
 	u8 slot_idx = u8(m_pQuickSlot->PickCell(GetUICursor().GetCursorPosition()).x);
 	if (slot_idx >= std::size(ACTOR_DEFS::g_quick_use_slots))
@@ -1841,8 +1839,7 @@ bool CUIActorMenuBase::ToQuickSlotAt(CUICellItem* itm, u8 slotIndex)
 		return false;
 	}
 
-	const Ivector2 itemGrid = iitem->GetInvGridRect().rb;
-	if (itemGrid.x > 1 || itemGrid.y > 1)
+	if (!m_pQuickSlot->CanHoldGridSize(iitem->GetInvGridRect().rb))
 	{
 		return false;
 	}
