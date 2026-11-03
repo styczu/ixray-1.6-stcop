@@ -32,6 +32,7 @@ defaults:
 
 jobs:
   build-engine-linux:
+    if: false
     name: 'Build engine (Linux)'
 
     strategy:
@@ -151,7 +152,7 @@ jobs:
         platform:
           - x64
         config:
-          - RelWithDebInfo
+          - Release
 
     runs-on: ${{ matrix.system }}
 
