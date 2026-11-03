@@ -566,8 +566,13 @@ void CUIMainIngameWnd::Init()
 			m_quick_slots_icons.back()->SetAutoDelete(true);
 			AttachChild(m_quick_slots_icons.back());
 			CUIXmlInit::InitStatic(uiXml, path, 0, m_quick_slots_icons.back());
+			Frect box;
+			box.set(m_quick_slots_icons.back()->GetWndPos(), m_quick_slots_icons.back()->GetWndPos());
+			box.rb.add(m_quick_slots_icons.back()->GetWndSize());
+			m_quick_slots_rects.push_back(box);
 			xr_sprintf(path, "%s:counter", path);
 			CUIStatic* counter = UIHelper::CreateStatic(uiXml, path, m_quick_slots_icons.back());
+			m_quick_slots_counter_pos.push_back(counter ? counter->GetWndPos() : Fvector2().set(0.0f, 0.0f));
 			u32 counterColor = color_rgba(255, 255, 255, 255);
 			if (counter && counter->TextItemControl())
 			{
@@ -1883,6 +1888,7 @@ void CUIMainIngameWnd::UpdateQuickSlots()
 
 				slot->TextureOn();
 				slot->SetStretchTexture(true);
+				FitQuickSlotIcon(u32(i), texture_rect);
 
 				slot->Show(should_show_panel);
 
@@ -1934,6 +1940,56 @@ void CUIMainIngameWnd::UpdateQuickSlots()
 	if (m_QuickSlotText2) m_QuickSlotText2->Show(should_show_panel);
 	if (m_QuickSlotText3) m_QuickSlotText3->Show(should_show_panel);
 	if (m_QuickSlotText4) m_QuickSlotText4->Show(should_show_panel);
+}
+
+// The box from the XML is drawn for a square icon. One that is not square (a 1x2
+// bottle: the quick slots take items up to the rows of the inventory quick slot list)
+// keeps its proportions on the screen: as large as fits the box, centred in it. The
+// counter stays where the XML put it in the box.
+void CUIMainIngameWnd::FitQuickSlotIcon(u32 index, const Frect& texture_rect)
+{
+	if (index >= m_quick_slots_rects.size())
+		return;
+
+	CUI3dStatic* slot		= m_quick_slots_icons[index];
+	const Frect& box		= m_quick_slots_rects[index];
+	Fvector2 pos			= box.lt;
+	Fvector2 size;
+	size.set				(box.width(), box.height());
+
+	const float tex_w		= texture_rect.width();
+	const float tex_h		= texture_rect.height();
+	const float sx			= UI().ClientToScreenScaledX(1.0f);
+	const float sy			= UI().ClientToScreenScaledY(1.0f);
+	if (tex_w > 0.0f && tex_h > 0.0f && !fsimilar(tex_w, tex_h) && sx > 0.0f && sy > 0.0f)
+	{
+		// In screen pixels: a UI base unit is not square on a wide screen.
+		const float aspect	= tex_w / tex_h;
+		const float box_w	= size.x * sx;
+		const float box_h	= size.y * sy;
+		if (box_w > box_h * aspect)
+		{
+			const float w	= box_h * aspect / sx;
+			pos.x			+= (size.x - w) * 0.5f;
+			size.x			= w;
+		}
+		else
+		{
+			const float h	= box_w / aspect / sy;
+			pos.y			+= (size.y - h) * 0.5f;
+			size.y			= h;
+		}
+	}
+
+	slot->SetWndPos			(pos);
+	slot->SetWndSize		(size);
+
+	if (CUIWindow* counter = slot->FindChild("counter"))
+	{
+		Fvector2 counter_pos	= m_quick_slots_counter_pos[index];
+		counter_pos.sub			(Fvector2().set(pos.x - box.lt.x, pos.y - box.lt.y));
+		counter->SetWndPos		(counter_pos);
+	}
 }
 
 void CUIMainIngameWnd::DrawMainIndicatorsForInventory()
