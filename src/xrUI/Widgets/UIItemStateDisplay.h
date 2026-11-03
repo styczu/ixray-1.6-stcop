@@ -32,6 +32,7 @@ public:
 	float GetState() const { return _value; }
 	EPercentFormat GetPercentFormat() const { return _percentFormat; }
 	EDisplayMode GetDisplayMode() const { return _mode; }
+	bool HasPortionBar() const { return _mode == EDisplayMode::Bar && PortionBar != nullptr; }
 
 	void SetProgressPos(float pos) { SetState(pos); }
 	float GetProgressPos() const { return GetState(); }
@@ -56,6 +57,9 @@ protected:
 
 	// Bar mode
 	CUIProgressBar* _progressBar;
+	CUIProgressBar* PortionBar;
+	int PortionBarSegments;
+	float PortionBarCut;
 	bool _showBackground;
 
 	// Percent mode
