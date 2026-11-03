@@ -871,6 +871,24 @@ bool CUIXmlInit::InitItemStateDisplay(CUIXml& xml_doc, const char* path, int ind
 			return false;
 		pWnd->_showBackground = pWnd->_progressBar->IsShownBackground();
 		pWnd->m_bUseGradient = pWnd->_progressBar->m_bUseGradient;
+
+		// Optional independent bar for consumable portions; absent XML preserves the legacy bar.
+		string256 PortionPath;
+		xr_strconcat(PortionPath, path, ":portion_bar");
+		if (xml_doc.NavigateToNode(PortionPath, index))
+		{
+			pWnd->PortionBar = new CUIProgressBar();
+			pWnd->PortionBar->SetAutoDelete(true);
+			pWnd->AttachChild(pWnd->PortionBar);
+			if (!InitProgressBar(xml_doc, PortionPath, index, pWnd->PortionBar))
+			{
+				return false;
+			}
+			pWnd->PortionBarSegments = xml_doc.ReadAttribInt(PortionPath, index, "segments", 8);
+			clamp(pWnd->PortionBarSegments, 1, 255);
+			pWnd->PortionBarCut = xml_doc.ReadAttribFlt(PortionPath, index, "segment_cut", 0.5f);
+			clamp(pWnd->PortionBarCut, 0.0f, 1.0f);
+		}
 		pWnd->SetState(initialPos);
 	}
 
