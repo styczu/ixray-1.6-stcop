@@ -278,6 +278,7 @@ public:
 public:
 
 	//свойства артефактов
+	float ArtefactRadiationRestoreScale = 1.0f;
 	virtual void		UpdateArtefactsOnBeltAndOutfit();
 	void				UpdateConditionArtefacts();
 	void				HitArtefactsCondition(SHit& hit);
