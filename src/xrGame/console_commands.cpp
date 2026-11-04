@@ -134,6 +134,23 @@ extern int g_autosaves_interval;
 // z zone_map.xml (level_frame, domyslnie 0x7f). Wartosc trzyma skrypt opcji
 // ixray-hud-layout i ustawia ja przy starcie, wiec bez zapisu do user.ltx.
 extern int g_hud_minimap_opacity;
+extern int g_hud_detector_inactive_opacity;
+extern int g_hud_detector_auto;
+extern int g_hud_detector_manual;
+
+class CCC_HudDetectorOpacity : public CCC_Integer
+{
+public:
+    CCC_HudDetectorOpacity(LPCSTR Name, int* Value) : CCC_Integer(Name, Value, -1, 100) {}
+    void Save(IWriter*) override {}
+};
+
+class CCC_HudDetectorSwitch : public CCC_Integer
+{
+public:
+    CCC_HudDetectorSwitch(LPCSTR Name, int* Value) : CCC_Integer(Name, Value, 0, 1) {}
+    void Save(IWriter*) override {}
+};
 
 class CCC_HudMinimapOpacity : public CCC_Integer
 {
@@ -2655,6 +2672,9 @@ void CCC_RegisterCommands()
 	CMD3(CCC_Mask32, "hud_hide_quick_slots", &psHUD_Flags, HUD_HIDE_QUICK_SLOTS);
 	CMD3(CCC_Mask32, "hud_contextual_status", &psHUD_Flags, HUD_CONTEXTUAL_STATUS);
 	CMD2(CCC_HudMinimapOpacity, "hud_minimap_opacity", &g_hud_minimap_opacity);
+    CMD2(CCC_HudDetectorOpacity, "hud_detector_inactive_opacity", &g_hud_detector_inactive_opacity);
+    CMD2(CCC_HudDetectorSwitch, "hud_detector_auto", &g_hud_detector_auto);
+    CMD2(CCC_HudDetectorSwitch, "hud_detector_manual", &g_hud_detector_manual);
 
     // Cursor
     CMD2(CCC_Boolean, "ui_3d_cursor", &ui_3d_cursor);
