@@ -32,6 +32,7 @@ defaults:
 
 jobs:
   build-engine-linux:
+    if: false
     name: 'Build engine (Linux)'
 
     strategy:
@@ -151,7 +152,7 @@ jobs:
         platform:
           - x64
         config:
-          - RelWithDebInfo
+          - Release
 
     runs-on: ${{ matrix.system }}
 
@@ -214,6 +215,7 @@ jobs:
             build/${{ matrix.platform }}/${{ matrix.preset }}-${{ runner.os }}/packages/
 
   pack-assets:
+    if: false
     name: 'Pack assets (${{ matrix.variant }})'
     needs: [build-engine]
     strategy:
@@ -269,6 +271,7 @@ jobs:
             fsgame.ltx
           include-hidden-files: true
   publish-engine:
+    if: false
     name: 'Publish engine ${{ matrix.variant }}'
     needs: [pack-assets]
     strategy:
