@@ -33,7 +33,17 @@ private:
 
     CUIStatic* DetectorProtection = nullptr;
     CUIProgressBar* DetectorProtectionBars[5] = {};
-    CUIProgressBar* DetectorSourceBars[5] = {};
+    CUIProgressBar* DetectorSourceBars[5] = {}; // Legacy r1 XML.
+    CUIStatic* DetectorSourceMarkers[5] = {};
+    struct DetectorPixelGeometry
+    {
+        CUIWindow* Window;
+        Fvector2 Position;
+        Fvector2 Size;
+    };
+    xr_vector<DetectorPixelGeometry> DetectorPixelWindows;
+    bool DetectorPixelSize = false;
+    void UpdateDetectorProtectionLayout();
     CUIStatic* DetectorProtectionOverflow[5] = {};
     CUIStatic* DetectorSourceOverflow[5] = {};
     void InitDetectorProtection(CUIXml& xml);
