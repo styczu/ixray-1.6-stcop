@@ -42,6 +42,13 @@ private:
         Fvector2 Size;
     };
     xr_vector<DetectorPixelGeometry> DetectorPixelWindows;
+    struct DetectorChannelColor
+    {
+        CUIStatic* Window;
+        u32 Color;
+    };
+    xr_vector<DetectorChannelColor> DetectorChannelColors[5];
+    float DetectorInactiveAlpha = 1.0f;
     bool DetectorPixelSize = false;
     void UpdateDetectorProtectionLayout();
     CUIStatic* DetectorProtectionOverflow[5] = {};
@@ -162,6 +169,7 @@ private:
 	SContextualColorCache m_cache_grenade;
 
 public:
+    void Draw() override;
 	float				m_radia_hit;
 
 	CUIStatic*			m_ui_weapon_cur_ammo = nullptr;
