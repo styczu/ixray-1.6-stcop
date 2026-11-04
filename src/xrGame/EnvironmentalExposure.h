@@ -29,6 +29,19 @@ namespace Protection
         float opacity = 0.0f;
     };
 
+    // Combine a continuously sampled field with short-lived event peaks. Fields are
+    // raw per-hit power estimates, not damage after protection or dose per second.
+    inline ExposureReading WithField(ExposureReading History, float FieldPower)
+    {
+        if (FieldPower > 0.0f && std::isfinite(FieldPower))
+        {
+            History.power = std::fmax(History.power, FieldPower);
+            History.current = std::fmax(History.current, FieldPower);
+            History.opacity = 1.0f;
+        }
+        return History;
+    }
+
     // Per-actor UI observation, never used to calculate damage. Record incoming
     // hits before equipment subtraction, including hits that are fully absorbed.
     // A bounded peak history keeps short pulses visible without adding unrelated
