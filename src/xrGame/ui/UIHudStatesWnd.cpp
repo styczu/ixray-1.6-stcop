@@ -4,6 +4,7 @@
 #include "../CustomDetector.h"
 #include "../player_hud.h"
 #include "../EnvironmentalExposure.h"
+#include "DetectorProtectionLayout.h"
 
 #include "../Actor.h"
 #include "../ActorCondition.h"
@@ -641,6 +642,7 @@ void CUIHudStatesWnd::InitDetectorProtection(CUIXml& xml)
     DetectorProtection = UIHelper::CreateStatic(xml, "detector_protection", this, false);
     if (!DetectorProtection)
         return;
+    DetectorPixelSize = xml.ReadAttribInt("detector_protection", 0, "pixel_size", 0) != 0;
     XML_NODE* SavedRoot = xml.GetLocalRoot();
     xml.SetLocalRoot(xml.NavigateToNode("detector_protection"));
     static const char* Channels[] = {"fire", "chemical", "shock", "radiation", "psi"};
@@ -651,19 +653,57 @@ void CUIHudStatesWnd::InitDetectorProtection(CUIXml& xml)
         xml.SetLocalRoot(xml.NavigateToNode(Channels[i]));
         UIHelper::CreateStatic(xml, "icon", Column);
         DetectorProtectionBars[i] = UIHelper::CreateProgressBar(xml, "protection", Column);
-        DetectorSourceBars[i] = UIHelper::CreateProgressBar(xml, "source", Column);
+        DetectorSourceBars[i] = UIHelper::CreateProgressBar(xml, "source", Column, false);
+        DetectorSourceMarkers[i] = UIHelper::CreateStatic(xml, "source_marker", Column, false);
         DetectorProtectionOverflow[i] = UIHelper::CreateStatic(xml, "protection_overflow", Column);
         DetectorSourceOverflow[i] = UIHelper::CreateStatic(xml, "source_overflow", Column);
         xml.SetLocalRoot(PanelRoot);
     }
     xml.SetLocalRoot(SavedRoot);
+    if (DetectorPixelSize)
+    {
+        // Capture immutable pixel geometry, including the progress bar's inner statics.
+        const auto Capture = [&](const auto& Self, CUIWindow* Window) -> void
+        {
+            DetectorPixelWindows.push_back({Window, Window->GetWndPos(), Window->GetWndSize()});
+            if (auto* Static = Window->ui_cast_static())
+                Static->GetUIStaticItem().SetPixelSnap(true);
+            for (auto* Child : Window->GetChildWndList())
+                Self(Self, Child);
+        };
+        Capture(Capture, DetectorProtection);
+    }
     DetectorProtection->Show(false);
+}
+
+void CUIHudStatesWnd::UpdateDetectorProtectionLayout()
+{
+    if (!DetectorPixelSize || DetectorPixelWindows.empty())
+        return;
+    const float ScaleX = UI().ClientToScreenScaledX(1.0f);
+    const float ScaleY = UI().ClientToScreenScaledY(1.0f);
+    if (!(ScaleX > 0.0f) || !(ScaleY > 0.0f))
+        return;
+    for (const auto& Geometry : DetectorPixelWindows)
+    {
+        Geometry.Window->SetWndPos(Fvector2().set(Geometry.Position.x / ScaleX, Geometry.Position.y / ScaleY));
+        Geometry.Window->SetWndSize(Fvector2().set(Geometry.Size.x / ScaleX, Geometry.Size.y / ScaleY));
+    }
+    const auto& Panel = DetectorPixelWindows.front();
+    Fvector2 ParentPosition;
+    GetAbsolutePos(ParentPosition);
+    const auto Position = DetectorProtectionLayout::PanelPosition(
+        UI().ClientToScreenScaledX(UI_BASE_WIDTH), UI().ClientToScreenScaledY(UI_BASE_HEIGHT),
+        Panel.Size.x, Panel.Size.y, Panel.Position.x, Panel.Position.y);
+    DetectorProtection->SetWndPos(Fvector2().set(
+        Position.X / ScaleX - ParentPosition.x, Position.Y / ScaleY - ParentPosition.y));
 }
 
 void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
 {
     if (!DetectorProtection)
         return;
+    UpdateDetectorProtectionLayout();
     CCustomDetector* Detector = nullptr;
     if (actor && actor->g_Alive() && g_player_hud)
     {
@@ -687,11 +727,27 @@ void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
         DetectorProtectionBars[i]->SetProgressPosImmediate(Protection);
         DetectorProtectionOverflow[i]->Show(Protection > 1.0f);
         const bool SourceVisible = Source > 0.0f && Exposure.opacity > 0.0f;
-        DetectorSourceBars[i]->Show(SourceVisible);
-        DetectorSourceBars[i]->SetProgressPosImmediate(Source);
         const auto Color = Protection::GetSourceColor(Type);
-        const u32 Tint = color_rgba(Color.r, Color.g, Color.b, u32(255.0f * Exposure.opacity));
-        DetectorSourceBars[i]->SetColor(Tint);
+        const u32 Alpha = u32(255.0f * Exposure.opacity);
+        u32 Tint = color_rgba(Color.r, Color.g, Color.b, Alpha);
+        if (auto* Marker = DetectorSourceMarkers[i])
+        {
+            const bool Danger = Source > Protection;
+            Tint = Danger ? color_rgba(255, 70, 55, Alpha) : color_rgba(235, 240, 245, Alpha);
+            Marker->Show(SourceVisible);
+            Marker->SetTextureColor(Tint);
+            const auto* Bar = DetectorProtectionBars[i];
+            const float ScaleY = DetectorPixelSize ? UI().ClientToScreenScaledY(1.0f) : 0.0f;
+            Marker->SetWndPos(Fvector2().set(Marker->GetWndPos().x,
+                DetectorProtectionLayout::MarkerY(Bar->GetWndPos().y, Bar->GetHeight(),
+                    Marker->GetHeight(), Source, ScaleY)));
+        }
+        if (auto* SourceBar = DetectorSourceBars[i])
+        {
+            SourceBar->Show(SourceVisible && !DetectorSourceMarkers[i]);
+            SourceBar->SetProgressPosImmediate(Source);
+            SourceBar->SetColor(Tint);
+        }
         DetectorSourceOverflow[i]->Show(SourceVisible && Source > 1.0f);
         DetectorSourceOverflow[i]->SetTextureColor(Tint);
     }
