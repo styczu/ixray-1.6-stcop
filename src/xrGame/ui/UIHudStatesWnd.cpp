@@ -35,6 +35,11 @@
 #include "../../xrEngine/string_table.h"
 #include "../../xrEngine/CustomHUD.h"
 
+// Runtime options are owned and restored by ixray-hud-layout, not user.ltx.
+int g_hud_detector_inactive_opacity = -1;
+int g_hud_detector_auto = 1;
+int g_hud_detector_manual = 0;
+
 namespace
 {
 
@@ -737,8 +742,10 @@ void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
         if (auto* Item = g_player_hud->attached_item(1))
             Detector = Item->m_parent_hud_item->cast_custom_detector();
     }
-    const bool Visible = Detector && Detector->H_Parent() == actor && Detector->IsWorking()
+    const bool DetectorVisible = Detector && Detector->H_Parent() == actor && Detector->IsWorking()
         && Detector->GetState() != CHUDState::eHiding && Detector->GetState() != CHUDState::eHidden;
+    const bool Visible = actor && actor->g_Alive()
+        && (g_hud_detector_manual != 0 || (g_hud_detector_auto != 0 && DetectorVisible));
     DetectorProtection->Show(Visible);
     if (!Visible)
         return;
@@ -752,7 +759,9 @@ void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
         const auto Exposure = actor->GetEnvironmentalExposure(Type);
         const float Source = Protection::DisplayRatio(Exposure.power, Maximum);
         const float Activity = Source > 0.0f ? std::clamp(Exposure.opacity, 0.0f, 1.0f) : 0.0f;
-        const float Opacity = DetectorInactiveAlpha + (1.0f - DetectorInactiveAlpha) * Activity;
+        const float InactiveAlpha = g_hud_detector_inactive_opacity < 0 ? DetectorInactiveAlpha
+            : float(g_hud_detector_inactive_opacity) / 100.0f;
+        const float Opacity = InactiveAlpha + (1.0f - InactiveAlpha) * Activity;
         for (const auto& Entry : DetectorChannelColors[i])
             Entry.Window->SetTextureColor(subst_alpha(Entry.Color,
                 u32(std::floor(float(color_get_A(Entry.Color)) * Opacity + 0.5f))));
