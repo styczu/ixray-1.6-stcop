@@ -27,17 +27,6 @@ bool  CRadioactiveZone::BlowoutState	()
 	return result;
 }
 
-float CRadioactiveZone::GetUiExposurePower(const Fvector& ObserverPosition)
-{
-    if (!IsEnabled() || getDestroy())
-        return 0.0f;
-    float Distance = 0.0f;
-    float ShapeRadius = 0.0f;
-    CalcDistanceTo(ObserverPosition, Distance, ShapeRadius);
-    // Match Affect's raw packet power, including pure_hit_damage, without emitting a hit.
-    return Power(Distance, ShapeRadius) * (legacyHit ? 1.0f : 0.1f);
-}
-
 void CRadioactiveZone::Affect(SZoneObjectInfo* O) 
 {
 	float one				= 0.1f;
