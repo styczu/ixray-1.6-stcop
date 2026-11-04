@@ -637,12 +637,28 @@ void CUIHudStatesWnd::Load_section_type( ALife::EInfluenceType type, const char*
     m_zone_threshold[type] = pSettings->r_float( section, "threshold" );
 }
 
+void CUIHudStatesWnd::Draw()
+{
+    inherited::Draw();
+    // Source level is an overlay, including when it lies inside the protection fill.
+    // Draw it after every HUD child, independent of the progress bar's clipping pass.
+    if (!DetectorProtection || !DetectorProtection->IsShown())
+        return;
+    for (auto* Marker : DetectorSourceMarkers)
+    {
+        if (Marker && Marker->IsShown())
+            Marker->Draw();
+    }
+}
+
 void CUIHudStatesWnd::InitDetectorProtection(CUIXml& xml)
 {
     DetectorProtection = UIHelper::CreateStatic(xml, "detector_protection", this, false);
     if (!DetectorProtection)
         return;
     DetectorPixelSize = xml.ReadAttribInt("detector_protection", 0, "pixel_size", 0) != 0;
+    DetectorInactiveAlpha = xml.ReadAttribFlt("detector_protection", 0, "inactive_alpha", 1.0f);
+    clamp(DetectorInactiveAlpha, 0.0f, 1.0f);
     XML_NODE* SavedRoot = xml.GetLocalRoot();
     xml.SetLocalRoot(xml.NavigateToNode("detector_protection"));
     static const char* Channels[] = {"fire", "chemical", "shock", "radiation", "psi"};
@@ -655,8 +671,19 @@ void CUIHudStatesWnd::InitDetectorProtection(CUIXml& xml)
         DetectorProtectionBars[i] = UIHelper::CreateProgressBar(xml, "protection", Column);
         DetectorSourceBars[i] = UIHelper::CreateProgressBar(xml, "source", Column, false);
         DetectorSourceMarkers[i] = UIHelper::CreateStatic(xml, "source_marker", Column, false);
+        if (DetectorSourceMarkers[i])
+            DetectorSourceMarkers[i]->SetCustomDraw(true);
         DetectorProtectionOverflow[i] = UIHelper::CreateStatic(xml, "protection_overflow", Column);
         DetectorSourceOverflow[i] = UIHelper::CreateStatic(xml, "source_overflow", Column);
+        // Keep XML tint/alpha immutable, so repeated updates never compound the fade.
+        const auto CaptureColors = [&](const auto& Self, CUIWindow* Window) -> void
+        {
+            if (auto* Static = Window->ui_cast_static())
+                DetectorChannelColors[i].push_back({Static, Static->GetTextureColor()});
+            for (auto* Child : Window->GetChildWndList())
+                Self(Self, Child);
+        };
+        CaptureColors(CaptureColors, Column);
         xml.SetLocalRoot(PanelRoot);
     }
     xml.SetLocalRoot(SavedRoot);
@@ -724,6 +751,11 @@ void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
         const float Protection = Protection::DisplayRatio(actor->GetEquipmentProtection(Type), Maximum);
         const auto Exposure = actor->GetEnvironmentalExposure(Type);
         const float Source = Protection::DisplayRatio(Exposure.power, Maximum);
+        const float Activity = Source > 0.0f ? std::clamp(Exposure.opacity, 0.0f, 1.0f) : 0.0f;
+        const float Opacity = DetectorInactiveAlpha + (1.0f - DetectorInactiveAlpha) * Activity;
+        for (const auto& Entry : DetectorChannelColors[i])
+            Entry.Window->SetTextureColor(subst_alpha(Entry.Color,
+                u32(std::floor(float(color_get_A(Entry.Color)) * Opacity + 0.5f))));
         DetectorProtectionBars[i]->SetProgressPosImmediate(Protection);
         DetectorProtectionOverflow[i]->Show(Protection > 1.0f);
         const bool SourceVisible = Source > 0.0f && Exposure.opacity > 0.0f;
@@ -733,7 +765,7 @@ void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
         if (auto* Marker = DetectorSourceMarkers[i])
         {
             const bool Danger = Source > Protection;
-            Tint = Danger ? color_rgba(255, 70, 55, Alpha) : color_rgba(235, 240, 245, Alpha);
+            Tint = Danger ? color_rgba(255, 70, 55, Alpha) : color_rgba(235, 235, 235, Alpha);
             Marker->Show(SourceVisible);
             Marker->SetTextureColor(Tint);
             const auto* Bar = DetectorProtectionBars[i];
