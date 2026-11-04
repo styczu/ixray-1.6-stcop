@@ -1,6 +1,9 @@
 #include "StdAfx.h"
 #include "UIHudStatesWnd.h"
 #include "UIHudGroupCatalog.h"
+#include "../CustomDetector.h"
+#include "../player_hud.h"
+#include "../EnvironmentalExposure.h"
 
 #include "../Actor.h"
 #include "../ActorCondition.h"
@@ -227,6 +230,8 @@ void CUIHudStatesWnd::InitFromXml( CUIXml& xml, const char* path )
         XML_NODE* new_root = xml.NavigateToNode(path, 0);
         xml.SetLocalRoot(new_root);
     }
+
+    InitDetectorProtection(xml);
 
     m_back            = UIHelper::CreateStatic( xml, "back", this, false );
 
@@ -631,9 +636,71 @@ void CUIHudStatesWnd::Load_section_type( ALife::EInfluenceType type, const char*
     m_zone_threshold[type] = pSettings->r_float( section, "threshold" );
 }
 
+void CUIHudStatesWnd::InitDetectorProtection(CUIXml& xml)
+{
+    DetectorProtection = UIHelper::CreateStatic(xml, "detector_protection", this, false);
+    if (!DetectorProtection)
+        return;
+    XML_NODE* SavedRoot = xml.GetLocalRoot();
+    xml.SetLocalRoot(xml.NavigateToNode("detector_protection"));
+    static const char* Channels[] = {"fire", "chemical", "shock", "radiation", "psi"};
+    for (unsigned i = 0; i < 5; ++i)
+    {
+        auto* Column = UIHelper::CreateStatic(xml, Channels[i], DetectorProtection);
+        XML_NODE* PanelRoot = xml.GetLocalRoot();
+        xml.SetLocalRoot(xml.NavigateToNode(Channels[i]));
+        UIHelper::CreateStatic(xml, "icon", Column);
+        DetectorProtectionBars[i] = UIHelper::CreateProgressBar(xml, "protection", Column);
+        DetectorSourceBars[i] = UIHelper::CreateProgressBar(xml, "source", Column);
+        DetectorProtectionOverflow[i] = UIHelper::CreateStatic(xml, "protection_overflow", Column);
+        DetectorSourceOverflow[i] = UIHelper::CreateStatic(xml, "source_overflow", Column);
+        xml.SetLocalRoot(PanelRoot);
+    }
+    xml.SetLocalRoot(SavedRoot);
+    DetectorProtection->Show(false);
+}
+
+void CUIHudStatesWnd::UpdateDetectorProtection(CActor* actor)
+{
+    if (!DetectorProtection)
+        return;
+    CCustomDetector* Detector = nullptr;
+    if (actor && actor->g_Alive() && g_player_hud)
+    {
+        if (auto* Item = g_player_hud->attached_item(1))
+            Detector = Item->m_parent_hud_item->cast_custom_detector();
+    }
+    const bool Visible = Detector && Detector->H_Parent() == actor && Detector->IsWorking()
+        && Detector->GetState() != CHUDState::eHiding && Detector->GetState() != CHUDState::eHidden;
+    DetectorProtection->Show(Visible);
+    if (!Visible)
+        return;
+    static const ALife::EHitType Types[] = {ALife::eHitTypeBurn, ALife::eHitTypeChemicalBurn,
+        ALife::eHitTypeShock, ALife::eHitTypeRadiation, ALife::eHitTypeTelepatic};
+    for (unsigned i = 0; i < 5; ++i)
+    {
+        const auto Type = Types[i];
+        const float Maximum = actor->conditions().GetZoneMaxPower(Type);
+        const float Protection = Protection::DisplayRatio(actor->GetEquipmentProtection(Type), Maximum);
+        const auto Exposure = actor->GetEnvironmentalExposure(Type);
+        const float Source = Protection::DisplayRatio(Exposure.power, Maximum);
+        DetectorProtectionBars[i]->SetProgressPosImmediate(Protection);
+        DetectorProtectionOverflow[i]->Show(Protection > 1.0f);
+        const bool SourceVisible = Source > 0.0f && Exposure.opacity > 0.0f;
+        DetectorSourceBars[i]->Show(SourceVisible);
+        DetectorSourceBars[i]->SetProgressPosImmediate(Source);
+        const auto Color = Protection::GetSourceColor(Type);
+        const u32 Tint = color_rgba(Color.r, Color.g, Color.b, u32(255.0f * Exposure.opacity));
+        DetectorSourceBars[i]->SetColor(Tint);
+        DetectorSourceOverflow[i]->Show(SourceVisible && Source > 1.0f);
+        DetectorSourceOverflow[i]->SetTextureColor(Tint);
+    }
+}
+
 void CUIHudStatesWnd::Update()
 {
     CActor* actor = Level().CurrentViewEntity() ? Level().CurrentViewEntity()->cast_actor() : nullptr;
+    UpdateDetectorProtection(actor);
     if ( !actor )
     {
         return;
