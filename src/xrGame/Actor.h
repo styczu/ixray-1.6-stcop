@@ -328,7 +328,6 @@ protected:
 	bool IsWaunded = false;
 
     Protection::ExposureHistory m_environmental_exposure;
-    float GetEnvironmentalFieldPower(ALife::EHitType HitType) const;
 
 	// media
 	xr_vector<ref_sound>	sndHit[ALife::eHitTypeMax];
