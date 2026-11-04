@@ -31,6 +31,14 @@ private:
 	typedef CUIWindow						inherited;
 //-	typedef ALife::EInfluenceType	EIndicatorType;
 
+    CUIStatic* DetectorProtection = nullptr;
+    CUIProgressBar* DetectorProtectionBars[5] = {};
+    CUIProgressBar* DetectorSourceBars[5] = {};
+    CUIStatic* DetectorProtectionOverflow[5] = {};
+    CUIStatic* DetectorSourceOverflow[5] = {};
+    void InitDetectorProtection(CUIXml& xml);
+    void UpdateDetectorProtection(CActor* actor);
+
 	CUIStatic*			m_back_v = nullptr;
 	CUIStatic*			m_back_over_arrow = nullptr;
 	CUIStatic*			m_bleeding = nullptr;
