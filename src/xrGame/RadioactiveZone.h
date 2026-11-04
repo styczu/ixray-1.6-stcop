@@ -19,6 +19,8 @@ public:
 
 	CRadioactiveZone* cast_radioactive_zone() override { return this; }
 
+    // UI field estimate at the observer, in the same units as one emitted hit.
+    float GetUiExposurePower(const Fvector& ObserverPosition);
 	float fHitPower = 0;
 
 protected:
