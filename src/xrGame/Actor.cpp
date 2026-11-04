@@ -10,9 +10,6 @@
 #include "ActorEffector.h"
 #include "EffectorZoomInertion.h"
 #include "ActorCondition.h"
-#include "Level.h"
-#include "CustomDetectorZones.h"
-#include "RadioactiveZone.h"
 #include "CActorAuraPostEffectsBalancer.h"
 #include "UIGameCustom.h"
 #include "clsid_game.h"
@@ -3645,55 +3642,9 @@ float CActor::GetArtefactMovementSpeedModifier() const
 	return modifier;
 }
 
-float CActor::GetEnvironmentalFieldPower(ALife::EHitType HitType) const
-{
-    if (!g_pGameLevel || !Protection::IsZoneType(HitType))
-        return 0.0f;
-    float Strongest = 0.0f;
-    // The HUD hazard triangle also reads radiation from the material underfoot.
-    // Sample it before the hit generator's EPS cutoff, in 0.1-second hit units.
-    if (HitType == ALife::eHitTypeRadiation)
-    {
-        const float Power = conditions().GetInjuriousMaterialDamage() * 0.1f;
-        if (Power > 0.0f && std::isfinite(Power))
-            Strongest = Power;
-    }
-    Fvector Observer = Position();
-    Observer.y -= 0.5f; // Same sample point as the HUD's zone indicator.
-    const auto Sample = [&](CObject* Object)
-    {
-        auto* GameObject = Object && !Object->getDestroy() ? Object->cast_game_object() : nullptr;
-        auto* Zone = GameObject ? GameObject->cast_radioactive_zone() : nullptr;
-        if (!Zone)
-            return;
-        const auto Type = Zone->GetHitType();
-        const bool Thermal = (Type == ALife::eHitTypeBurn || Type == ALife::eHitTypeLightBurn)
-            && (HitType == ALife::eHitTypeBurn || HitType == ALife::eHitTypeLightBurn);
-        if (Type != HitType && !Thermal)
-            return;
-        const float Power = Zone->GetUiExposurePower(Observer);
-        if (Power > Strongest && std::isfinite(Power))
-            Strongest = Power;
-    };
-    // Use the same nearby zones as the HUD sensor, including fields not yet sending hits.
-    if (auto* Zones = Level().hud_zones_list)
-    {
-        for (const auto& Entry : Zones->m_ItemInfos)
-            Sample(Entry.first);
-    }
-    // This list also supplies the dosimeter and covers cases without an initialized HUD list.
-    for (const auto& Spatial : q_nearest)
-    {
-        if (Spatial.get())
-            Sample(Spatial.get()->dcast_CObject());
-    }
-    return Strongest;
-}
-
 Protection::ExposureReading CActor::GetEnvironmentalExposure(ALife::EHitType hit_type) const
 {
-    return Protection::WithField(m_environmental_exposure.Get(hit_type, Device.dwTimeGlobal),
-        GetEnvironmentalFieldPower(hit_type));
+    return m_environmental_exposure.Get(hit_type, Device.dwTimeGlobal);
 }
 
 float CActor::GetEquipmentProtection(ALife::EHitType hit_type)
