@@ -3650,6 +3650,14 @@ float CActor::GetEnvironmentalFieldPower(ALife::EHitType HitType) const
     if (!g_pGameLevel || !Protection::IsZoneType(HitType))
         return 0.0f;
     float Strongest = 0.0f;
+    // The HUD hazard triangle also reads radiation from the material underfoot.
+    // Sample it before the hit generator's EPS cutoff, in 0.1-second hit units.
+    if (HitType == ALife::eHitTypeRadiation)
+    {
+        const float Power = conditions().GetInjuriousMaterialDamage() * 0.1f;
+        if (Power > 0.0f && std::isfinite(Power))
+            Strongest = Power;
+    }
     Fvector Observer = Position();
     Observer.y -= 0.5f; // Same sample point as the HUD's zone indicator.
     const auto Sample = [&](CObject* Object)
