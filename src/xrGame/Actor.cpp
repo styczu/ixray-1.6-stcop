@@ -519,6 +519,9 @@ void CActor::SetActorDirection(float dir)
 
 void CActor::Load	(const char* section )
 {
+	ArtefactRadiationRestoreScale = READ_IF_EXISTS(pSettings, r_float, section, "artefact_radiation_restore_scale", 1.0f);
+	R_ASSERT2(ArtefactRadiationRestoreScale >= 0.0f, "artefact_radiation_restore_scale must not be negative");
+
 	// Msg						("Loading actor: %s",section);
 	inherited::Load				(section);
 	material().Load				(section);
@@ -3454,15 +3457,17 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
 				conditions().ChangeSleepiness((artefact->m_fSleepinessRestoreSpeed * art_cond) * f_update_time);
 			}
 
-			if (!IsLegacyBalance && (artefact->m_fRadiationRestoreSpeed * art_cond) > 0.0f)
+			// Scale the artefact dose before immunity; do not scale the booster.
+			const float RadiationRestore = (artefact->m_fRadiationRestoreSpeed * art_cond) * ArtefactRadiationRestoreScale;
+			if (!IsLegacyBalance && RadiationRestore > 0.0f)
 			{
-				float val = (artefact->m_fRadiationRestoreSpeed * art_cond) - conditions().GetBoostRadiationImmunity();
+				float val = RadiationRestore - conditions().GetBoostRadiationImmunity();
 				clamp(val, 0.0f, val);
 				conditions().ChangeRadiation(val * f_update_time);
 			}
 			else
 			{
-				conditions().ChangeRadiation((artefact->m_fRadiationRestoreSpeed * art_cond) * f_update_time);
+				conditions().ChangeRadiation(RadiationRestore * f_update_time);
 			}
 		}
 	}
