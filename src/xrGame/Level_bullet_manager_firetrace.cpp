@@ -334,9 +334,11 @@ void CBulletManager::DynamicObjectHit(CBulletManager::_event& E)
 			}
 		}
 
+		// E.bullet is the incoming snapshot, before this target's material slows the bullet.
+		const float HitArmorPiercing = E.bullet.GetHitArmorPiercing(ERO->cast_actor() != nullptr || ERO->cast_stalker() != nullptr);
 		SHit Hit = SHit(hit_param.power, original_dir, nullptr,
 		u16(E.R.element), position_in_bone_space, hit_param.impulse,
-		E.bullet.hit_type, E.bullet.armor_piercing, E.bullet.flags.aim_bullet);
+		E.bullet.hit_type, HitArmorPiercing, E.bullet.flags.aim_bullet);
 
 		Hit.GenHeader(u16(AddStatistic ? GE_HIT_STATISTIC : GE_HIT) & 0xffff, ERO->ID());
 		Hit.whoID = E.bullet.parent_id;
