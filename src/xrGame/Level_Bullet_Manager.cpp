@@ -83,6 +83,7 @@ void SBullet::Init(const Fvector& position, const Fvector& direction, float star
 	hit_type = e_hit_type;
 
 	armor_piercing = cartridge.param_s.kAP;
+	BallisticRetention = cartridge.param_s.BallisticRetention;
 	air_resistance = cartridge.param_s.kAirRes * air_resistance_factor;
 	wallmark_size = cartridge.param_s.fWallmarkSize;
 	m_u8ColorID = cartridge.param_s.u8ColorID;
@@ -111,7 +112,7 @@ float SBullet::GetHitArmorPiercing(bool HumanTarget) const
 		return armor_piercing;
 	}
 
-	return BulletArmorPenetration::AtSpeed(armor_piercing, speed, max_speed, g_BulletApSpeedCompensation);
+	return BulletArmorPenetration::AtSpeed(armor_piercing, speed, max_speed, g_BulletApSpeedCompensation, BallisticRetention);
 }
 
 void CBulletManager::PlayWhineSound(SBullet* bullet, CObject* object, const Fvector& pos)
