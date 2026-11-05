@@ -30,6 +30,7 @@ struct SBullet
 			//.			u16 skipped_frame	: 1	;			//пропуск первой отрисовки
 			u16 aim_bullet : 1;	   // прицеленная пуля( вылетевшая первой после длительного молчания оружия (1-3 сек.))
 			u16 magnetic_beam : 1; // магнитный луч (нет отклонения после пробивания, не падает скорость после пробивания)
+			u16 AmmoSpeedFalloffEligible : 1; // ordinary named ammunition, not fragments/backblast
 		};
 		u16 _storage;
 	} flags;
@@ -94,6 +95,8 @@ struct SBullet
 			  const CCartridge& cartridge,
 			  float const air_resistance_factor,
 			  bool SendHit);
+
+	float GetHitArmorPiercing(bool HumanTarget) const;
 };
 
 class CLevel;
