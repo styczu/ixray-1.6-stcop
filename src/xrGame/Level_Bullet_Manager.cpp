@@ -5,6 +5,7 @@
 #include "StdAfx.h"
 #include "Level.h"
 #include "Level_Bullet_Manager.h"
+#include "BulletArmorPenetration.h"
 #include "game_cl_base.h"
 #include "Actor.h"
 #include "GamePersistent.h"
@@ -33,6 +34,9 @@ float air_resistance_epsilon = .1f;
 float bullet_manager_time_factor = 1.f;
 bool bullet_manager_debug_trajectory = false;
 bool bullet_manager_simulation_stop = false;
+
+int g_BulletApSpeedFalloff = 0;
+float g_BulletApSpeedCompensation = 0.f;
 
 int bp_update_idx = 0;
 int bp_render_idx = 0;
@@ -90,11 +94,25 @@ void SBullet::Init(const Fvector& position, const Fvector& direction, float star
 	flags.allow_ricochet = !!cartridge.m_flags.test(CCartridge::cfRicochet);
 	flags.explosive = !!cartridge.m_flags.test(CCartridge::cfExplosive);
 	flags.magnetic_beam = !!cartridge.m_flags.test(CCartridge::cfMagneticBeam);
+	flags.AmmoSpeedFalloffEligible = cartridge.m_ammoSect.size() != 0 &&
+		pSettings->line_exist(cartridge.m_ammoSect.c_str(), "class") &&
+		pSettings->r_clsid(cartridge.m_ammoSect.c_str(), "class") == TEXT2CLSID("AMMO_S");
 
 	targetID = 0;
 	density_mode = false;
 }
 
+
+float SBullet::GetHitArmorPiercing(bool HumanTarget) const
+{
+	if (!g_BulletApSpeedFalloff || !IsGameTypeSingle() || !HumanTarget ||
+		!flags.AmmoSpeedFalloffEligible || flags.explosive || flags.magnetic_beam || hit_type != ALife::eHitTypeFireWound)
+	{
+		return armor_piercing;
+	}
+
+	return BulletArmorPenetration::AtSpeed(armor_piercing, speed, max_speed, g_BulletApSpeedCompensation);
+}
 
 void CBulletManager::PlayWhineSound(SBullet* bullet, CObject* object, const Fvector& pos)
 {
