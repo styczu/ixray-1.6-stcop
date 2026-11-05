@@ -7,6 +7,7 @@
 #include "xrMessages.h"
 #include "xrServer.h"
 #include "Level.h"
+#include "BulletArmorPenetration.h"
 #include "ai_debug.h"
 #include "alife_simulator.h"
 #include "game_cl_base.h"
@@ -57,6 +58,30 @@
 #include "ui/UITradeWnd.h"
 #include "ai_object_location.h"
 #include "xrServer_Objects_ALife_Monsters.h"
+
+class CCC_BulletApSpeedFalloff : public CCC_Integer
+{
+public:
+	CCC_BulletApSpeedFalloff(LPCSTR Name, int* Value) : CCC_Integer(Name, Value, 0, 1) {}
+	void Save(IWriter*) override {}
+};
+
+class CCC_BulletApSpeedCompensation : public CCC_Float
+{
+public:
+	CCC_BulletApSpeedCompensation(LPCSTR Name, float* Value) : CCC_Float(Name, Value, 0.f, 1.f) {}
+	void Execute(LPCSTR Args) override
+	{
+		const float Parsed = float(atof(Args));
+		if (!std::isfinite(Parsed) || Parsed < 0.f || Parsed > 1.f)
+		{
+			InvalidSyntax();
+			return;
+		}
+		*value = Parsed;
+	}
+	void Save(IWriter*) override {}
+};
 
 string_path		g_last_saved_game;
 
@@ -3028,6 +3053,9 @@ void CCC_RegisterCommands()
 
 	CMD2(CCC_Boolean, "g_autosaves_enabled", &g_autosaves_enabled);
 	CMD4(CCC_Integer, "g_autosaves_interval", &g_autosaves_interval, 1, 120);
+
+	CMD2(CCC_BulletApSpeedFalloff, "bullet_ap_speed_falloff", &g_BulletApSpeedFalloff);
+	CMD2(CCC_BulletApSpeedCompensation, "bullet_ap_speed_compensation", &g_BulletApSpeedCompensation);
 
 	extern float bullet_manager_time_factor;
 	CMD4(CCC_Float, "bullet_manager_time_factor", &bullet_manager_time_factor, EPS_L, 10.f);
