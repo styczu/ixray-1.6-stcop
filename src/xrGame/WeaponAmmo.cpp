@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "WeaponAmmo.h"
+#include "BulletArmorPenetration.h"
 #include "../xrPhysics/PhysicsShell.h"
 #include "xrServer_Objects_ALife_Items.h"
 #include "Actor_Flags.h"
@@ -29,6 +30,7 @@ void CCartridge::Load(const char* section, u8 LocalAmmoType)
 	param_s.kDisp				= pSettings->r_float(section, "k_disp");
 	param_s.kHit				= pSettings->r_float(section, "k_hit");
 	param_s.kImpulse			= pSettings->r_float(section, "k_impulse");
+	param_s.BallisticRetention = BulletArmorPenetration::NormalizeRetention(READ_IF_EXISTS(pSettings, r_float, section, "k_ballistic_retention", 1.f));
 
 	if (pSettings->line_exist(section, "k_ap"))
 	{
@@ -104,6 +106,7 @@ void CWeaponAmmo::Load(const char* section)
 	cartridge_param.kDisp		= pSettings->r_float(section, "k_disp");
 	cartridge_param.kHit		= pSettings->r_float(section, "k_hit");
 	cartridge_param.kImpulse	= pSettings->r_float(section, "k_impulse");
+	cartridge_param.BallisticRetention = BulletArmorPenetration::NormalizeRetention(READ_IF_EXISTS(pSettings, r_float, section, "k_ballistic_retention", 1.f));
 
 	if (pSettings->line_exist(section, "k_ap"))
 	{
