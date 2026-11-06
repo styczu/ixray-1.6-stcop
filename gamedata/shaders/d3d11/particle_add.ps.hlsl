@@ -23,6 +23,12 @@ void main(v2p I, out IXRayForward O)
     clip(result.w - EPS);
 
     O.Color.xyz = GammaToLinear(result.xyz * I.fog);
+
+#ifdef USE_PARTICLE_AMBIENT_LIGHT
+    // Mist and splashes drawn additively: follow the scene light, see particle.ps.hlsl.
+    float3 SceneLight = L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz;
+    O.Color.xyz *= saturate(dot(SceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
+#endif
     O.Color.w = result.w * I.fog;
 
 #ifndef USE_PBR
