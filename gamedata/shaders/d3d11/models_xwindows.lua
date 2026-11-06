@@ -1,4 +1,10 @@
 function normal(shader, t_base, t_second, t_detail)
+    -- Weapon sight lenses (wpn_addon_scope_lens*) are additive glass lit like a model. Scale them
+    -- by the scene light so they do not show up at night (see forward_base.ps.hlsl).
+    if string.find(t_base, "wpn_addon_scope_lens", 1, true) then
+        AddShaderOption("USE_SCENE_LIGHT_SCALE", "1")
+    end
+
     shader:begin("deffer_model", "forward_base")
         :fog(true)
         :zb(true, false)
