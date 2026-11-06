@@ -23,14 +23,16 @@ void main(v2p I, out IXRayForward O)
 
    // clip(result.a - (0.01f / 255.0f));
 	result = lerp(fog_color, result, I.fog);
-    O.Color.xyz = GammaToLinear(result.xyz);
 
 #ifdef USE_PARTICLE_AMBIENT_LIGHT
-    // Alpha-blended particles (smoke, splashes, dust) have no lighting of their own.
-    // Scale by the scene light so they do not glow at night; full brightness in daylight.
+    // Translucent particles (smoke, splashes, dust) have no lighting of their own. Scale by the
+    // scene light so they do not glow at night; 1 in daylight. Applied before GammaToLinear,
+    // so the linear result falls roughly with the square of the light (night: ~0.04-0.25).
     float3 SceneLight = L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz;
-    O.Color.xyz *= saturate(dot(SceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
+    result.xyz *= saturate(dot(SceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
 #endif
+
+    O.Color.xyz = GammaToLinear(result.xyz);
 	
 #ifdef USE_PBR
 	O.Color.w = result.w;
