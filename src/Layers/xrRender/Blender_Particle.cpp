@@ -114,6 +114,27 @@ void	CBlender_Particle::Compile	(CBlender_Compile& C)
 }
 #else
 
+// Textures of particles that have no light of their own (mist, splashes, smoke, dust) and
+// should follow the scene light. Emissive effects (fire, sparks, glows) are not listed.
+static bool IsAmbientLitParticleTexture(const char* TextureName)
+{
+	if (!TextureName)
+		return false;
+
+	string256 Lower;
+	xr_strcpy(Lower, TextureName);
+	xr_strlwr(Lower);
+
+	static constexpr const char* Tokens[] = { "splash", "water", "smoke", "dust", "mist", "fog", "steam" };
+	for (const char* Token : Tokens)
+	{
+		if (strstr(Lower, Token))
+			return true;
+	}
+
+	return false;
+}
+
 void CBlender_Particle::Compile(CBlender_Compile& C)
 {
 	IBlender::Compile(C);
@@ -129,17 +150,19 @@ void CBlender_Particle::Compile(CBlender_Compile& C)
 				RImplementation.addShaderOption("DISABLE_SOFT_PARTICLES", "1");
 			}
 
+			const bool AmbientLit = IsAmbientLitParticleTexture(C.L_textures.empty() ? nullptr : C.L_textures[0].c_str());
+
 			switch (oBlend.IDselected)
 			{
 				case 0:	C.r_Pass("particle", "particle", false, true, false);	break;	// SET
-				case 1:	// BLEND: lit by scene ambient (see particle.ps.hlsl)
-					RImplementation.addShaderOption("USE_PARTICLE_AMBIENT_LIGHT", "1");
-					C.r_Pass("particle", "particle", FALSE, TRUE, FALSE, TRUE, D3DBLEND_SRCALPHA, D3DBLEND_INVSRCALPHA, TRUE, 0);
-					break;
-				case 2:	C.r_Pass("particle", "particle_add", FALSE, TRUE, FALSE, TRUE, D3DBLEND_ONE, D3DBLEND_ONE, TRUE, 0);	break;	// ADD
+				case 1:	if (AmbientLit) RImplementation.addShaderOption("USE_PARTICLE_AMBIENT_LIGHT", "1");
+					C.r_Pass("particle", "particle", FALSE, TRUE, FALSE, TRUE, D3DBLEND_SRCALPHA, D3DBLEND_INVSRCALPHA, TRUE, 0);	break;	// BLEND
+				case 2:	if (AmbientLit) RImplementation.addShaderOption("USE_PARTICLE_AMBIENT_LIGHT", "1");
+					C.r_Pass("particle", "particle_add", FALSE, TRUE, FALSE, TRUE, D3DBLEND_ONE, D3DBLEND_ONE, TRUE, 0);	break;	// ADD
 				case 3:	C.r_Pass("particle", "particle", FALSE, TRUE, FALSE, TRUE, D3DBLEND_DESTCOLOR, D3DBLEND_ZERO, TRUE, 0);	break;	// MUL
 				case 4:	C.r_Pass("particle", "particle", FALSE, TRUE, FALSE, TRUE, D3DBLEND_DESTCOLOR, D3DBLEND_SRCCOLOR, TRUE, 0);	break;	// MUL_2X
-				case 5:	C.r_Pass("particle", "particle_add", FALSE, TRUE, FALSE, TRUE, D3DBLEND_SRCALPHA, D3DBLEND_ONE, TRUE, 0);	break;	// ALPHA-ADD
+				case 5:	if (AmbientLit) RImplementation.addShaderOption("USE_PARTICLE_AMBIENT_LIGHT", "1");
+					C.r_Pass("particle", "particle_add", FALSE, TRUE, FALSE, TRUE, D3DBLEND_SRCALPHA, D3DBLEND_ONE, TRUE, 0);	break;	// ALPHA-ADD
 			};
 
 			C.r_dx10Texture("s_base", C.L_textures[0]);
