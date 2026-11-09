@@ -20,6 +20,7 @@ public:
 	enum EBar
 	{
 		eBarDamage,
+		eBarPenetration,	// ui-weapon-penetration: the loaded cartridge's k_ap, under the damage
 		eBarAccuracy,
 		eBarHandling,
 		eBarRecoil,
@@ -68,6 +69,7 @@ public:
 	{
 		float	hit_power				= 0.0f;
 		float	k_hit					= 1.0f;
+		float	k_ap					= 0.0f;
 		float	silencer_hit			= 1.0f;
 		int		pellets					= 1;
 		float	dispersion_deg			= 0.0f;	// fire_dispersion_base
