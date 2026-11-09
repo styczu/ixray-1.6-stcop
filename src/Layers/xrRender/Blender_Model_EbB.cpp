@@ -240,6 +240,11 @@ void CBlender_Model_EbB::Compile(CBlender_Compile& C)
 
 	if (oBlend.value)	
 	{
+		// Weapon sight lens glass (wpn_addon_scope_lens*) follows the light of the scene,
+		// so it does not light up at night (see forward_base.ps.hlsl).
+		if (C.L_textures.size() && C.L_textures[0].c_str() && strstr(C.L_textures[0].c_str(), "wpn_addon_scope_lens"))
+			RImplementation.addShaderOption("USE_SCENE_LIGHT_SCALE", "1");
+
 		switch(C.iElement) 
 		{
 		case SE_R2_HUD:
