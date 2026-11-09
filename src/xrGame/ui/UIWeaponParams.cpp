@@ -84,7 +84,10 @@ CUIWeaponParams::~CUIWeaponParams()
 // with min_color/middle_color/max_color, value; without it the condition is a
 // row), an optional <separator> after the gap between the groups and
 // <ammo_icons x="" cell="" gap=""> (cell: the height of one inventory grid
-// cell) with a <dim> colour for the ammo the numbers are not for.
+// cell) with a <dim> colour for the ammo the numbers are not for. Optional
+// <delta> nodes (in <row> and in each bar, right aligned text) print the
+// difference from the compared weapon, in the colours of <delta_better> and
+// <delta_worse> (ui-weapon-compare-numbers).
 void CUIWeaponParams::InitFromXml(CUIXml& xml)
 {
 	LPCSTR base = "weapon_params";
@@ -125,7 +128,12 @@ void CUIWeaponParams::InitFromXml(CUIXml& xml)
 		row.caption = UIHelper::CreateStatic(xml, "row:caption", row.wnd);
 		row.caption->SetTextST(weapon_row_caption[i]);
 		row.value = UIHelper::CreateStatic(xml, "row:value", row.wnd);
+		if (xml.NavigateToNode("row:delta"))
+			row.delta = UIHelper::CreateStatic(xml, "row:delta", row.wnd);
 	}
+
+	m_delta_better_color = CUIXmlInit::GetColor(xml, "delta_better", 0, color_rgba(107, 207, 119, 255));
+	m_delta_worse_color = CUIXmlInit::GetColor(xml, "delta_worse", 0, color_rgba(196, 18, 18, 255));
 
 	string256 buf;
 	if (xml.NavigateToNode("condition"))
@@ -167,6 +175,9 @@ void CUIWeaponParams::InitFromXml(CUIXml& xml)
 			bar.overflow_fill = UIHelper::CreateStatic(xml, buf, bar.wnd);
 		xr_strconcat(buf, node, ":value");
 		bar.value = UIHelper::CreateStatic(xml, buf, bar.wnd);
+		xr_strconcat(buf, node, ":delta");
+		if (xml.NavigateToNode(buf))
+			bar.delta = UIHelper::CreateStatic(xml, buf, bar.wnd);
 	}
 	m_bars[eBarDamage].full = WeaponUi::DamageScore(WeaponUi::DamageFull);
 
@@ -323,6 +334,19 @@ void CUIWeaponParams::Score(const SParams& params, SScore (&scores)[eBarCount], 
 	scores[eBarDurability].max = params.shot_dec * params.impair <= 0.0f;
 	scores[eBarDurability].value = scores[eBarDurability].max ? 0.0f
 		: DurabilityScore(ShotsPerLife(params.shot_dec, params.impair));
+}
+
+// The figures of the text rows as SetInfo prints them (the rounding is the
+// printed one, so the differences are exact for the reader).
+void CUIWeaponParams::RowValues(CWeapon& weapon, const SAmmo& ammo, float dispersion, SRowValues& values)
+{
+	values.capacity = ammo.capacity;
+	// A double-barrel's rpm is only the gap between its two barrels, not a rate of fire.
+	values.rpm = dynamic_cast<CWeaponBM16*>(&weapon) ? -1 : iFloor(60.0f / weapon.getRPM() + 0.5f);
+	values.speed = iFloor(weapon.getStartBulletSpeed() * weapon.cur_silencer_koef.bullet_speed + 0.5f);
+	values.dispersion = dispersion;
+	const float range = MeasureRange(weapon, ammo, dispersion);
+	values.range = range >= 0.0f ? iFloor(range + 0.5f) : -1;
 }
 
 void CUIWeaponParams::Measure(CWeapon& weapon, const SAmmo& ammo, SScore (&scores)[eBarCount], float& dispersion)
@@ -500,15 +524,55 @@ void CUIWeaponParams::PlaceSeparator(u32 index, float& h)
 		Place(m_separators[index], h);
 }
 
-void CUIWeaponParams::SetRow(ERow index, LPCSTR text, float& h)
+// The difference as "+4" (bars) or "(+50)" (before a row's value, right_edge:
+// where the printed value starts), coloured by whether the weapon is better.
+// No difference: nothing.
+void CUIWeaponParams::SetDelta(CUIStatic* wnd, const SDelta& delta, float right_edge)
 {
-	m_rows[index].value->SetText(text);
-	Place(m_rows[index].wnd, h);
+	if (!wnd)
+		return;
+	if (delta.steps == 0)
+	{
+		wnd->SetText("");
+		return;
+	}
+	string32 number;
+	float scale = 1.0f;
+	for (int i = 0; i < delta.decimals; ++i)
+		scale *= 10.0f;
+	ConditionUi::FormatNumber(number, delta.steps / scale, ConditionUi::DecimalSeparator(), true, delta.decimals);
+	string64 text;
+	if (right_edge >= 0.0f)
+		xr_sprintf(text, "(%s)", number);
+	else
+		xr_strcpy(text, number);
+	wnd->SetText(text);
+	wnd->SetTextColor((delta.steps > 0) == delta.higher_better ? m_delta_better_color : m_delta_worse_color);
+	if (right_edge >= 0.0f)
+	{
+		Fvector2 size = wnd->GetWndSize();
+		size.x = right_edge;
+		wnd->SetWndSize(size);
+	}
+}
+
+void CUIWeaponParams::SetRow(ERow index, LPCSTR text, float& h, const SDelta& delta)
+{
+	SRow& row = m_rows[index];
+	row.value->SetText(text);
+	if (row.delta)
+	{
+		float len = row.value->GetFont()->SizeOf_(text);
+		UI().ClientToScreenScaledWidth(len);
+		const float edge = row.value->GetWndPos().x + row.value->GetWndSize().x - len - 4.0f;
+		SetDelta(row.delta, delta, std::max(edge, 0.0f));
+	}
+	Place(row.wnd, h);
 }
 
 // The bar is the share of the full bar; past it the bar stays full and the
 // triangle shows. The number is the score, "max" when there is no limit.
-void CUIWeaponParams::SetBar(EBar index, const SScore& cur, const SScore& slot, float& h)
+void CUIWeaponParams::SetBar(EBar index, const SScore& cur, const SScore& slot, bool compared, float& h)
 {
 	SBar& bar = m_bars[index];
 	if (!bar.wnd)
@@ -531,6 +595,12 @@ void CUIWeaponParams::SetBar(EBar index, const SScore& cur, const SScore& slot, 
 		xr_sprintf(text, "%d", cur.value > 0.0f ? iFloor(cur.value + 0.5f) : 0);
 		bar.value->SetText(text);
 	}
+	// The difference of the two printed numbers (every bar: higher is better); none
+	// against nothing or when either has no number.
+	SDelta delta;
+	if (compared && !cur.max && !slot.max)
+		delta.steps = WeaponUi::ShownDelta(cur.value, slot.value, 0);
+	SetDelta(bar.delta, delta, -1.0f);
 	Place(bar.wnd, h);
 }
 
@@ -628,14 +698,23 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	float dispersion = 0.0f;
 	measure(weapon, ammo, cur, dispersion);
 
+	SRowValues cur_values;
+	RowValues(weapon, ammo, dispersion, cur_values);
+
 	SScore slot[eBarCount];
 	for (u32 i = 0; i < eBarCount; ++i)
 		slot[i] = cur[i];
-	if (slot_item && slot_item != &item && Check(*slot_item))
+	// The weapon in the compared slot, if it is another one: the bars compare with
+	// it and the differences of the printed figures are shown (ui-weapon-compare-numbers).
+	const bool compared = slot_item && slot_item != &item && Check(*slot_item);
+	SRowValues slot_values = cur_values;
+	if (compared)
 	{
 		CWeapon& other = *slot_item->cast_weapon();
+		const SAmmo other_ammo = RifleAmmo(other);
 		float other_dispersion = 0.0f;
-		measure(other, RifleAmmo(other), slot, other_dispersion);
+		measure(other, other_ammo, slot, other_dispersion);
+		RowValues(other, other_ammo, other_dispersion, slot_values);
 	}
 
 	string32 number;
@@ -649,28 +728,36 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	const bool no_magazine = smart_cast<CWeaponShotgun*>(&weapon) || dynamic_cast<CWeaponAutomaticShotgun*>(&weapon);
 	m_rows[eRowCapacity].caption->SetTextST(no_magazine ? "ui_uip_wpn_capacity" : "ui_uip_wpn_capacity_mag");
 	xr_sprintf(text, "%d %s", ammo.capacity, g_pStringTable->translate("ui_uip_wpn_unit_rounds").c_str());
-	SetRow(eRowCapacity, text, h);
+	SDelta delta;
+	delta.steps = compared ? cur_values.capacity - slot_values.capacity : 0;
+	SetRow(eRowCapacity, text, h, delta);
 
 	// A double-barrel's rpm is only the gap between its two barrels, not a rate of fire.
 	if (!dynamic_cast<CWeaponBM16*>(&weapon))
 	{
-		xr_sprintf(text, "%d %s", iFloor(60.0f / weapon.getRPM() + 0.5f), g_pStringTable->translate("ui_uip_wpn_unit_rpm").c_str());
-		SetRow(eRowRpm, text, h);
+		xr_sprintf(text, "%d %s", cur_values.rpm, g_pStringTable->translate("ui_uip_wpn_unit_rpm").c_str());
+		delta.steps = compared && slot_values.rpm >= 0 ? cur_values.rpm - slot_values.rpm : 0;
+		SetRow(eRowRpm, text, h, delta);
 	}
 
-	xr_sprintf(text, "%d %s", iFloor(weapon.getStartBulletSpeed() * weapon.cur_silencer_koef.bullet_speed + 0.5f),
-		g_pStringTable->translate("ui_uip_wpn_unit_speed").c_str());
-	SetRow(eRowSpeed, text, h);
+	xr_sprintf(text, "%d %s", cur_values.speed, g_pStringTable->translate("ui_uip_wpn_unit_speed").c_str());
+	delta.steps = compared ? cur_values.speed - slot_values.speed : 0;
+	SetRow(eRowSpeed, text, h, delta);
 
+	// The spread: less is better.
 	ConditionUi::FormatNumber(number, dispersion, separator, false, 3);
 	xr_sprintf(text, "%s%s", number, g_pStringTable->translate("ui_uip_wpn_unit_deg").c_str());
-	SetRow(eRowDispersion, text, h);
+	SDelta spread;
+	spread.decimals = 3;
+	spread.higher_better = false;
+	spread.steps = compared ? WeaponUi::ShownDelta(cur_values.dispersion, slot_values.dispersion, 3) : 0;
+	SetRow(eRowDispersion, text, h, spread);
 
-	const float range = MeasureRange(weapon, ammo, dispersion);
-	if (range >= 0.0f)
+	if (cur_values.range >= 0)
 	{
-		xr_sprintf(text, "%d %s", iFloor(range + 0.5f), g_pStringTable->translate("ui_uip_wpn_unit_m").c_str());
-		SetRow(eRowRange, text, h);
+		xr_sprintf(text, "%d %s", cur_values.range, g_pStringTable->translate("ui_uip_wpn_unit_m").c_str());
+		delta.steps = compared && slot_values.range >= 0 ? cur_values.range - slot_values.range : 0;
+		SetRow(eRowRange, text, h, delta);
 	}
 
 	if (!m_condition.wnd)
@@ -684,7 +771,7 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 	// (the actor menu picks the slot, ui-weapon-compare).
 	if (m_compare)
 	{
-		const bool other = slot_item && slot_item != &item && Check(*slot_item);
+		const bool other = compared;
 		const shared_str none = g_pStringTable->translate(slot_item == &item ? "ui_uip_wpn_compare_self" : "ui_uip_wpn_compare_none");
 		LPCSTR name = other ? slot_item->NameShort() : none.c_str();
 		string256 compare;
@@ -693,13 +780,13 @@ void CUIWeaponParams::SetInfo(CInventoryItem* slot_item, CInventoryItem& item)
 		Place(m_compare, h);
 	}
 	for (u32 i = 0; i < eFirstWearBar; ++i)
-		SetBar(EBar(i), cur[i], slot[i], h);
+		SetBar(EBar(i), cur[i], slot[i], compared, h);
 
 	PlaceSeparator(1, h);
 	if (m_condition.wnd)
 		SetCondition(condition, h);
 	for (u32 i = eFirstWearBar; i < eBarCount; ++i)
-		SetBar(EBar(i), cur[i], slot[i], h);
+		SetBar(EBar(i), cur[i], slot[i], compared, h);
 
 	PlaceSeparator(2, h);
 	SetAmmoIcons(ammo, h);
