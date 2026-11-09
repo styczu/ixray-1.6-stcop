@@ -291,6 +291,7 @@ void CUIActorMenu::Construct()
 //-	m_ItemInfo->SetAutoDelete			(true);
 //-	AttachChild							(m_ItemInfo);
 	m_ItemInfo->InitItemInfo			("actor_menu_item.xml");
+	m_ItemInfo->SetUpgradesSide			(true);
 
 	if ( ai().get_alife() )
 	{
