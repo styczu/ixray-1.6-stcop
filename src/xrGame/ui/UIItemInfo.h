@@ -56,6 +56,10 @@ public:
 	void				TryAddOutfitInfo	(CInventoryItem& pInvItem, CInventoryItem* pCompareItem);
 	void				TryAddUpgradeInfo	(CInventoryItem& pInvItem);
 	void				TryAddBoosterInfo	(CInventoryItem& pInvItem);
+	// Weapon upgrades in a window beside the tooltip while Shift is held (the actor
+	// menu enables it and places it after it has placed the tooltip).
+	void				SetUpgradesSide		(bool enabled);
+	void				PlaceUpgradesSide	(const Frect& vis_rect);
 	void				ScrollDown			();
 	void				ScrollUp			();
 	void				TryAddAmmoInfo		(CInventoryItem& pInvItem);
@@ -82,6 +86,9 @@ public:
 	CUIArtefactParams*		UIOutfitParams;
 	CUIArtefactParams*		UIBackpackParams;
 	UIInvUpgPropertiesWnd*	UIProperties;
+	UIInvUpgPropertiesWnd*	UIUpgradesSide;
+	CUIFrameWindow*			UIUpgradesFrame;
+	bool					m_upgrades_side;
 	CUIOutfitInfo*			UIOutfitInfo;
 	CUIBoosterInfo*			UIBoosterInfo;
 	CUIGrenadeParams*		UIGrenadeParams;
