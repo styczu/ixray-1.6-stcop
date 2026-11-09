@@ -64,6 +64,23 @@ namespace WeaponUi
         return value < 0.0f ? 0.0f : (value > 100.0f ? 100.0f : value);
     }
 
+    // A value as the tooltip prints it, in whole steps of 10^-decimals (never
+    // below zero).
+    inline int ShownSteps(float value, int decimals)
+    {
+        float scale = 1.0f;
+        for (int i = 0; i < decimals; ++i)
+            scale *= 10.0f;
+        return value > 0.0f ? static_cast<int>(std::floor(value * scale + 0.5f)) : 0;
+    }
+
+    // The difference of two printed values, so the number next to a value is
+    // exactly what the reader gets subtracting the two figures; 0: print nothing.
+    inline int ShownDelta(float value, float other, int decimals)
+    {
+        return ShownSteps(value, decimals) - ShownSteps(other, decimals);
+    }
+
     // The player's hip fire spread while walking (CActor::GetWeaponAccuracy:
     // the actor's disp_base x PDM_disp_base, x (1 + v / VEL_MAX x the actor's
     // disp_vel_factor x PDM_disp_vel_factor)), degrees. Aiming uses disp_aim.
