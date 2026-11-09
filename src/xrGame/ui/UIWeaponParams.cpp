@@ -27,6 +27,7 @@
 static LPCSTR weapon_bar_node[] =
 {
 	"damage",
+	"penetration",
 	"accuracy",
 	"handling",
 	"recoil",
@@ -38,6 +39,7 @@ static LPCSTR weapon_bar_node[] =
 static LPCSTR weapon_bar_caption[] =
 {
 	"ui_uip_wpn_damage",
+	"ui_uip_wpn_penetration",
 	"ui_uip_wpn_accuracy",
 	"ui_uip_wpn_handling",
 	"ui_uip_wpn_recoil",
@@ -77,7 +79,7 @@ CUIWeaponParams::~CUIWeaponParams()
 }
 
 // <weapon_params gap=""> holds a <row> template (caption, value), one node per
-// bar (<damage>, <accuracy>, <handling>, <recoil>, <hold>, <reliability>,
+// bar (<damage>, <penetration>, <accuracy>, <handling>, <recoil>, <hold>, <reliability>,
 // <durability>: optional icon, caption, progress as a double bar with
 // color_less/color_more, overflow, overflow_fill, value; a bar without its node
 // is left out), the wear group's <condition> (optional icon, caption, progress
@@ -252,6 +254,7 @@ void CUIWeaponParams::Read(CWeapon& weapon, const SAmmo& ammo, SParams& params)
 	using namespace WeaponUi;
 	LPCSTR sect = ammo.section.size() ? ammo.section.c_str() : nullptr;
 	params.k_hit = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_hit", 1.0f) : 1.0f;
+	params.k_ap = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_ap", 0.0f) : 0.0f;
 	params.k_disp = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "k_disp", 1.0f) : 1.0f;
 	params.impair = sect ? READ_IF_EXISTS(pSettings, r_float, sect, "impair", 1.0f) : 1.0f;
 	params.pellets = sect ? READ_IF_EXISTS(pSettings, r_s32, sect, "buck_shot", 1) : 1;
@@ -305,6 +308,8 @@ void CUIWeaponParams::Score(const SParams& params, SScore (&scores)[eBarCount], 
 {
 	using namespace WeaponUi;
 	scores[eBarDamage].value = DamageScore(Damage(params.hit_power, params.k_hit, params.silencer_hit, params.pellets));
+	scores[eBarPenetration].max = params.k_ap >= PenetrationMax;
+	scores[eBarPenetration].value = scores[eBarPenetration].max ? 0.0f : PenetrationScore(params.k_ap);
 
 	dispersion = Dispersion(params.dispersion_deg, params.k_disp, params.silencer_dispersion,
 		params.condition_factor, params.condition);
