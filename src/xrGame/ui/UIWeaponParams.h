@@ -139,6 +139,27 @@ public:
 	virtual CUIWindow* ui_cast_window() { return this; }
 
 private:
+	// What the rows print for one weapon (negative: the row is not shown).
+	struct SRowValues
+	{
+		int		capacity	= 0;
+		int		rpm			= -1;
+		int		speed		= 0;
+		float	dispersion	= 0.0f;
+		int		range		= -1;
+	};
+
+	// The difference of a printed value from the compared weapon's, in whole
+	// steps of 10^-decimals; none: nothing is printed.
+	struct SDelta
+	{
+		int		steps			= 0;
+		int		decimals		= 0;
+		bool	higher_better	= true;
+	};
+
+	static	void	RowValues			(CWeapon& weapon, const SAmmo& ammo, float dispersion, SRowValues& values);
+
 	struct SBar
 	{
 		CUIWindow*				wnd				= nullptr;
@@ -146,6 +167,7 @@ private:
 		CUIStatic*				overflow		= nullptr;
 		CUIStatic*				overflow_fill	= nullptr;
 		CUIStatic*				value			= nullptr;
+		CUIStatic*				delta			= nullptr;	// "+4" / "-3" behind the number (ui-weapon-compare-numbers)
 		float					full			= 100.0f;
 	};
 
@@ -154,6 +176,7 @@ private:
 		CUIWindow*	wnd		= nullptr;
 		CUIStatic*	caption	= nullptr;
 		CUIStatic*	value	= nullptr;
+		CUIStatic*	delta	= nullptr;	// "+50" in the column behind the value
 	};
 
 	struct SCondition
@@ -168,8 +191,9 @@ private:
 	static	void	AddUpgrade			(CWeapon& weapon, LPCSTR section, float sign, SParams& params);
 			void	Place				(CUIWindow* wnd, float& h);
 			void	PlaceSeparator		(u32 index, float& h);
-			void	SetRow				(ERow row, LPCSTR text, float& h);
-			void	SetBar				(EBar bar, const SScore& cur, const SScore& slot, float& h);
+			void	SetRow				(ERow row, LPCSTR text, float& h, const SDelta& delta = SDelta());
+			void	SetDelta			(CUIStatic* wnd, const SDelta& delta);
+			void	SetBar				(EBar bar, const SScore& cur, const SScore& slot, bool compared, float& h);
 			void	SetCondition		(float condition, float& h);
 			void	SetAmmoIcons		(const SAmmo& ammo, float& h);
 
@@ -180,6 +204,8 @@ private:
 	SBar			m_bars[eBarCount];
 	SRow			m_rows[eRowCount];
 	xr_vector<CUIStatic*> m_ammo_icons;
+	u32				m_delta_better_color = 0;
+	u32				m_delta_worse_color	= 0;
 	float			m_gap				= 0.0f;
 	float			m_icons_x			= 0.0f;
 	float			m_icons_gap			= 0.0f;
