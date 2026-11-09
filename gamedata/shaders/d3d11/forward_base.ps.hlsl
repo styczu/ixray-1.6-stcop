@@ -153,7 +153,12 @@ void main(p_bumped_new I, out OutStructure O)
     // and storm, 0.5-1.2 at dusk, lower at night (in-game colour test 2026-11-09).
     float LensSceneLum = dot(L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz, float3(0.2126f, 0.7152f, 0.0722f));
     float LensDay = smoothstep(1.0f, 1.6f, LensSceneLum);
-    O.Color.xyz = (Ambient + Light.xyz) * LensDay;
+    // LENS_NIGHT_LEVEL ([shaders_options] in engine_external.ltx): share of the glass colour kept at
+    // night, 0 = none (clean glass), 1 = as without this patch. Not set or 0 = 0.
+#ifndef LENS_NIGHT_LEVEL
+    #define LENS_NIGHT_LEVEL 0.0f
+#endif
+    O.Color.xyz = (Ambient + Light.xyz) * lerp(saturate(LENS_NIGHT_LEVEL), 1.0f, LensDay);
 #else
     O.Color.xyz = Ambient + Light.xyz;
 #endif
