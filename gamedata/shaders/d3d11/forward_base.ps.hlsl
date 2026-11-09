@@ -148,11 +148,12 @@ void main(p_bumped_new I, out OutStructure O)
 	
 #ifdef USE_SCENE_LIGHT_SCALE
     // Weapon sight lens glass: no direct light and no view/normal dependent ambient or environment
-    // reflection (looking down the glass would catch the bright sky hemisphere). The glass is just its
-    // own texture colour, scaled by the light of the scene (about 1 in daylight, far lower at night, squared).
+    // reflection. The glass is just its own texture colour, scaled by the light of the scene. The light
+    // sum is about 0.2-0.5 at night and above 1 in daylight (measured with particle-ambient-light), so a
+    // steep ramp keeps the glass completely dark at night and full by day.
     float3 LensSceneLight = L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz;
-    float LensSceneScale = saturate(dot(LensSceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
-    O.Color.xyz = M.Color.xyz * (0.5f * LensSceneScale * LensSceneScale);
+    float LensSceneScale = smoothstep(0.5f, 1.2f, dot(LensSceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
+    O.Color.xyz = M.Color.xyz * (0.5f * LensSceneScale);
 #else
     O.Color.xyz = Ambient + Light.xyz;
 #endif
