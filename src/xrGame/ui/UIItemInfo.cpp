@@ -284,6 +284,11 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 			UIProperties->set_item_info(*pInvItem);
 			ExtraWidth = std::max(0.0f, UIProperties->GetWidth() - ContentWidth);
 		}
+		// A weapon tooltip wider than the list's usable width (the stock layout leaves
+		// 10 units on the right of the 290 list for the scroll bar): the room for the
+		// difference column (ui-weapon-compare-numbers).
+		if (UIWeaponParams && UIWeaponParams->Check(*pInvItem))
+			ExtraWidth = std::max(ExtraWidth, UIWeaponParams->GetWidth() - (BaseDescriptionWidth - 10.0f));
 		SetWidth(BaseTooltipWidth + ExtraWidth);
 		UIDesc->SetWidth(BaseDescriptionWidth + ExtraWidth);
 		if (UIName)
