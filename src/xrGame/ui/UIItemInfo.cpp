@@ -14,6 +14,7 @@
 #include "Inventory.h"
 #include "InventoryVolumeSystem.h"
 #include "../../xrEngine/string_table.h"
+#include "../../xrEngine/xr_input.h"
 #include "../inventory_item.h"
 #include "UIInventoryUtilities.h"
 #include "../PhysicsShellHolder.h"
@@ -53,6 +54,9 @@ CUIItemInfo::CUIItemInfo()
 	UIKnifeParams				= nullptr;
 	UIGrenadeParams				= nullptr;
 	UIProperties				= nullptr;
+	UIUpgradesSide				= nullptr;
+	UIUpgradesFrame				= nullptr;
+	m_upgrades_side				= false;
 	UIOutfitInfo				= nullptr;
 	UIBoosterInfo				= nullptr;
 	UIAmmoParams				= nullptr;
@@ -78,6 +82,9 @@ CUIItemInfo::~CUIItemInfo()
 	xr_delete	(UIArtefactParams);
 	xr_delete	(UIOutfitParams);
 	xr_delete	(UIBackpackParams);
+	// The side window sits in its frame; the child goes first.
+	xr_delete	(UIUpgradesSide);
+	xr_delete	(UIUpgradesFrame);
 	xr_delete	(UIProperties);
 	xr_delete	(UIOutfitInfo);
 	xr_delete	(UIBoosterInfo);
@@ -213,6 +220,22 @@ bool CUIItemInfo::InitItemInfo(const char* xml_name)
 		{
 			UIProperties					= new UIInvUpgPropertiesWnd();
 			UIProperties->init_from_xml		("actor_menu_item.xml");
+
+			// The window beside the tooltip (weapon upgrades with Shift): the list in
+			// the tooltip's own frame, hidden until PlaceUpgradesSide shows it.
+			UIUpgradesSide					= new UIInvUpgPropertiesWnd();
+			UIUpgradesSide->init_from_xml	("actor_menu_item.xml");
+			UIUpgradesSide->SetAutoDelete	(false);
+			UIUpgradesSide->set_compact		(true);
+			if (uiXml.NavigateToNode("background_frame", 0))
+			{
+				UIUpgradesFrame				= new CUIFrameWindow();
+				UIUpgradesFrame->SetAutoDelete(false);
+				AttachChild					(UIUpgradesFrame);
+				xml_init.InitFrameWindow	(uiXml, "background_frame", 0, UIUpgradesFrame);
+				UIUpgradesFrame->AttachChild(UIUpgradesSide);
+				UIUpgradesFrame->Show		(false);
+			}
 		}
 
 		UIDesc							= new CUIScrollView(); 
@@ -573,6 +596,53 @@ void CUIItemInfo::TryAddOutfitInfo(CInventoryItem& pInvItem, CInventoryItem* pCo
 		UIBackpackParams->SetInfo(pInvItem);
 		UIDesc->AddWindow(UIBackpackParams, false);
 	}
+}
+
+void CUIItemInfo::SetUpgradesSide(bool enabled)
+{
+	m_upgrades_side = enabled && UIUpgradesSide && UIUpgradesFrame;
+	if (UIProperties)
+		UIProperties->set_list_in_side(m_upgrades_side);
+	if (!m_upgrades_side && UIUpgradesFrame)
+		UIUpgradesFrame->Show(false);
+}
+
+// The weapon's upgrades in a window of their own beside the tooltip, only while Shift
+// is held: the tooltip keeps its height, so it does not jump when the list appears.
+// To the right of the tooltip when there is room in vis_rect (the tooltip's own
+// coordinates, as for fit_in_rect), otherwise to the left; level with its top and
+// kept inside vis_rect vertically.
+void CUIItemInfo::PlaceUpgradesSide(const Frect& vis_rect)
+{
+	if (!UIUpgradesFrame)
+		return;
+	UIUpgradesFrame->Show(false);
+	if (!m_upgrades_side || !m_pInvItem || m_pInvItem->upgardes().empty() || !UIDesc || !UIProperties ||
+		!UIProperties->hint_applies(*m_pInvItem) || pInput->GetControllerMode() ||
+		!(pInput->iGetAsyncKeyState(SDL_SCANCODE_LSHIFT) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RSHIFT)))
+		return;
+
+	constexpr float MarginX = 16.0f;		// as the tooltip's text margins
+	constexpr float MarginY = 14.0f;
+	constexpr float Gap = 4.0f;
+	// Half the tooltip's content width is room enough for a row of the list (a longer
+	// row still widens the window: the width is the room asked for, not a limit).
+	UIUpgradesSide->SetAvailableWidth(UIDesc->GetDesiredChildWidth() * 0.5f, true);
+	UIUpgradesSide->set_item_list(*m_pInvItem);
+	UIUpgradesSide->SetWndPos(Fvector2().set(MarginX, MarginY));
+	Fvector2 size = UIUpgradesSide->GetWndSize();
+	// Not smaller than the frame's corner textures (the tooltip keeps 105 as well).
+	size.x = std::max(105.0f, size.x + 2.0f * MarginX);
+	size.y = std::max(105.0f, size.y + 2.0f * MarginY);
+	UIUpgradesFrame->SetWndSize(size);
+
+	const Fvector2 pos = GetWndPos();
+	const Fvector2 own = GetWndSize();
+	const bool right = pos.x + own.x + Gap + size.x <= vis_rect.x2 || pos.x - Gap - size.x < vis_rect.x1;
+	const float x = right ? own.x + Gap : -(size.x + Gap);
+	const float top = std::max(vis_rect.y1, std::min(pos.y, vis_rect.y2 - size.y));
+	UIUpgradesFrame->SetWndPos(Fvector2().set(x, top - pos.y));
+	UIUpgradesFrame->Show(true);
 }
 
 void CUIItemInfo::TryAddUpgradeInfo(CInventoryItem& pInvItem)
