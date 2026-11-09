@@ -1605,7 +1605,7 @@ bool CUIActorMenuBase::ProcessSortTabKeyboardSwitch(int dik, EUIMessages keyboar
 
 	const bool hasSortCycleBinding = get_action_dik(kINV_SORT_CYCLE, 0) != 0 || get_action_dik(kINV_SORT_CYCLE, 1) != 0;
 	const bool isSortCyclePressed = is_binded(kINV_SORT_CYCLE, dik)
-		|| (!hasSortCycleBinding && (dik == SDL_SCANCODE_LALT || dik == SDL_SCANCODE_RALT));
+		|| (!hasSortCycleBinding && dik == SDL_SCANCODE_RALT);
 	if (isSortCyclePressed)
 	{
 		if (!m_pInventorySorter || m_pInventorySorter->GetSystem() != EInventorySortSystem::Ordering)
