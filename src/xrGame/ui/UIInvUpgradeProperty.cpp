@@ -686,13 +686,13 @@ void UIInvUpgPropertiesWnd::set_item_info(CInventoryItem& item)
 // (bez Shift) zawsze pelna lista.
 bool UIInvUpgPropertiesWnd::set_item_hint(CInventoryItem& item)
 {
-	if (!m_has_weapon_rows || !smart_cast<CWeapon*>(&item) || pInput->GetControllerMode() ||
-		pInput->iGetAsyncKeyState(SDL_SCANCODE_LSHIFT) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RSHIFT))
+	if (!hint_applies(item))
+		return false;
+	// With the list in a window of its own the hint stays also while Shift is held.
+	if (!m_list_in_side && (pInput->iGetAsyncKeyState(SDL_SCANCODE_LSHIFT) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RSHIFT)))
 		return false;
 	const shared_str label = g_pStringTable->translate("ui_uip_upgrades");
 	const shared_str hold = g_pStringTable->translate("ui_uip_upgrades_shift");
-	if (xr_strcmp(label.c_str(), "ui_uip_upgrades") == 0 || xr_strcmp(hold.c_str(), "ui_uip_upgrades_shift") == 0)
-		return false;
 
 	for (auto* Property : m_properties_ui)
 		Property->Show(false);
@@ -707,6 +707,23 @@ bool UIInvUpgPropertiesWnd::set_item_hint(CInventoryItem& item)
 	m_iNumUpgr = 0;
 	SetHeight(Top + std::max(m_fnext_line_pos, m_hint->GetHeight()));
 	return true;
+}
+
+// Dymek broni ma jedna linie zamiast listy, gdy addon zdefiniowal wiersze broni, ma
+// teksty linii i to nie jest pad (bez Shift). Ta sama zasada wyznacza okno boczne.
+bool UIInvUpgPropertiesWnd::hint_applies(CInventoryItem& item) const
+{
+	if (!m_has_weapon_rows || !smart_cast<CWeapon*>(&item) || pInput->GetControllerMode())
+		return false;
+	const shared_str label = g_pStringTable->translate("ui_uip_upgrades");
+	const shared_str hold = g_pStringTable->translate("ui_uip_upgrades_shift");
+	return xr_strcmp(label.c_str(), "ui_uip_upgrades") != 0 && xr_strcmp(hold.c_str(), "ui_uip_upgrades_shift") != 0;
+}
+
+// Pelna lista ulepszen (okno boczne), bez linii z liczba ulepszen.
+void UIInvUpgPropertiesWnd::set_item_list(CInventoryItem& item)
+{
+	set_info(item.upgardes(), &item, true);
 }
 
 // Wiersze show_physical maja tekst jak ochrony srodowiskowe ("Nazwa: +N pkt"),

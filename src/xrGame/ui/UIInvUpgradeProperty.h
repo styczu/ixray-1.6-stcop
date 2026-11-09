@@ -104,6 +104,9 @@ protected:
 	bool CanExpand = false;
 	// Czy addon zdefiniowal wiersze broni; bez nich bron zostaje przy etykietach skryptu.
 	bool m_has_weapon_rows = false;
+	// Lista ulepszen broni idzie do osobnego okna obok dymka (ui-weapon-upgrades-side):
+	// dymek zawsze ma jedna linie, takze z Shift.
+	bool m_list_in_side = false;
 	CUIWeaponParams::SUpgradeRow m_weapon_values[CUIWeaponParams::eUpgradeRowCount];
 
 public:
@@ -114,6 +117,9 @@ public:
 	void set_upgrade_info(Upgrade_type& upgrade, CInventoryItem* item = nullptr);
 	void set_item_info(CInventoryItem& item);
 	bool set_item_hint(CInventoryItem& item);
+	bool hint_applies(CInventoryItem& item) const;
+	void set_list_in_side(bool in_side) { m_list_in_side = in_side; }
+	void set_item_list(CInventoryItem& item);
 	void SetAvailableWidth(float Width, bool AllowExpansion);
 	void UpdateStatsPos(float& h, Fvector2& pos, UIProperty* pWnd, int& counter) const;
 
