@@ -148,6 +148,14 @@ void main(p_bumped_new I, out OutStructure O)
 	
     O.Color.xyz = Ambient + Light.xyz;
 
+#ifdef USE_SCENE_LIGHT_SCALE
+    // Weapon sight lens glass: follow the light of the scene (about 1 in daylight, far lower at night),
+    // squared so the glass practically disappears in the dark.
+    float3 LensSceneLight = L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz;
+    float LensSceneScale = saturate(dot(LensSceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
+    O.Color.xyz *= LensSceneScale * LensSceneScale;
+#endif
+
 #ifndef USE_LENGTH_BUFFER
     O.Color.w = M.Color.w;
 	
