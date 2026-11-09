@@ -595,7 +595,11 @@ void CUIActorMenu::InfoCurItem( CUICellItem* cell_item )
 //	m_ItemInfo->InitItem	( current_item, compare_item );
 	float dx_pos = GetWndRect().left;
 	if (!pInput->GetControllerMode())
-		fit_in_rect(m_ItemInfo, Frect().set( 0.0f, 0.0f, UI_BASE_WIDTH - dx_pos, UI_BASE_HEIGHT ), 10.0f, dx_pos );
+	{
+		const Frect vis_rect = Frect().set( 0.0f, 0.0f, UI_BASE_WIDTH - dx_pos, UI_BASE_HEIGHT );
+		fit_in_rect(m_ItemInfo, vis_rect, 10.0f, dx_pos );
+		m_ItemInfo->PlaceUpgradesSide(vis_rect);
+	}
 	else
 	{
 		Frect stickToRect;
