@@ -11,6 +11,14 @@ namespace WeaponUi
     constexpr float RadToDeg = 57.2957795f;
 
     constexpr float DamageFull = 1.5f;          // hit power of a full bar
+    // Armour penetration is the cartridge's k_ap in hundredths, like the ammo tooltip
+    // and the panel's "Armour" bar: 100 (k_ap 1.0) fills the bar. From 10.0 up
+    // (gauss's 999) it only means "goes through everything": "max".
+    constexpr float PenetrationMax = 10.0f;
+    inline float PenetrationScore(float kAp)
+    {
+        return kAp * 100.0f;
+    }
     constexpr float DispersionBest = 0.05f;     // degrees: 100
     constexpr float DispersionWorst = 3.0f;     // degrees: 0
     constexpr float RecoilBest = 0.10f;         // degrees per shot: 100
