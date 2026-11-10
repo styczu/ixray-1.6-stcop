@@ -34,6 +34,11 @@ bool InventoryHolsterExclusivePistolFootprint(CInventoryItem* item);
 
 u16 InventoryResolveSidearmEquipSlot(CInventoryItem* item);
 
+// Stalker smart covers need a long gun. Besides INV_SLOT_3 weapons this accepts
+// sidearm-slot weapons with long-gun animations (animation_slot != 1), e.g.
+// sawn-offs moved to the pistol holster with slot = 1.
+bool StalkerWeaponFitsSmartCover(CInventoryItem* item);
+
 xr_span<const u16> InventoryWeaponCycleSlots();
 u16 InventoryWeaponSlotToGameAction(u16 slotId);
 void InventoryWeaponCycleInvalidate();
