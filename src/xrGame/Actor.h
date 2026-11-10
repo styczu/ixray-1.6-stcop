@@ -285,6 +285,13 @@ public:
             float GetEquipmentProtection(ALife::EHitType hit_type);
             Protection::ExposureReading GetEnvironmentalExposure(ALife::EHitType hit_type) const;
 			float		HitArtefactsOnBelt		(float hit_power, ALife::EHitType hit_type);
+			// Mnoznik trafienia od artefaktow (1 = bez wplywu): only == nullptr - caly pas,
+			// inaczej jedna sztuka w swoim stanie (dymek przedmiotu). Ta sama formula co trafienie.
+			float		ArtefactHitMultiplier	(ALife::EHitType hit_type, const CArtefact* only = nullptr) const;
+			enum class EArtefactNeed { Satiety, Thirst, Sleepiness };
+			// Mnoznik naturalnego ubytku potrzeby od pasa (model mnoznikowy); 1 poza nim.
+			float		ArtefactNeedDecayFactor	(EArtefactNeed need, float base_decay) const;
+			bool		IsArtefactBeltMultiplicative() const { return m_artefact_belt_multiplicative; }
 			float		HitArtefactsOnBeltLegacy(float hit_power, ALife::EHitType hit_type);
 			float		GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type);
 			float		GetArtefactEquipmentDurabilityModifier() const;
@@ -640,6 +647,10 @@ public:
 	// Mnoznik sumy odpornosci strefowych artefaktow z pasa przed krzywa
 	// HitArtefactsOnBelt; 1 = oryginal, wartosc ustawia addon balansu.
 	float					m_artefact_zone_immunity_scale = 1.0f;
+	// artefact_belt_multiplicative: kazda sztuka zatrzymuje swoj ulamek tego, co
+	// przechodzi (ochrony strefowe: wartosc = ulamek, bez skali; potrzeby: ulamek
+	// bazowego ubytku). false = oryginal (krzywa, sumowanie potrzeb).
+	bool					m_artefact_belt_multiplicative = false;
 
 	bool					bBlockSprint;
 	u32						m_iKeyFlags = 0;
