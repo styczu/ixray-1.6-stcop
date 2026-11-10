@@ -572,7 +572,7 @@ void CActorCondition::UpdateSatiety()
 
 	if (Satiety.Current > 0)
 	{
-		Satiety.Current -= Satiety.Variability * m_fDeltaTime;
+		Satiety.Current -= Satiety.Variability * m_object->ArtefactNeedDecayFactor(CActor::EArtefactNeed::Satiety, Satiety.Variability) * m_fDeltaTime;
 		clamp(Satiety.Current, 0.0f, 1.0f);
 	}
 
@@ -592,7 +592,7 @@ void CActorCondition::UpdateThirst()
 
 	if (Thirst.Current > 0.0f)
 	{
-		Thirst.Current -= Thirst.Variability * m_fDeltaTime;
+		Thirst.Current -= Thirst.Variability * m_object->ArtefactNeedDecayFactor(CActor::EArtefactNeed::Thirst, Thirst.Variability) * m_fDeltaTime;
 		clamp(Thirst.Current, 0.0f, 1.0f);
 	}
 
@@ -612,7 +612,7 @@ void CActorCondition::UpdateSleepiness()
 
 	if (Sleepiness.Current > 0)
 	{
-		Sleepiness.Current -= Sleepiness.Variability * m_fDeltaTime;
+		Sleepiness.Current -= Sleepiness.Variability * m_object->ArtefactNeedDecayFactor(CActor::EArtefactNeed::Sleepiness, Sleepiness.Variability) * m_fDeltaTime;
 		clamp(Sleepiness.Current, 0.0f, 1.0f);
 	}
 
