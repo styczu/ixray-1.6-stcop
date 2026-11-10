@@ -1457,31 +1457,24 @@ void ui_actor_state_wnd::UpdateProtectionHints(CActor* actor)
             line("ui_uip_protection_artifact_effect", value, false);
         }
 
-        // Raw belt coefficients x100; the reduction comes from the game's own hit multiplier.
+        // Belt reduction from the game's own hit multiplier, then each piece's own
+        // reduction (the same formula for one artefact); pieces do not add up.
         hint += kBreak;
         separator();
-        const float absorption = actor->GetProtection_ArtefactsOnBelt(type);
         {
-            string32 number;
             string64 value;
-            // Round first so a tiny malus never prints as "-0%".
-            const float reduction = absorption != 0.0f ? std::round((1.0f - artifactMultiplier) * 1000.0f) / 10.0f : 0.0f;
-            ConditionUi::FormatNumber(number, reduction, ConditionUi::DecimalSeparator(), false, 1);
-            xr_strconcat(value, number, "%");
+            ConditionUi::FormatReduction(value, 1.0f - artifactMultiplier, false);
             line("ui_uip_protection_reduction", value, false);
         }
-        if (absorption != 0.0f)
         {
             string64 value;
-            ConditionUi::FormatAbsorption(value, absorption, false, true);
-            line("ui_uip_protection_absorption", value, false);
             for (const PIItem item : actor->inventory().m_belt)
             {
                 CArtefact* artefact = item->cast_artefact();
                 const float coefficient = artefact ? artefact->m_ArtefactHitImmunities.AffectHit(1.0f, type) * artefact->GetCondition() : 0.0f;
                 if (coefficient != 0.0f)
                 {
-                    ConditionUi::FormatAbsorption(value, coefficient, true, true);
+                    ConditionUi::FormatReduction(value, 1.0f - actor->ArtefactHitMultiplier(type, artefact));
                     hint += kBreak;
                     hint += kColComponent;
                     hint += "  ";
@@ -1534,17 +1527,11 @@ void ui_actor_state_wnd::UpdateCombatProtection(CActor* actor, CCustomOutfit* ou
     const shared_str s_unit_pct = g_pStringTable->translate("ui_uip_unit_percent");
     LPCSTR unitPct = s_unit_pct.c_str();
 
-    // Nieliniowy mnoznik redukcji artefaktow na pasie dla typu niestrefowego
-    // (jak CActor::HitArtefactsOnBelt): dodatni = redukcja, ujemny = malus.
+    // Redukcja artefaktow na pasie dla typu niestrefowego z tej samej formuly
+    // co trafienie (CActor::ArtefactHitMultiplier): dodatni = redukcja, ujemny = malus.
     auto artefactFactor = [&](ALife::EHitType type) -> float
     {
-        float sum = actor->GetProtection_ArtefactsOnBelt(type);
-        if (sum == 0.0f)
-            return 0.0f;
-        clamp(sum, -0.99f, 0.99f);
-        return (sum > 0.0f)
-            ? 1.5f * (float)pow(0.9f, (4.0f / sum))
-            : -1.5f * (float)pow(0.9f, (4.0f / (-1.0f * sum)));
+        return 1.0f - actor->ArtefactHitMultiplier(type);
     };
 
     // ---- rozszarpanie / uderzenie / wybuch (prog absolutny, skala pkt) ----
