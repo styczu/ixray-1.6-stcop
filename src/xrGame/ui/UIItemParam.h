@@ -28,6 +28,8 @@ public:
 	// Wartosci z jednostka (ui-param-bars): wspolczynnik absorpcji artefaktu x100,
 	// tempo radiacji i regeneracji na sekunde czasu rzeczywistego, czas dzialania.
 	void SetAbsorption(float Immunity);
+	// Redukcja trafienia jednej sztuki (1 - mnoznik z mechaniki), w procentach.
+	void SetReduction(float Reduction);
 	void SetRadiationRate(float RatePerGameSecond);
 	void SetRegenerationRate(float RatePerGameSecond);
 	void SetDuration(float GameSeconds);

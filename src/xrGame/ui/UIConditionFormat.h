@@ -24,6 +24,18 @@ namespace ConditionUi
         return separator.size() == 1 ? separator.c_str()[0] : '.';
     }
 
+    // Redukcja trafienia od artefaktu, 1 - CActor::ArtefactHitMultiplier, w %
+    // z dokladnoscia 0,1 (bez "-0%"). Dodatnia chroni, ujemna to podatnosc.
+    inline void FormatReduction(string64& out, float reduction, bool showSign = true)
+    {
+        float percent = std::round(reduction * 1000.0f) / 10.0f;
+        if (percent == 0.0f)
+            percent = 0.0f;
+        string32 number;
+        FormatNumber(number, percent, DecimalSeparator(), showSign, 1);
+        xr_strconcat(out, number, "%");
+    }
+
     inline void FormatRadiationRate(string64& out, float ratePerGameSecond)
     {
         string32 number;
