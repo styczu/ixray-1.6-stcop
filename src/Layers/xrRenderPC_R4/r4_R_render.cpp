@@ -512,11 +512,8 @@ void CRender::Render()
 	ViewBase.CreateFromMatrix(Device.mFullTransform, FRUSTUM_P_LRTB + FRUSTUM_P_FAR);
 	View = 0;
 
-	if(!ps_r2_ls_flags.test(R2FLAG_EXP_MT_CALC))
-	{
-		HOM.Enable();
-		HOM.Render(ViewBase);
-	}
+	HOM.Enable();
+	HOM.Render(ViewBase);
 	
 	//******* Z-prefill calc - DEFERRER RENDERER
 	{
