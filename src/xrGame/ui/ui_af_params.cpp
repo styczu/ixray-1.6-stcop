@@ -287,8 +287,9 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			}
 			if (!m_immunity_item[id]->GetLegacyMode() && Protection::IsZoneType(id))
 			{
-				// Surowy wspolczynnik x100 (0.02 -> +2), bez przelicznika sily z mechaniki.
-				m_immunity_item[id]->SetAbsorption(val * pInvItem.GetCondition());
+				// Redukcja tej sztuki w jej stanie z tej samej formuly co trafienie
+				// (krzywa ze skala albo model mnoznikowy pasa).
+				m_immunity_item[id]->SetReduction(1.0f - actor->ArtefactHitMultiplier(id, pInvItem.cast_artefact()));
 				place(m_immunity_item[id]);
 				continue;
 			}

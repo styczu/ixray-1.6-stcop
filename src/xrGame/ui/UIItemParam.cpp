@@ -280,6 +280,13 @@ void UIItemParam::SetAbsorption(float Immunity)
 	ApplyValueText(Text, Immunity >= 0.0f, Immunity < 0.0f ? color_argb(255, 210, 50, 50) : color_argb(255, 170, 170, 170));
 }
 
+void UIItemParam::SetReduction(float Reduction)
+{
+	string64 Text;
+	ConditionUi::FormatReduction(Text, Reduction);
+	ApplyValueText(Text, Reduction >= 0.0f, Reduction < 0.0f ? color_argb(255, 210, 50, 50) : color_argb(255, 170, 170, 170));
+}
+
 void UIItemParam::SetRadiationRate(float RatePerGameSecond)
 {
 	string64 Text;
