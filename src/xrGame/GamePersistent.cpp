@@ -304,7 +304,10 @@ void CGamePersistent::WeathersUpdate()
 			if (actor) bIndoor			= actor->renderable_ROS()->get_luminocity_hemi()<0.05f;
 		}
 
-		const size_t data_set = (Random.randF() < (1.f - Environment().CurrentEnv->weight)) ? 0 : 1;
+		// Ambient of the nearer keyframe, switched once at the middle of the blend
+		// (like lens flare and thunderbolt ids in CEnvironment::OnFrame). A random
+		// pick per sound alternated short looping beds of both keyframes.
+		const size_t data_set = (Environment().CurrentEnv->weight < 0.5f) ? 0 : 1;
 
 		CEnvDescriptor* const _env	= Environment().Current[data_set]; 
 		VERIFY						(_env);
