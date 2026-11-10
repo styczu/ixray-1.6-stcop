@@ -26,6 +26,7 @@
 #include "CharacterPhysicsSupport.h"
 #include "Inventory.h"
 #include "Weapon.h"
+#include "InventoryWeaponSlotLayout.h"
 
 namespace smart_cover {
 	shared_str	transform_vertex(shared_str const &vertex_id, bool const &in);
@@ -253,7 +254,7 @@ void stalker_movement_manager_smart_cover::reach_enter_location			(u32 const& ti
 		return;
 
 	if (target_params().cover()->can_fire()) {
-		CInventoryItem const* const		inventory_item = object().inventory().ActiveItem();
+		CInventoryItem* const			inventory_item = object().inventory().ActiveItem();
 		if (!inventory_item) {
 			if (!object().CObjectHandler::goal_reached())
 				return;
@@ -262,7 +263,7 @@ void stalker_movement_manager_smart_cover::reach_enter_location			(u32 const& ti
 			return;
 		}
 
-		if (inventory_item->BaseSlot() != INV_SLOT_3) {
+		if (!StalkerWeaponFitsSmartCover(inventory_item)) {
 			if (!object().CObjectHandler::goal_reached())
 				return;
 
