@@ -2,6 +2,7 @@
 #include "InventoryWeaponSlotLayout.h"
 #include "Inventory.h"
 #include "inventory_item.h"
+#include "HudItem.h"
 #include "../xrEngine/xr_level_controller.h"
 
 bool InventorySecondarySlotPairingStrict()
@@ -82,6 +83,24 @@ u16 InventoryResolveSidearmEquipSlot(CInventoryItem* item)
 		return baseSlot;
 	}
 	return PISTOL_SLOT_NEW;
+}
+
+bool StalkerWeaponFitsSmartCover(CInventoryItem* item)
+{
+	if (item == nullptr)
+	{
+		return false;
+	}
+	if (item->BaseSlot() == INV_SLOT_3)
+	{
+		return true;
+	}
+	if (item->BaseSlot() != INV_SLOT_2)
+	{
+		return false;
+	}
+	CHudItem* const hudItem = item->cast_hud_item();
+	return hudItem != nullptr && hudItem->animation_slot() != 1;
 }
 
 u16 InventoryWeaponHotkeyToInventorySlot(u16 gameActionCmd)
