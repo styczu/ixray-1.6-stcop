@@ -17,6 +17,23 @@ public:
 
 };
 
+// The point type the UI draws and scales with, kept per thread. The render thread
+// switches it to pttLIT while it draws the 3D screens of detectors, the dosimeter and
+// scripted HUD items, and at the same time the game thread updates the inventory
+// (CHUDManager::OnFrameMT): with one shared value that update sometimes measured texts
+// and laid windows out unscaled, so labels and the item info window jumped for a frame.
+// Reads and writes look like those of a plain member.
+class UI_API ui_point_type
+{
+public:
+							ui_point_type	() = default;
+							ui_point_type	(const ui_point_type&) = delete;
+	ui_point_type&			operator=		(const ui_point_type&) = delete;
+
+							operator IUIRender::ePointType() const;
+	ui_point_type&			operator=		(IUIRender::ePointType type);
+};
+
 class UI_API ui_core: 
 	public CDeviceResetNotifier
 {
@@ -79,7 +96,7 @@ public:
 	Frect GetVectorUV(const std::string_view& subpath, float requested_width, float requested_height);
 	Frect GetVectorUV(const std::string_view& subpath, float requested_width, float requested_height, SVGTintRGBA tint);
 	
-	IUIRender::ePointType		m_currentPointType;
+	ui_point_type				m_currentPointType;
 };
 
 
