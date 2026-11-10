@@ -25,6 +25,7 @@
 #include "../../smart_cover_animation_planner.h"
 #include "../../script_game_object.h"
 #include "../../Weapon.h"
+#include "../../InventoryWeaponSlotLayout.h"
 
 extern const float MIN_SUITABLE_ENEMY_DISTANCE = 3.f;
 
@@ -126,7 +127,7 @@ const CCoverPoint *CAI_Stalker::find_best_cover		(const Fvector &position_to_cov
 		if (!weapon)
 			m_ce_best->can_use_smart_covers	(false);
 		else {
-			if (weapon->BaseSlot() != INV_SLOT_3)
+			if (!StalkerWeaponFitsSmartCover(weapon))
 				m_ce_best->can_use_smart_covers	(false);
 			else
 				m_ce_best->can_use_smart_covers	(true);
