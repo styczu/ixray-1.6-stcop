@@ -148,14 +148,9 @@ void CHOM::Load()
 	S->close();
 	FS.r_close(fs);
 
-	if (ps_r2_ls_flags.test(R2FLAG_EXP_MT_CALC))
-	{
-		// MT-details (@front)
-		//Device.seqParallelRender.push_back(fastdelegate::FastDelegate0<>(Details, &CDetailManager::MT_CALC));
-
-		// MT-HOM (@front)
-		Device.seqParallelRender.push_back(xr_make_delegate(this, &CHOM::MT_RENDER));
-	}
+	// HOM is rendered synchronously in CRender::Render after the camera update.
+	// The pre-render thread starts before FrameMove and nothing waits for it
+	// before visibility tests, so it could cull visible geometry for one frame.
 }
 
 void CHOM::Unload()
