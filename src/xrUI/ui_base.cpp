@@ -10,6 +10,22 @@
 
 UI_API ui_core* m_pUI_core = nullptr;
 
+namespace
+{
+	thread_local IUIRender::ePointType t_point_type = IUIRender::pttTL;
+}
+
+ui_point_type::operator IUIRender::ePointType() const
+{
+	return t_point_type;
+}
+
+ui_point_type& ui_point_type::operator=(IUIRender::ePointType type)
+{
+	t_point_type = type;
+	return *this;
+}
+
 UI_API CUICursor& GetUICursor()	
 {
 	return UI().GetUICursor();
