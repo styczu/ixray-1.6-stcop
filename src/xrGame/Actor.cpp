@@ -569,6 +569,7 @@ void CActor::Load	(const char* section )
 	m_fRun_StrafeFactor			= READ_IF_EXISTS(pSettings, r_float, section, "run_strafe_coef", 1.0f);
 	m_artefact_zone_immunity_scale	= READ_IF_EXISTS(pSettings, r_float, section, "artefact_zone_immunity_scale", 1.0f);
 	R_ASSERT2(m_artefact_zone_immunity_scale >= 0.0f, "artefact_zone_immunity_scale must not be negative");
+	m_artefact_belt_multiplicative	= READ_IF_EXISTS(pSettings, r_bool, section, "artefact_belt_multiplicative", false);
 
 
 	m_fCamHeightFactor			= pSettings->r_float(section,"camera_height_factor");
@@ -3450,11 +3451,15 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
 			conditions().ChangeBleeding((artefact->m_fBleedingRestoreSpeed * art_cond) * f_update_time);
 			conditions().ChangeHealth((artefact->m_fHealthRestoreSpeed * art_cond) * f_update_time);
 			conditions().ChangePower((artefact->m_fPowerRestoreSpeed * art_cond) * f_update_time);
-			conditions().ChangeSatiety((artefact->m_fSatietyRestoreSpeed * art_cond) * f_update_time);
-			conditions().ChangeThirst((artefact->m_fThirstRestoreSpeed * art_cond) * f_update_time);
-			if (enableSleepiness)
+			// Model mnoznikowy: potrzeby z pasa zmieniaja sam ubytek (ArtefactNeedDecayFactor).
+			if (!m_artefact_belt_multiplicative)
 			{
-				conditions().ChangeSleepiness((artefact->m_fSleepinessRestoreSpeed * art_cond) * f_update_time);
+				conditions().ChangeSatiety((artefact->m_fSatietyRestoreSpeed * art_cond) * f_update_time);
+				conditions().ChangeThirst((artefact->m_fThirstRestoreSpeed * art_cond) * f_update_time);
+				if (enableSleepiness)
+				{
+					conditions().ChangeSleepiness((artefact->m_fSleepinessRestoreSpeed * art_cond) * f_update_time);
+				}
 			}
 
 			// Scale the artefact dose before immunity; do not scale the booster.
@@ -3493,58 +3498,128 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
 	}
 }
 
+namespace
+{
+	// Zone hits: the immunity scale and the multiplicative model apply only here.
+	// Combat immunities (wound, strike, explosion, fire wound) keep the curve.
+	bool IsArtefactZoneHit(ALife::EHitType hit_type)
+	{
+		switch (hit_type)
+		{
+		case ALife::eHitTypeBurn:
+		case ALife::eHitTypeLightBurn:
+		case ALife::eHitTypeShock:
+		case ALife::eHitTypeChemicalBurn:
+		case ALife::eHitTypeRadiation:
+		case ALife::eHitTypeTelepatic:
+			return true;
+		default:
+			return false;
+		}
+	}
+}
+
 float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 {
-	float sum = 0.0f;
-	const bool IsClearSkyBalance = EngineExternal().GetEffectiveBalanceMode() == EEngineExternalBalance::ClearSky;
-
-	for (const PIItem item : inventory().m_belt)
+	if (EngineExternal().GetEffectiveBalanceMode() == EEngineExternalBalance::ClearSky)
 	{
-		if (CArtefact* artefact = item->cast_artefact())
+		float sum = 0.0f;
+		for (const PIItem item : inventory().m_belt)
 		{
-			const float protection = artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type);
-			sum += IsClearSkyBalance ? protection : protection * artefact->GetCondition();
+			if (CArtefact* artefact = item->cast_artefact())
+				sum += artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type);
+		}
+		return LegacyHitBalance::ClearSkyArtefactDamage(hit_power, sum);
+	}
+
+	return hit_power * ArtefactHitMultiplier(hit_type);
+}
+
+float CActor::ArtefactHitMultiplier(ALife::EHitType hit_type, const CArtefact* only) const
+{
+	const bool IsClearSkyBalance = EngineExternal().GetEffectiveBalanceMode() == EEngineExternalBalance::ClearSky;
+	const bool zone = IsArtefactZoneHit(hit_type);
+	const bool multiplicative = m_artefact_belt_multiplicative && zone && !IsClearSkyBalance;
+
+	float sum = 0.0f;
+	float product = 1.0f;
+	const auto add = [&](const CArtefact& artefact)
+	{
+		const float protection = artefact.m_ArtefactHitImmunities.AffectHit(1.0f, hit_type);
+		if (IsClearSkyBalance)
+		{
+			sum += protection;
+			return;
+		}
+		const float value = protection * artefact.GetCondition();
+		if (multiplicative)
+			// Each piece stops its own fraction of what still gets through.
+			product *= 1.0f - clampr(value, -1.0f, 1.0f);
+		else
+			sum += value;
+	};
+
+	if (only)
+	{
+		add(*only);
+	}
+	else
+	{
+		for (const PIItem item : inventory().m_belt)
+		{
+			if (const CArtefact* artefact = item->cast_artefact())
+				add(*artefact);
 		}
 	}
 
 	if (IsClearSkyBalance)
-	{
-		return LegacyHitBalance::ClearSkyArtefactDamage(hit_power, sum);
-	}
+		return LegacyHitBalance::ClearSkyArtefactDamage(1.0f, sum);
+	if (multiplicative)
+		return product;
 
 	// Balance: zone immunities are scaled before the clamp and the nonlinear curve.
-	// Combat immunities (wound, strike, explosion, fire wound) keep their values.
-	switch (hit_type)
-	{
-	case ALife::eHitTypeBurn:
-	case ALife::eHitTypeLightBurn:
-	case ALife::eHitTypeShock:
-	case ALife::eHitTypeChemicalBurn:
-	case ALife::eHitTypeRadiation:
-	case ALife::eHitTypeTelepatic:
+	if (zone)
 		sum *= m_artefact_zone_immunity_scale;
-		break;
-	default:
-		break;
-	}
 
 	if (sum == 0.0f)
-		return hit_power;
+		return 1.0f;
 
 	clamp(sum, -0.99f, 0.99f);
 
 	if (sum > 0.0f)
+		return 1.0f - 1.5f * pow(0.9f, (4.0f / sum));
+	return 1.0f + 1.5f * pow(0.9f, (4.0f / (-1.0f * sum)));
+}
+
+float CActor::ArtefactNeedDecayFactor(EArtefactNeed need, float base_decay) const
+{
+	if (!m_artefact_belt_multiplicative || base_decay <= 0.0f)
+		return 1.0f;
+
+	// Same condition rule as the additive path in UpdateArtefactsOnBeltAndOutfit.
+	const bool IsLegacyBalance = EngineExternal().GetEffectiveBalanceMode() != EEngineExternalBalance::CallOfPripyat;
+	float factor = 1.0f;
+	for (const PIItem item : inventory().m_belt)
 	{
-		sum = 1.5f * pow(0.9f, (4.0f / sum));
-		hit_power = hit_power * (1.0f - sum);
-		return hit_power;
+		const CArtefact* artefact = item->cast_artefact();
+		if (!artefact)
+			continue;
+
+		float restore = 0.0f;
+		switch (need)
+		{
+		case EArtefactNeed::Satiety:	restore = artefact->m_fSatietyRestoreSpeed; break;
+		case EArtefactNeed::Thirst:		restore = artefact->m_fThirstRestoreSpeed; break;
+		case EArtefactNeed::Sleepiness:	restore = artefact->m_fSleepinessRestoreSpeed; break;
+		}
+		if (restore == 0.0f)
+			continue;
+
+		const float art_cond = IsLegacyBalance ? 1.0f : artefact->GetCondition();
+		// restore / base_decay = the piece's share of the base decay (+ slows, - speeds up).
+		factor *= 1.0f - clampr(restore * art_cond / base_decay, -1.0f, 1.0f);
 	}
-	else
-	{
-		sum = 1.5f * pow(0.9f, (4.0f / (-1.0f * sum)));
-		hit_power = hit_power * (1.0f + sum);
-		return hit_power;
-	}
+	return factor;
 }
 
 float CActor::HitArtefactsOnBeltLegacy(float hit_power, ALife::EHitType hit_type)
