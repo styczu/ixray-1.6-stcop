@@ -7,6 +7,7 @@
 
 class CCustomOutfit;
 class CHelmet;
+class CArmorBase;
 class CUIDoubleProgressBar;
 class CUIXml;
 class CUIScrollView;
@@ -86,7 +87,9 @@ protected:
 	// Dodatkowe wiersze spoza tablicy hit-typow.
 	CUIOutfitImmunity*	m_impact_absorption = nullptr; // (1 - hit_fraction_actor)
 	CUIOutfitImmunity*	m_stamina_impact = nullptr;    // (1 - power_loss)
+	CUIOutfitImmunity*	m_durability = nullptr;        // trwalosc w punktach (ArmorDurability.h)
 
 	void				ShowInList			( CUIOutfitImmunity* item, bool visible );
+	void				UpdateDurability	( CArmorBase* cur, CArmorBase* slot );
 
 }; // class CUIOutfitInfo
