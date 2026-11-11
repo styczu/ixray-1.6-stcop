@@ -56,6 +56,8 @@ public:
 
 	bool					GlassPresent = false;
 	float					m_fPowerLoss = 0.0f;
+	// Suma durability_points zainstalowanych ulepszen (ArmorDurability.h).
+	float					DurabilityPoints = 0.0f;
 	SBoneProtections*		m_boneProtection;
 
 protected:
