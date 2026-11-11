@@ -26,4 +26,25 @@ namespace ArmorDurability
 	{
 		return WorstPoints + (BestPoints - WorstPoints) * std::log(WorstWear / Wear) / std::log(WorstWear / BestWear);
 	}
+
+	// Trwalosc przedmiotu w dymku: srednia punktow typow, ktore go zuzywaja
+	// (k > 0), po mnozniku ulepszen WearFactor. Ulepszenie dodaje te same punkty
+	// kazdemu typowi, wiec srednia rosnie o tyle samo. false: nic nie zuzywa.
+	inline bool MeanPoints(const float* Wear, unsigned Count, float WearFactor, float& Mean)
+	{
+		float Sum = 0.0f;
+		unsigned Used = 0;
+		for (unsigned i = 0; i < Count; ++i)
+		{
+			if (Wear[i] > 0.0f)
+			{
+				Sum += Points(Wear[i] * WearFactor);
+				++Used;
+			}
+		}
+		if (!Used)
+			return false;
+		Mean = Sum / float(Used);
+		return true;
+	}
 }
