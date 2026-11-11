@@ -308,6 +308,8 @@ bool UIProperty::show_physical(LPCSTR values)
 {
     if (xr_strcmp(m_property_id.c_str(), "prop_armor") == 0)
         return show_armor(values);
+    if (xr_strcmp(m_property_id.c_str(), "prop_durability") == 0)
+        return show_durability(values);
 
     const bool mechanical = xr_strcmp(m_property_id.c_str(), "prop_damage") == 0;
     const bool impact = xr_strcmp(m_property_id.c_str(), "prop_damage_absorption") == 0;
@@ -447,6 +449,36 @@ bool UIProperty::show_weapon_row(const CUIWeaponParams::SUpgradeRow& row)
 	xr_strconcat(m_text, get_property()->name(), ": ", number, index == CUIWeaponParams::eUpgradeImpulse ? "" : " ", unit.c_str());
 	m_ui_text->SetText(m_text);
 	return true;
+}
+
+// prop_durability: suma durability_points sekcji (armor-durability-points). Tyle
+// samo punktow dostaje kazdy typ trafienia, wiec tyle rosnie srednia "Trwalosc"
+// w dymku przedmiotu. Sekcje bez klucza: funktor skryptu jak dotad.
+bool UIProperty::show_durability(LPCSTR values)
+{
+    if (!get_property())
+        return false;
+    float sum = 0.0f;
+    bool found = false;
+    string256 section;
+    const int count = _GetItemCount(values);
+    for (int i = 0; i < count; ++i)
+    {
+        _GetItem(values, i, section);
+        float value;
+        if (read_value_from_section(section, "durability_points", value))
+        {
+            sum += value;
+            found = true;
+        }
+    }
+    if (!found)
+        return false;
+    string32 number;
+    ConditionUi::FormatNumber(number, sum, ConditionUi::DecimalSeparator(), true, 0);
+    xr_strconcat(m_text, get_property()->name(), ": ", number);
+    m_ui_text->SetText(m_text);
+    return true;
 }
 
 bool UIProperty::show_result(LPCSTR values)
@@ -734,7 +766,8 @@ bool UIProperty::is_physical() const
 {
     return xr_strcmp(m_property_id.c_str(), "prop_damage") == 0 ||
         xr_strcmp(m_property_id.c_str(), "prop_damage_absorption") == 0 ||
-        xr_strcmp(m_property_id.c_str(), "prop_armor") == 0;
+        xr_strcmp(m_property_id.c_str(), "prop_armor") == 0 ||
+        xr_strcmp(m_property_id.c_str(), "prop_durability") == 0;
 }
 
 bool UIProperty::is_regeneration() const
