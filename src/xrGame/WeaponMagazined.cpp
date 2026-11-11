@@ -26,6 +26,7 @@
 #include "player_hud.h"
 #include "CustomDevice.h"
 #include "WeaponRPG7.h"
+#include "ai/stalker/ai_stalker.h"
 #if USE_OLD_OBJECT_PLANNER
 #include "Legacy/object_handler_planner.h"
 #endif
@@ -1310,6 +1311,30 @@ void CWeaponMagazined::UpdateSounds	()
 	}
 }
 
+bool CWeaponMagazined::StopForFriendlyFire(const Fvector& Position, const Fvector& Direction, int ShotCount)
+{
+	CAI_Stalker* Stalker = H_Parent() ? H_Parent()->cast_stalker() : nullptr;
+	if (!Stalker)
+	{
+		return false;
+	}
+
+	// Early rounds can still use the origin and direction from the start of the burst.
+	const bool CountShots = !infinite_fire() || m_bIAmWeaponRPG7;
+	const int FirstShot = m_iShotNum + (CountShots ? 1 : 0);
+	const int LastShot = m_iShotNum + (CountShots ? ShotCount : 0);
+	const float Dispersion = CWeapon::GetFireDispersion(true, true);
+	if ((FirstShot <= m_iBaseDispersionedBulletsCount && Stalker->WouldHitFriendly(m_vStartPos, m_vStartDir, Dispersion)) ||
+		(LastShot > m_iBaseDispersionedBulletsCount && Stalker->WouldHitFriendly(Position, Direction, Dispersion)))
+	{
+		m_bFireSingleShot = false;
+		StopShooting();
+		return true;
+	}
+
+	return false;
+}
+
 void CWeaponMagazined::state_Fire(float dt)
 {
 	if(AmmoElapsed.MagazineElapsed > 0)
@@ -1350,6 +1375,12 @@ void CWeaponMagazined::state_Fire(float dt)
 
 		while (!m_magazine.empty() && fShotTimeCounter < 0 && (IsWorking() || m_bFireSingleShot) && (m_iQueueSize < 0 || m_iShotNum < m_iQueueSize) && !m_bNeedPumpState)
 		{
+			const bool DoubleShot = cast_weapon_bm16() && AmmoElapsed.MagazineElapsed == 2 && GetQueueSize() == 2;
+			if (StopForFriendlyFire(p1, d, DoubleShot ? 2 : 1))
+			{
+				return;
+			}
+
 			if( CheckForMisfire() )
 			{
 				StopShooting();
@@ -1401,7 +1432,7 @@ void CWeaponMagazined::state_Fire(float dt)
 				}
 			}
 
-			if (cast_weapon_bm16() && AmmoElapsed.MagazineElapsed == 2 && GetQueueSize() == 2)
+			if (DoubleShot)
 			{
 				for (u8 i = 0; i < 2; i++)
 				{
@@ -1533,6 +1564,11 @@ void CWeaponMagazined::state_FireChamber(float dt)
 
 		while (!m_chamber.empty() && fShotTimeCounter < 0 && (IsWorking() || m_bFireSingleShot) && (m_iQueueSize < 0 || m_iShotNum < m_iQueueSize) && !m_bNeedPumpState)
 		{
+			if (StopForFriendlyFire(p1, d, 1))
+			{
+				return;
+			}
+
 			if (CheckForMisfire())
 			{
 				StopShooting();
@@ -2050,10 +2086,6 @@ void CWeaponMagazined::switch2_Idle	()
 	SetPending			(false);
 	PlayAnimIdle		();
 }
-
-#ifdef DEBUG
-#include "ai/stalker/ai_stalker.h"
-#endif
 
 void CWeaponMagazined::switch2_Fire	()
 {
