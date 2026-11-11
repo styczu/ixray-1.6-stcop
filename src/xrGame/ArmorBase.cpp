@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "ArmorBase.h"
+#include "ArmorDurability.h"
 #include "object_broker.h"
 #include "Actor.h"
 #include "ActorHelmet.h"
@@ -122,6 +123,9 @@ void CArmorBase::Load(const char* section)
 
 	IRestoresOwner::Load(section);
 
+	// Ulepszenia instaluja sie po Load (net_Spawn_install_upgrades), jak immunities_sect_add.
+	DurabilityPoints = 0.0f;
+
 	m_fPowerLoss = READ_IF_EXISTS(pSettings, r_float, section, "power_loss", 1.0f);
 	clamp(m_fPowerLoss, 0.0f, 1.0f);
 
@@ -157,7 +161,7 @@ void CArmorBase::Hit(float hit_power, ALife::EHitType hit_type)
 {
 	IAntigas::Hit(hit_power, hit_type, GetHitImmunity(hit_type));
 
-	hit_power *= GetHitImmunity(hit_type);
+	hit_power *= GetHitImmunity(hit_type) * ArmorDurability::Factor(DurabilityPoints);
 	if (CActor* actor = H_Parent() != nullptr ? H_Parent()->cast_actor() : nullptr)
 	{
 		hit_power *= actor->GetArtefactEquipmentDurabilityModifier();
@@ -216,6 +220,7 @@ bool CArmorBase::install_upgrade_impl(const char* section, bool test)
 	result |= process_if_exists(section, "chemical_burn_protection", m_HitTypeProtection[ALife::eHitTypeChemicalBurn], test);
 	result |= process_if_exists(section, "explosion_protection", m_HitTypeProtection[ALife::eHitTypeExplosion], test);
 	result |= process_if_exists(section, "fire_wound_protection", m_HitTypeProtection[ALife::eHitTypeFireWound], test);
+	result |= process_if_exists(section, "durability_points", DurabilityPoints, test);
 
 	const shared_str PreviousNightVisionSection = m_NightVisionSect;
 	const bool HasNightVisionUpgrade = process_if_exists_set(section, "nightvision_sect", m_NightVisionSect, test);
