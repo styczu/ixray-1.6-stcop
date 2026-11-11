@@ -69,6 +69,7 @@ public:
 	void set_armor_context(CInventoryItem* item, bool installed);
 	bool show_armor(const char* values);
 	bool show_physical(const char* values);
+	bool show_durability(const char* values);
 	// Indeks wiersza broni (CUIWeaponParams::EUpgradeRow) albo -1.
 	int weapon_row() const;
 	bool is_weapon_label() const;
