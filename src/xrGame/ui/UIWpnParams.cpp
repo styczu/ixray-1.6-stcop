@@ -13,6 +13,7 @@
 #include "WeaponKnife.h"
 #include "Silencer.h"
 #include "../../xrUI/UIHelper.h"
+#include "../../xrEngine/xr_input.h"
 
 using namespace InventoryUtilities;
 
@@ -310,6 +311,16 @@ void CUIConditionParams::SetInfo( CInventoryItem const* slot_item, CInventoryIte
 	if ( slot_item && (slot_item != &cur_item) /*&& (cur_item.object().cNameSect()._get() == slot_item->object().cNameSect()._get())*/ )
 	{
 		slot_value = slot_item->GetConditionToShow() * 100.0f + 1.0f - EPS;
+	}
+	// Kombinezon i helm jak w dymku broni (ui-armor-tooltip-keys): drugi pasek tylko
+	// z lewym Alt, z Ctrl przedmiot jak nowy. Bez klawiszy na padzie.
+	if ( const_cast<CInventoryItem&>( cur_item ).cast_armorbase() )
+	{
+		const bool gamepad = pInput->GetControllerMode();
+		if ( gamepad || !pInput->iGetAsyncKeyState( SDL_SCANCODE_LALT ) )
+			slot_value = cur_value;
+		if ( !gamepad && ( pInput->iGetAsyncKeyState( SDL_SCANCODE_LCTRL ) || pInput->iGetAsyncKeyState( SDL_SCANCODE_RCTRL ) ) )
+			cur_value = slot_value = 100.0f + 1.0f - EPS;
 	}
 	m_progress.SetTwoPos( cur_value, slot_value );
 }

@@ -89,6 +89,8 @@ public:
 	UIInvUpgPropertiesWnd*	UIUpgradesSide;
 	CUIFrameWindow*			UIUpgradesFrame;
 	bool					m_upgrades_side;
+	// Armour details in the same side frame while Shift is held (ui-armor-tooltip-keys).
+	CUIStatic*				UIArmorDetails = nullptr;
 	CUIOutfitInfo*			UIOutfitInfo;
 	CUIBoosterInfo*			UIBoosterInfo;
 	CUIGrenadeParams*		UIGrenadeParams;
