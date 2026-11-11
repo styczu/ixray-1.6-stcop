@@ -94,10 +94,27 @@ public:
 	FactoryPtr<IUIShader>* getShader(void) const;
 	void createShader();
 
+	// Uploads the regions that were added outside the render thread. Call only on the render
+	// thread (CSVGStorage::BeginRasterFrameCache does it at frame begin, under its lock).
+	void flushPendingUploads();
+
 private:
+	// A region rasterized outside the render thread: the immediate device context is not
+	// thread-safe, so its pixels (tightly packed RGBA8) wait here for flushPendingUploads.
+	struct PendingUpload
+	{
+		u32 x{};
+		u32 y{};
+		u32 w{};
+		u32 h{};
+		xr_vector<u8> pixels;
+	};
+
 	element_lookupid_type findNearestSpatialIndex(float w, float h) const;
 	void addRegion(u32 x, u32 y, u32 w, u32 h, const void* pData, u32 pitch);
+	void uploadRegion(u32 x, u32 y, u32 w, u32 h, const void* pData, u32 pitch);
 private:
+	xr_vector<PendingUpload> m_pending_uploads;
 #ifdef DEBUG
 	bool init_was_called;
 	bool shader_was_created;
