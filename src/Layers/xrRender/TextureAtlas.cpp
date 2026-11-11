@@ -9,9 +9,12 @@
 #include "smol-atlas.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
+#include <thread>
 
 #include "../../xrCore/_math.h"
 
@@ -19,6 +22,17 @@ constexpr int SVGStorage_DefaultAtlasSize = 512;
 
 namespace
 {
+// The thread that begins frames (stored by CSVGStorage::BeginRasterFrameCache). Atlas regions
+// added on any other thread wait for that thread instead of touching the immediate device
+// context; before the first frame they upload at once, as they always did.
+std::atomic<std::thread::id> g_svg_render_thread{};
+
+bool IsSvgUploadDeferred()
+{
+	const std::thread::id renderThread = g_svg_render_thread.load(std::memory_order_relaxed);
+	return renderThread != std::thread::id{} && renderThread != std::this_thread::get_id();
+}
+
 IC u64 SvgHashCombineU64(u64 a, u64 b)
 {
 	return a ^ (b + 0x9e3779b97f4a7c15ULL + (a << 6) + (a >> 2));
@@ -178,12 +192,15 @@ CTextureAtlas::CTextureAtlas(CTextureAtlas&& other) noexcept :
 		m_atlas_items_spatial_indexing.emplace_back(std::move(element));
 	}
 
+	m_pending_uploads = std::move(other.m_pending_uploads);
+
 	other.m_p_atlas = nullptr;
 	other.m_p_texture = nullptr;
 	other.m_p_shader = nullptr;
 	other.m_id = _kRenderBackend_TextureAtlasInvalidID;
 	other.m_atlas_items.clear();
 	other.m_atlas_items_spatial_indexing.clear();
+	other.m_pending_uploads.clear();
 
 #ifdef DEBUG
 	other.init_was_called = false;
@@ -219,12 +236,15 @@ CTextureAtlas& CTextureAtlas::operator=(CTextureAtlas&& other) noexcept
 			m_atlas_items_spatial_indexing.emplace_back(std::move(element));
 		}
 
+		m_pending_uploads = std::move(other.m_pending_uploads);
+
 		other.m_p_atlas = nullptr;
 		other.m_p_texture = nullptr;
 		other.m_p_shader = nullptr;
 		other.m_id = _kRenderBackend_TextureAtlasInvalidID;
 		other.m_atlas_items.clear();
 		other.m_atlas_items_spatial_indexing.clear();
+		other.m_pending_uploads.clear();
 
 #ifdef DEBUG
 		init_was_called = other.init_was_called;
@@ -260,6 +280,8 @@ void CTextureAtlas::init(int width, int height, const char* pName)
 
 void CTextureAtlas::uninit()
 {
+	m_pending_uploads.clear();
+
 	if (m_p_texture)
 	{
 		m_p_texture->can_unload = false;
@@ -399,6 +421,42 @@ void CTextureAtlas::addRegion(u32 x, u32 y, u32 w, u32 h, const void* pData, u32
 	if (!m_p_texture || !m_p_texture->pSurface || !pData)
 		return;
 
+	if (!IsSvgUploadDeferred())
+	{
+		uploadRegion(x, y, w, h, pData, pitch);
+		return;
+	}
+
+	// Copy now: the caller's bitmap dies when it returns. Until the flush the region stays as
+	// the empty texture left it, so the mark appears one frame later.
+	const u32 rowBytes = w * 4;
+	PendingUpload& upload = m_pending_uploads.emplace_back();
+	upload.x = x;
+	upload.y = y;
+	upload.w = w;
+	upload.h = h;
+	upload.pixels.resize(static_cast<size_t>(rowBytes) * h);
+	const u8* src = static_cast<const u8*>(pData);
+	for (u32 row = 0; row < h; ++row)
+		std::memcpy(upload.pixels.data() + static_cast<size_t>(row) * rowBytes, src + static_cast<size_t>(row) * pitch, rowBytes);
+}
+
+void CTextureAtlas::flushPendingUploads()
+{
+	if (m_pending_uploads.empty())
+		return;
+
+	if (m_p_texture && m_p_texture->pSurface)
+	{
+		for (const PendingUpload& upload : m_pending_uploads)
+			uploadRegion(upload.x, upload.y, upload.w, upload.h, upload.pixels.data(), upload.w * 4);
+	}
+
+	m_pending_uploads.clear();
+}
+
+void CTextureAtlas::uploadRegion(u32 x, u32 y, u32 w, u32 h, const void* pData, u32 pitch)
+{
 	RHISubResource sub;
 	sub.Data = pData;
 	sub.Width = w;
@@ -717,6 +775,7 @@ void CSVGStorage::init()
 
 void CSVGStorage::uninit()
 {
+	xrCriticalSectionGuard guard(m_lock);
 	m_docLruSlots.clear();
 	m_readBuffer.clear();
 	m_frameShaderUvCache.clear();
@@ -801,6 +860,7 @@ const std::pmr::vector<CTextureAtlas>& CSVGStorage::get_atlases(void) const
 
 const FactoryPtr<IUIShader>& CSVGStorage::get_shader(const std::string_view& subpath, float requested_width, float requested_height, SVGTintRGBA tint)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	R_ASSERT(m_p_default_shader && "default shader must be initialized!");
 
 	const FactoryPtr<IUIShader>* pShader = nullptr;
@@ -824,6 +884,7 @@ const FactoryPtr<IUIShader>& CSVGStorage::get_default_shader()
 
 Frect CSVGStorage::get_uv(const std::string_view& subpath, float requested_width, float requested_height, SVGTintRGBA tint)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	const FactoryPtr<IUIShader>* pShader = nullptr;
 	Frect uv{};
 	ResolveSvgRasterDraw(subpath, requested_width, requested_height, tint, &pShader, &uv);
@@ -832,21 +893,30 @@ Frect CSVGStorage::get_uv(const std::string_view& subpath, float requested_width
 
 void CSVGStorage::BeginRasterFrameCache()
 {
+	xrCriticalSectionGuard guard(m_lock);
+	g_svg_render_thread.store(std::this_thread::get_id(), std::memory_order_relaxed);
 	m_frameShaderUvCache.clear();
+
+	m_default_atlas.flushPendingUploads();
+	for (CTextureAtlas& atlas : m_storage_atlases)
+		atlas.flushPendingUploads();
 }
 
 void CSVGStorage::SetRasterUserScale(float scale)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	m_rasterUserScale = (scale > 0.f) ? scale : 1.f;
 }
 
 void CSVGStorage::SetMaxRasterPixels(u32 pixels)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	m_maxRasterPixels = (pixels > 0) ? pixels : _kSVGStorage_DefaultMaxRasterPixels;
 }
 
 void CSVGStorage::PrecacheSVG(std::string_view subpath, float width, float height, SVGTintRGBA tint)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	if (subpath.empty())
 		return;
 	const FactoryPtr<IUIShader>* pShader = nullptr;
@@ -856,17 +926,20 @@ void CSVGStorage::PrecacheSVG(std::string_view subpath, float width, float heigh
 
 void CSVGStorage::PrecacheSVGList(const xr_vector<xr_string>& paths, float width, float height, SVGTintRGBA tint)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	for (const xr_string& p : paths)
 		PrecacheSVG(p, width, height, tint);
 }
 
 void CSVGStorage::InvalidateAllSvgDocuments()
 {
+	xrCriticalSectionGuard guard(m_lock);
 	m_docLruSlots.clear();
 }
 
 void CSVGStorage::ReloadSVG(std::string_view subpath)
 {
+	xrCriticalSectionGuard guard(m_lock);
 	EraseDocumentLruByPathKey(MakeSubpathKey(subpath));
 }
 
@@ -1156,6 +1229,7 @@ void CSVGStorage::DebugRecordRenderToBitmapTime(u64 deltaTicks)
 
 void CSVGStorage::DebugCollectSvgCacheRows(xr_vector<SvgDebugCacheTableRow>& out) const
 {
+	xrCriticalSectionGuard guard(m_lock);
 	out.clear();
 	out.reserve(m_storage_textures.size());
 	for (const auto& kv : m_storage_textures)
@@ -1175,6 +1249,7 @@ void CSVGStorage::DebugCollectSvgCacheRows(xr_vector<SvgDebugCacheTableRow>& out
 
 void CSVGStorage::DebugResetSvgMetrics()
 {
+	xrCriticalSectionGuard guard(m_lock);
 	m_debugDocCacheHits = 0;
 	m_debugDocCacheMisses = 0;
 	m_debugNewAtlasAllocCount = 0;
