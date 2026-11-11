@@ -2,6 +2,7 @@ local treasure_manager = nil
 class "CTreasureManager"
 function CTreasureManager:__init()
 	self.items_spawned = false
+	self.missing_checked = false -- [IX-Ray Refinements] treasure-missing-item-restore
 	self.check_time = nil
 	self.secrets = {}
 		self.secret_restrs = {}
@@ -105,6 +106,11 @@ function CTreasureManager:update()
                 end
             self.items_spawned = true
         end
+        -- [IX-Ray Refinements] treasure-missing-item-restore
+        if not(self.missing_checked) then
+            self.missing_checked = true
+            self:restore_missing_items()
+        end
         local global_time = time_global()
         if(self.check_time and global_time-self.check_time<=500) then
             return
@@ -180,6 +186,152 @@ function CTreasureManager:spawn_treasure(treasure_id)
             end
         end
     end)
+end
+
+-- [IX-Ray Refinements] treasure-missing-item-restore
+-- Przedmiot skrytki, ktorego nie ma juz w alife (np. zabral go NPC, zanim
+-- CItemManager::useful znow pomijal obiekty bez AI locations), wraca na swoj
+-- znacznik. Bez tego to_find nie spada do zera i znacznik skrytki zostaje na
+-- mapie na zawsze. Sekcja zgubionego przedmiotu nie jest zapisywana, wiec:
+-- znaczniki skrytki minus jej obecne przedmioty, a przedmioty zabrane przez
+-- gracza rozpoznaje ciagly blok ID z pierwszego spawnu. Gdy wynik nie jest
+-- jednoznaczny, zgubiony przedmiot liczy sie tylko jako znaleziony.
+local function treasure_log(fmt, ...)
+	if log then
+		log(string.format("* [treasure_manager] " .. fmt, ...))
+	end
+end
+
+function CTreasureManager:restore_missing_items()
+	local sim = alife()
+	if not sim then
+		return
+	end
+	local by_restr = {}
+	for item_id, restr_id in pairs(self.items_from_secrets) do
+		if not by_restr[restr_id] then
+			by_restr[restr_id] = {}
+		end
+		table.insert(by_restr[restr_id], item_id)
+	end
+	for treasure_id, restr_id in pairs(self.secret_restrs) do
+		local secret = self.secrets[treasure_id]
+		if secret and by_restr[restr_id] then
+			self:restore_treasure_items(sim, treasure_id, secret, restr_id, by_restr[restr_id])
+		end
+	end
+end
+
+function CTreasureManager:restore_treasure_items(sim, treasure_id, secret, restr_id, tracked)
+	local remaining = {}
+	local markers = {}
+	for section, params in pairs(secret.items) do
+		for num = 1, #params do
+			local ids = params[num].item_ids
+			if ids then
+				for i = 1, #ids do
+					remaining[section] = (remaining[section] or 0) + 1
+					if not markers[section] then
+						markers[section] = {}
+					end
+					table.insert(markers[section], ids[i])
+				end
+			end
+		end
+	end
+
+	local tracked_set = {}
+	local missing = {}
+	for _, item_id in ipairs(tracked) do
+		tracked_set[item_id] = true
+		local se_obj = sim:object(item_id)
+		local section = se_obj and se_obj:section_name()
+		if section and remaining[section] and remaining[section] > 0 then
+			remaining[section] = remaining[section] - 1
+		else
+			table.insert(missing, item_id)
+		end
+	end
+	if #missing == 0 then
+		return
+	end
+
+	local function remaining_total()
+		local n = 0
+		for _, count in pairs(remaining) do
+			n = n + count
+		end
+		return n
+	end
+	-- przedmiot spoza skrytki o sekcji z jej listy: zabrany przez gracza
+	local function account(id)
+		if tracked_set[id] then
+			return true
+		end
+		if self.items_from_secrets[id] then
+			return false
+		end
+		local se_obj = sim:object(id)
+		local section = se_obj and se_obj:section_name()
+		if section and remaining[section] and remaining[section] > 0 then
+			remaining[section] = remaining[section] - 1
+			return true
+		end
+		return false
+	end
+
+	if remaining_total() > #missing then
+		local lo, hi = 65535, 0
+		for _, item_id in ipairs(tracked) do
+			lo = math.min(lo, item_id)
+			hi = math.max(hi, item_id)
+		end
+		local consistent = true
+		for id = lo, hi do
+			if not account(id) then
+				consistent = false
+				break
+			end
+		end
+		if consistent then
+			local id = lo - 1
+			while remaining_total() > #missing and id >= 0 and account(id) do
+				id = id - 1
+			end
+			id = hi + 1
+			while remaining_total() > #missing and id < 65535 and account(id) do
+				id = id + 1
+			end
+		end
+	end
+
+	if remaining_total() ~= #missing then
+		for _, item_id in ipairs(missing) do
+			self:on_item_take(item_id)
+		end
+		treasure_log("secret [%s]: %d missing item(s) of unknown section counted as found", treasure_id, #missing)
+		return
+	end
+
+	local next_missing = 1
+	for section, count in pairs(remaining) do
+		for k = 1, count do
+			local old_id = missing[next_missing]
+			next_missing = next_missing + 1
+			local marker = markers[section][k] and sim:object(markers[section][k])
+			if marker then
+				local obj = sim:create(section, marker.position, marker.m_level_vertex_id, marker.m_game_vertex_id)
+				obj.angle = marker.angle
+				obj:use_ai_locations(marker:used_ai_locations())
+				self.items_from_secrets[old_id] = nil
+				self.items_from_secrets[obj.id] = restr_id
+				treasure_log("secret [%s]: missing item %d restored as [%s] %d", treasure_id, old_id, section, obj.id)
+			else
+				self:on_item_take(old_id)
+				treasure_log("secret [%s]: missing item %d [%s] has no marker, counted as found", treasure_id, old_id, section)
+			end
+		end
+	end
 end
 
 function CTreasureManager:give_treasure(treasure_id, spawn)
