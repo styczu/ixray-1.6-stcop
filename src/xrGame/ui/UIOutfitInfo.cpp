@@ -14,6 +14,7 @@
 #include "../player_hud.h"
 #include "../../xrEngine/string_table.h"
 #include "../BoneProtections.h"
+#include "../ArmorDurability.h"
 
 namespace
 {
@@ -26,6 +27,25 @@ namespace
 			return 1.0f - Actor.HitArtefactsOnBeltLegacy(1.0f, HitType);
 		}
 		return Actor.GetProtection_ArtefactsOnBelt(HitType);
+	}
+
+	// Typy z kluczem *_immunity w immunities_sect. LightBurn jest kopia burn,
+	// a PhysicStrike nie ma klucza, wiec oba sa pominiete.
+	constexpr ALife::EHitType WearTypes[] =
+	{
+		ALife::eHitTypeFireWound, ALife::eHitTypeWound, ALife::eHitTypeStrike, ALife::eHitTypeExplosion,
+		ALife::eHitTypeBurn, ALife::eHitTypeShock, ALife::eHitTypeChemicalBurn, ALife::eHitTypeRadiation,
+		ALife::eHitTypeTelepatic,
+	};
+	constexpr unsigned WearTypeCount = sizeof(WearTypes) / sizeof(WearTypes[0]);
+
+	// Trwalosc przedmiotu: srednia punktow typow, ktore go zuzywaja (z ulepszeniami).
+	bool DurabilityMean(CArmorBase& Item, float& Mean)
+	{
+		float Wear[WearTypeCount];
+		for (unsigned i = 0; i < WearTypeCount; ++i)
+			Wear[i] = Item.GetHitImmunity(WearTypes[i]);
+		return ArmorDurability::MeanPoints(Wear, WearTypeCount, ArmorDurability::Factor(Item.DurabilityPoints), Mean);
 	}
 }
 
@@ -259,6 +279,7 @@ CUIOutfitInfo::~CUIOutfitInfo()
 	}
 	xr_delete( m_impact_absorption );
 	xr_delete( m_stamina_impact );
+	xr_delete( m_durability );
 }
 
 void CUIOutfitInfo::ShowInList(CUIOutfitImmunity* item, bool visible)
@@ -322,6 +343,14 @@ void CUIOutfitInfo::InitFromXml( CUIXml& xml_doc )
 			(*extra)->SetWndPos(pos);
 			pos.y += (*extra)->GetWndSize().y + RowSpacing;
 		}
+	}
+	// Trwalosc w punktach 2-100: pasek pelny przy 100 (bez przepelnienia).
+	m_durability = CreateItem(xml_doc, "durability", 1.0f, "", "ui_uip_durability");
+	if (m_durability && !m_listWnd)
+	{
+		AttachChild(m_durability);
+		m_durability->SetWndPos(pos);
+		pos.y += m_durability->GetWndSize().y + RowSpacing;
 	}
 	pos.x = GetWndSize().x;
 	SetWndSize( pos );
@@ -475,6 +504,25 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
 		m_stamina_impact->SetProgressValue( cur, slot );
 		ShowInList( m_stamina_impact, true );
 	}
+	UpdateDurability( cur_outfit, slot_outfit );
+}
+
+// Wiersz "Trwalosc": srednia punktow (ArmorDurability.h), porownanie z przedmiotem
+// w slocie. Nic nie zuzywa przedmiotu albo wiersz w trybie tekstowym: bez wiersza.
+void CUIOutfitInfo::UpdateDurability(CArmorBase* cur, CArmorBase* slot)
+{
+	if (!m_durability)
+		return;
+	float cur_points = 0.0f;
+	const bool shown = !m_durability->GetLegacyMode() && cur && DurabilityMean(*cur, cur_points);
+	if (shown)
+	{
+		float slot_points = cur_points;
+		if (slot && !DurabilityMean(*slot, slot_points))
+			slot_points = 0.0f;
+		m_durability->SetPointsValue(cur_points / 100.0f, slot_points / 100.0f, 1.0f);
+	}
+	ShowInList(m_durability, shown);
 }
 
 
@@ -545,4 +593,5 @@ void CUIOutfitInfo::UpdateInfo(CHelmet* cur_helmet, CHelmet* slot_helmet)
 		m_stamina_impact->Show( false );
 		ShowInList( m_stamina_impact, false );
 	}
+	UpdateDurability( cur_helmet, slot_helmet );
 }
