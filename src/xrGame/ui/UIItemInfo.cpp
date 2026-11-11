@@ -234,6 +234,11 @@ bool CUIItemInfo::InitItemInfo(const char* xml_name)
 				AttachChild					(UIUpgradesFrame);
 				xml_init.InitFrameWindow	(uiXml, "background_frame", 0, UIUpgradesFrame);
 				UIUpgradesFrame->AttachChild(UIUpgradesSide);
+				// Armour details (Shift, ui-armor-tooltip-keys) share the frame.
+				UIArmorDetails				= new CUIStatic();
+				UIArmorDetails->SetAutoDelete(true);
+				UIUpgradesFrame->AttachChild(UIArmorDetails);
+				UIArmorDetails->Show		(false);
 				UIUpgradesFrame->Show		(false);
 			}
 		}
@@ -312,6 +317,9 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 		// difference column (ui-weapon-compare-numbers).
 		if (UIWeaponParams && UIWeaponParams->Check(*pInvItem))
 			ExtraWidth = std::max(ExtraWidth, UIWeaponParams->GetWidth() - (BaseDescriptionWidth - 10.0f));
+		// The armour tooltip with its difference column (ui-armor-tooltip-keys).
+		if (UIOutfitInfo && (pInvItem->cast_outfit() || pInvItem->cast_helmet()))
+			ExtraWidth = std::max(ExtraWidth, UIOutfitInfo->GetWidth() - (BaseDescriptionWidth - 10.0f));
 		SetWidth(BaseTooltipWidth + ExtraWidth);
 		UIDesc->SetWidth(BaseDescriptionWidth + ExtraWidth);
 		if (UIName)
@@ -590,6 +598,26 @@ void CUIItemInfo::TryAddOutfitInfo(CInventoryItem& pInvItem, CInventoryItem* pCo
 	CHelmet* helmet = pInvItem.cast_helmet();
 	CBackpack* backpack = pInvItem.cast_backpack();
 
+	// Keys as on the weapon tooltip (built every frame while hovered, so it follows
+	// them; none on a gamepad): the comparison with the item in the slot only while
+	// the left Alt is held, the item and the compared one as new with Ctrl.
+	if (UIOutfitInfo && (outfit || helmet))
+	{
+		const bool gamepad = pInput->GetControllerMode();
+		const bool compare_key = !gamepad && pInput->iGetAsyncKeyState(SDL_SCANCODE_LALT);
+		const bool as_new = !gamepad &&
+			(pInput->iGetAsyncKeyState(SDL_SCANCODE_LCTRL) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RCTRL));
+		UIOutfitInfo->SetKeys(compare_key, as_new);
+		if (compare_key)
+		{
+			const bool same_kind = pCompareItem && (outfit ? pCompareItem->cast_outfit() != nullptr : pCompareItem->cast_helmet() != nullptr);
+			const bool other = same_kind && pCompareItem != &pInvItem;
+			const shared_str none = g_pStringTable->translate(pCompareItem == &pInvItem ? "ui_uip_outfit_compare_self" : "ui_uip_wpn_compare_none");
+			if (CUIStatic* line = UIOutfitInfo->SetCompareLine(other ? pCompareItem->NameShort() : none.c_str()))
+				UIDesc->AddWindow(line, false);
+		}
+	}
+
 	if (outfit && UIOutfitInfo)
 	{
 		CCustomOutfit* comp_outfit = pCompareItem ? pCompareItem->cast_outfit() : nullptr;
@@ -636,20 +664,44 @@ void CUIItemInfo::PlaceUpgradesSide(const Frect& vis_rect)
 	if (!UIUpgradesFrame)
 		return;
 	UIUpgradesFrame->Show(false);
-	if (!m_upgrades_side || !m_pInvItem || m_pInvItem->upgardes().empty() || !UIDesc || !UIProperties ||
-		!UIProperties->hint_applies(*m_pInvItem) || pInput->GetControllerMode() ||
+	if (!m_upgrades_side || !m_pInvItem || !UIDesc || pInput->GetControllerMode() ||
 		!(pInput->iGetAsyncKeyState(SDL_SCANCODE_LSHIFT) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RSHIFT)))
 		return;
 
 	constexpr float MarginX = 16.0f;		// as the tooltip's text margins
 	constexpr float MarginY = 14.0f;
 	constexpr float Gap = 4.0f;
-	// Half the tooltip's content width is room enough for a row of the list (a longer
-	// row still widens the window: the width is the room asked for, not a limit).
-	UIUpgradesSide->SetAvailableWidth(UIDesc->GetDesiredChildWidth() * 0.5f, true);
-	UIUpgradesSide->set_item_list(*m_pInvItem);
-	UIUpgradesSide->SetWndPos(Fvector2().set(MarginX, MarginY));
-	Fvector2 size = UIUpgradesSide->GetWndSize();
+	CUIWindow* content = nullptr;
+	CArmorBase* armour = m_pInvItem->cast_armorbase();
+	if (armour && UIArmorDetails && UIOutfitInfo && (m_pInvItem->cast_outfit() || m_pInvItem->cast_helmet()))
+	{
+		// Armour: the details the tooltip leaves out (ui-armor-tooltip-keys); its
+		// upgrades stay in the tooltip.
+		xr_string text;
+		UIOutfitInfo->DetailsText(*armour, text);
+		UIArmorDetails->TextItemControl()->SetFont(m_desc_info.pDescFont);
+		UIArmorDetails->SetTextColor(m_desc_info.uDescClr);
+		UIArmorDetails->SetWidth(UIDesc->GetDesiredChildWidth() * 0.6f);
+		UIArmorDetails->SetTextComplexMode(true);
+		UIArmorDetails->SetText(text.c_str());
+		UIArmorDetails->AdjustHeightToText();
+		content = UIArmorDetails;
+	}
+	else if (!m_pInvItem->upgardes().empty() && UIProperties && UIProperties->hint_applies(*m_pInvItem))
+	{
+		// Half the tooltip's content width is room enough for a row of the list (a longer
+		// row still widens the window: the width is the room asked for, not a limit).
+		UIUpgradesSide->SetAvailableWidth(UIDesc->GetDesiredChildWidth() * 0.5f, true);
+		UIUpgradesSide->set_item_list(*m_pInvItem);
+		content = UIUpgradesSide;
+	}
+	if (!content)
+		return;
+	UIUpgradesSide->Show(content == UIUpgradesSide);
+	if (UIArmorDetails)
+		UIArmorDetails->Show(content == UIArmorDetails);
+	content->SetWndPos(Fvector2().set(MarginX, MarginY));
+	Fvector2 size = content->GetWndSize();
 	// Not smaller than the frame's corner textures (the tooltip keeps 105 as well).
 	size.x = std::max(105.0f, size.x + 2.0f * MarginX);
 	size.y = std::max(105.0f, size.y + 2.0f * MarginY);
