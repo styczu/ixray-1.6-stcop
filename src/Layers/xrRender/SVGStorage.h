@@ -175,11 +175,15 @@ private:
 	FactoryPtr<IUIShader>* m_p_default_shader;
 	FactoryPtr<IUIShader> m_empty_default_shader;
 	CTextureAtlas m_default_atlas;
+	// The game thread (CHUDManager::OnFrameMT -> CDialogHolder::OnFrame) resolves inventory cell
+	// marks while the render thread draws and resets m_frameShaderUvCache, so every public entry
+	// point takes this lock (recursive; PrecacheSVGList calls PrecacheSVG).
+	mutable xrCriticalSection m_lock;
 	unsigned char m_static_storage[calculate_reserve_count(sizeof(CTextureAtlas), static_cast<size_t>(_kRenderBackend_SVGStorageSizeInitial))];
 	std::pmr::monotonic_buffer_resource m_ss_wrapper;
 	std::pmr::vector<CTextureAtlas> m_storage_atlases;
 	xr_hash_map<u32, u32> m_atlasIdToStorageIndex;
-	// single-threaded: all SVG atlas and document caches are used only from the render / resource thread unless guarded externally
+	// guarded by m_lock (see above)
 	xr_hash_map<xr_string, AtlasConnection> m_storage_textures;
 	xr_hash_map<xr_string, SvgAtlasEntryStats> m_atlasEntryStats;
 	xr_vector<SvgDocumentLruEntry> m_docLruSlots;
