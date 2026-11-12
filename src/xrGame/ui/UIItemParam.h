@@ -30,6 +30,8 @@ public:
 	void SetAbsorption(float Immunity);
 	// Redukcja trafienia jednej sztuki (1 - mnoznik z mechaniki), w procentach.
 	void SetReduction(float Reduction);
+	// Trwalosc pancerza w punktach skali ArmorDurability (ui-armor-belt-durability).
+	void SetDurabilityPoints(float Points);
 	void SetRadiationRate(float RatePerGameSecond);
 	void SetRegenerationRate(float RatePerGameSecond);
 	void SetDuration(float GameSeconds);
