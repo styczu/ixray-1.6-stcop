@@ -27,6 +27,13 @@ namespace ArmorDurability
 		return WorstPoints + (BestPoints - WorstPoints) * std::log(WorstWear / Wear) / std::log(WorstWear / BestWear);
 	}
 
+	// Punkty odpowiadajace mnoznikowi zuzycia (odwrotnosc Factor): artefakty
+	// z equipment_durability_modifier mnoza zuzycie pancerza na pasie.
+	inline float FactorPoints(float WearFactor)
+	{
+		return (BestPoints - WorstPoints) * std::log(1.0f / WearFactor) / std::log(WorstWear / BestWear);
+	}
+
 	// Trwalosc przedmiotu w dymku: srednia punktow typow, ktore go zuzywaja
 	// (k > 0), po mnozniku ulepszen WearFactor. Ulepszenie dodaje te same punkty
 	// kazdemu typowi, wiec srednia rosnie o tyle samo. false: nic nie zuzywa.
