@@ -42,6 +42,8 @@ public:
 			// 0 = pusto (ui-armor-tooltip-keys).
 			void	SetDelta			( int steps );
 			void	SetDeltaColors		( u32 better, u32 worse ) { m_delta_better = better; m_delta_worse = worse; }
+			// Bez porownania ta sama kolumna: wplyw artefaktow na pasie (ui-armor-belt-durability).
+			void	SetBelt				( int points, u32 color );
 
 	virtual CUIWindow* ui_cast_window() { return this; }
 
@@ -78,7 +80,7 @@ public:
 			void	Clear				();
 			void	Line				();
 			void	Header				( const char* key );
-			void	Row					( const char* caption, const char* value, int delta );
+			void	Row					( const char* caption, const char* value, int delta, u32 color = 0 );
 			void	Finish				();
 
 protected:
@@ -143,6 +145,7 @@ protected:
 	CUIStatic*			m_compare = nullptr;
 	class CUIOutfitDetails* m_details = nullptr;
 	void				UpdateDetails		( CArmorBase& cur, CArmorBase* slot );
+	u32					m_belt_color = 0;
 	bool				m_compare_key = false;
 	bool				m_as_new = false;
 	float				Condition			( CArmorBase& item ) const;
