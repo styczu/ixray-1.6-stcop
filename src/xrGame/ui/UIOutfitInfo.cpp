@@ -62,6 +62,19 @@ namespace
 		}
 	}
 
+	// Punkty trwalosci z artefaktow na pasie (equipment_durability_modifier, ten sam
+	// mnoznik co CArmorBase::Hit dla noszonego pancerza); 0 bez takich artefaktow.
+	int BeltPoints()
+	{
+		CActor* actor = Level().CurrentViewEntity() ? Level().CurrentViewEntity()->cast_actor() : nullptr;
+		if (!actor)
+			return 0;
+		const float modifier = actor->GetArtefactEquipmentDurabilityModifier();
+		if (fsimilar(modifier, 1.0f))
+			return 0;
+		return iFloor(ArmorDurability::FactorPoints(std::max(modifier, 0.001f)) + 0.5f);
+	}
+
 	// Najwyzszy prog przebicia grupy kosci (Protection::ArmorGroups) tego przedmiotu
 	// przy podanym stanie; -1 = przedmiot nie kryje zadnej kosci grupy.
 	float GroupArmor(IKinematics* ikv, CArmorBase& Item, const Protection::ArmorGroup& Group, float Condition)
@@ -204,6 +217,13 @@ void CUIOutfitImmunity::SetDelta(int steps)
 	xr_sprintf(text, "%+d", steps);
 	m_delta->SetText(text);
 	m_delta->SetTextColor(steps > 0 ? m_delta_better : m_delta_worse);
+}
+
+void CUIOutfitImmunity::SetBelt(int points, u32 color)
+{
+	SetDelta(points);
+	if (m_delta && points != 0)
+		m_delta->SetTextColor(color);
 }
 
 void CUIOutfitImmunity::SetValueText(const char* text)
@@ -447,6 +467,7 @@ void CUIOutfitInfo::InitFromXml( CUIXml& xml_doc )
 	}
 	const u32 DeltaBetter = CUIXmlInit::GetColor(xml_doc, "delta_better", 0, color_rgba(107, 207, 119, 255));
 	const u32 DeltaWorse = CUIXmlInit::GetColor(xml_doc, "delta_worse", 0, color_rgba(196, 18, 18, 255));
+	m_belt_color = CUIXmlInit::GetColor(xml_doc, "delta_belt", 0, color_rgba(90, 160, 230, 255));
 	for (u32 i = 0; i < max_count; ++i)
 		if (m_items[i])
 			m_items[i]->SetDeltaColors(DeltaBetter, DeltaWorse);
@@ -683,6 +704,8 @@ void CUIOutfitInfo::UpdateDetails(CArmorBase& cur, CArmorBase* slot)
 
 	const float factor = ArmorDurability::Factor(cur.DurabilityPoints);
 	const float slot_factor = slot ? ArmorDurability::Factor(slot->DurabilityPoints) : 1.0f;
+	// Pas mnozy zuzycie kazdego typu tak samo, wiec ten sam dopisek przy kazdym.
+	const int belt = slot ? 0 : BeltPoints();
 	bool titled = false;
 	for (ALife::EHitType type : WearTypes)
 	{
@@ -700,7 +723,10 @@ void CUIOutfitInfo::UpdateDetails(CArmorBase& cur, CArmorBase* slot)
 		if (slot_wear > 0.0f)
 			delta = points - iFloor(ArmorDurability::Points(slot_wear * slot_factor) + 0.5f);
 		xr_sprintf(value, "%d", points);
-		m_details->Row(g_pStringTable->translate(WearName(type)).c_str(), value, delta);
+		if (slot)
+			m_details->Row(g_pStringTable->translate(WearName(type)).c_str(), value, delta);
+		else
+			m_details->Row(g_pStringTable->translate(WearName(type)).c_str(), value, belt, m_belt_color);
 	}
 	m_details->Finish();
 }
@@ -719,7 +745,11 @@ void CUIOutfitInfo::UpdateDurability(CArmorBase* cur, CArmorBase* slot)
 		if (slot && !DurabilityMean(*slot, slot_points))
 			slot_points = 0.0f;
 		m_durability->SetPointsValue(cur_points / 100.0f, slot_points / 100.0f, 1.0f);
-		m_durability->SetDelta(slot ? Shown(cur_points / 100.0f) - Shown(slot_points / 100.0f) : 0);
+		// Z lewym Alt roznica od przedmiotu w slocie, bez niego wplyw pasa (niebieski).
+		if (slot)
+			m_durability->SetDelta(Shown(cur_points / 100.0f) - Shown(slot_points / 100.0f));
+		else
+			m_durability->SetBelt(BeltPoints(), m_belt_color);
 	}
 	m_durability->Show(shown);
 	ShowInList(m_durability, shown);
@@ -886,7 +916,7 @@ void CUIOutfitDetails::Header(const char* key)
 	Place(header);
 }
 
-void CUIOutfitDetails::Row(const char* caption, const char* value, int delta)
+void CUIOutfitDetails::Row(const char* caption, const char* value, int delta, u32 color)
 {
 	if (m_used_rows >= sizeof(m_rows) / sizeof(m_rows[0]) || !m_rows[m_used_rows].wnd)
 		return;
@@ -901,7 +931,7 @@ void CUIOutfitDetails::Row(const char* caption, const char* value, int delta)
 		if (delta != 0)
 		{
 			xr_sprintf(text, "%+d", delta);
-			row.delta->SetTextColor(delta > 0 ? m_better : m_worse);
+			row.delta->SetTextColor(color ? color : (delta > 0 ? m_better : m_worse));
 		}
 		row.delta->SetText(text);
 	}
