@@ -747,7 +747,8 @@ bool UIInvUpgPropertiesWnd::set_item_hint(CInventoryItem& item)
 // teksty linii i to nie jest pad (bez Shift). Ta sama zasada wyznacza okno boczne.
 bool UIInvUpgPropertiesWnd::hint_applies(CInventoryItem& item) const
 {
-	if (!m_has_weapon_rows || !smart_cast<CWeapon*>(&item) || pInput->GetControllerMode())
+	// Weapon and armour (ui-armor-tooltip-keys): the line in the tooltip, the list beside it.
+	if (!m_has_weapon_rows || !(smart_cast<CWeapon*>(&item) || item.cast_armorbase()) || pInput->GetControllerMode())
 		return false;
 	const shared_str label = g_pStringTable->translate("ui_uip_upgrades");
 	const shared_str hold = g_pStringTable->translate("ui_uip_upgrades_shift");
