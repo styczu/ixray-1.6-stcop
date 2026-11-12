@@ -1,5 +1,17 @@
 #include "common.hlsli"
 
+#ifdef USE_PARTICLE_AMBIENT_LIGHT
+// Exponent on the saturated scene luminance (1 = linear, as in r2).
+#define PARTICLE_AMBIENT_LIGHT_POWER 2.0f
+
+float ParticleAmbientLight()
+{
+    float3 SceneLight = L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz;
+    float Light = saturate(dot(SceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
+    return pow(Light, PARTICLE_AMBIENT_LIGHT_POWER);
+}
+#endif
+
 struct v2p
 {
     float2 tc : TEXCOORD0;
@@ -26,10 +38,10 @@ void main(v2p I, out IXRayForward O)
 
 #ifdef USE_PARTICLE_AMBIENT_LIGHT
     // Translucent particles (smoke, splashes, dust) have no lighting of their own. Scale by the
-    // scene light so they do not glow at night; 1 in daylight. Applied before GammaToLinear,
-    // so the linear result falls roughly with the square of the light (night: ~0.04-0.25).
-    float3 SceneLight = L_ambient.xyz + L_hemi_color.xyz + L_sun_color.xyz;
-    result.xyz *= saturate(dot(SceneLight, float3(0.2126f, 0.7152f, 0.0722f)));
+    // scene light so they do not glow at night; 1 in daylight. The saturated luminance is raised
+    // to PARTICLE_AMBIENT_LIGHT_POWER, so values >= 1 stay 1 and dim scenes fall faster.
+    // Applied before GammaToLinear, so the linear result falls with twice that power.
+    result.xyz *= ParticleAmbientLight();
 #endif
 
     O.Color.xyz = GammaToLinear(result.xyz);
