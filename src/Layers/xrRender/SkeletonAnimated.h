@@ -102,8 +102,8 @@ protected:
 private:
 	void						IBlendSetup				(CBlend& B,u16 part,u8 channel, MotionID motion_ID, bool  bMixing, float blendAccrue, float blendFalloff, float Speed, bool noloop, PlayCallback Callback, LPVOID CallbackParam);
 	void						IFXBlendSetup			(CBlend &B, MotionID motion_ID, float blendAccrue, float blendFalloff,float Power ,float Speed,u16 bone);
-	virtual void				LoadOmf(const char* path, const char* name);
-	virtual	void				ProcessOmfFiles(const char* omfPath, const char* nameOgf);
+	virtual void				LoadOmf(const char* path, const char* name, bool skipLoaded = false);
+	virtual	void				ProcessOmfFiles(const char* omfPath, const char* nameOgf, bool skipLoaded = false);
 //.	bool						LoadMotions				(const char* N, IReader *data);
 public:
 #if (defined DEBUG || defined _EDITOR)
