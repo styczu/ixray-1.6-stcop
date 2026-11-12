@@ -232,6 +232,28 @@ void CUIActorMenu::Construct()
 	if (m_belt_over_active)
 		PutBeltOverUnderList();
 
+	if (uiXml.NavigateToNode("belt_list_occupied"))
+	{
+		const float occupied_dx = uiXml.ReadAttribFlt("belt_list_occupied", 0, "dx", 10.0f);
+		const float occupied_dy = uiXml.ReadAttribFlt("belt_list_occupied", 0, "dy", 10.0f);
+		WINDOW_LIST& children = GetChildWndList();
+		Fvector2 occupied_pos;
+		for (int i = 0; i < m_ArtefactSlotsCount; ++i)
+		{
+			CUIStatic* light = UIHelper::CreateStatic(uiXml, "belt_list_occupied", this);
+			if (i == 0)
+				occupied_pos = light->GetWndPos();
+			Fvector2 pos_i;
+			pos_i.set(occupied_pos.x + float(i % cols) * occupied_dx, occupied_pos.y + float(i / cols) * occupied_dy);
+			light->SetWndPos(pos_i);
+			light->Show(false);
+			// after the overlays (already in front of the belt list), before the belt list
+			children.erase(std::find(children.begin(), children.end(), light));
+			children.insert(std::find(children.begin(), children.end(), m_pInventoryBeltList), light);
+			m_belt_list_occupied.push_back(light);
+		}
+	}
+
 	if (uiXml.NavigateToNode("helmet_over"))
 	{
 		m_HelmetOver = UIHelper::CreateStatic(uiXml, "helmet_over", this);

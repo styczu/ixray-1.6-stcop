@@ -212,3 +212,28 @@ void CUIActorMenu::PutBeltOverUnderList()
 		children.insert(std::find(children.begin(), children.end(), m_pInventoryBeltList), over);
 	}
 }
+
+// Every frame: belt contents change by drag and drop, double click, the context menu,
+// an outfit change and the relocation out of locked cells.
+void CUIActorMenu::UpdateBeltOccupied()
+{
+	if (m_belt_list_occupied.empty())
+		return;
+
+	const Ivector2& cap = m_pInventoryBeltList->CellsCapacity();
+	int usable = 0;
+	if (m_pActorInvOwner && m_pInventoryBeltList->IsShown() && cap.x > 0)
+		usable = int(m_pActorInvOwner->inventory().BeltWidth());
+
+	for (int i = 0; i < int(m_belt_list_occupied.size()); ++i)
+	{
+		bool lit = false;
+		if (i < usable)
+		{
+			Ivector2 cell;
+			cell.set(i % cap.x, i / cap.x);
+			lit = cell.y < cap.y && !m_pInventoryBeltList->GetCellAt(cell).Empty();
+		}
+		m_belt_list_occupied[i]->Show(lit);
+	}
+}
