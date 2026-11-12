@@ -9,6 +9,7 @@
 #include "../ActorCondition.h"
 #include "../inventory_item.h"
 #include "../CustomOutfit.h"
+#include "../ArmorDurability.h"
 
 #include "object_broker.h"
 #include "../../xrUI/UIXmlInit.h"
@@ -395,7 +396,17 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 			val = READ_IF_EXISTS(pSettings, r_float, af_section, "equipment_durability_modifier", 1.0f);
 			if (!fsimilar(val, 1.0f))
 			{
-				setValue(m_equipment_durability_modifier, (1.0f - val) * pInvItem.GetCondition());
+				if (m_equipment_durability_modifier->GetLegacyMode())
+					setValue(m_equipment_durability_modifier, (1.0f - val) * pInvItem.GetCondition());
+				else
+				{
+					// Trwalosc pancerza w punktach skali dymka pancerza (ui-armor-belt-durability):
+					// jedna sztuka na pasie mnozy zuzycie kombinezonu i helmu przez 1 + (m - 1) x stan.
+					const float factor = std::max(1.0f + (val - 1.0f) * pInvItem.GetCondition(), 0.001f);
+					m_equipment_durability_modifier->SetCaption(g_pStringTable->translate("ui_uip_armor_belt_durability").c_str());
+					m_equipment_durability_modifier->SetDurabilityPoints(ArmorDurability::FactorPoints(factor));
+					place(m_equipment_durability_modifier);
+				}
 			}
 		}
 
