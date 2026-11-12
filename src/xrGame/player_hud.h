@@ -247,6 +247,9 @@ struct attachable_hud_item final
 	Fmatrix							m_item_transform;
 
 	player_hud_motion_container		m_hand_motions;
+	u32								m_hands_generation = 0;
+
+	void							reload_hand_motions();
 			
 	u32 time_accumulator = 0;
 
@@ -310,6 +313,7 @@ struct animator_item
 	bool IsPlaying = false;
 	hud_item_measures::hud_hands_positions m_hands_positions;
 	player_hud_motion_container	m_hand_motions;
+	u32 m_hands_generation = 0;
 	bool m_has_fire_point = false;
 	u16 m_fire_bone = u16(-1);
 	Fvector m_fire_point_offset;
@@ -320,6 +324,7 @@ struct animator_item
 	~animator_item();
 	void update(bool bForce);
 	void render();
+	void reload_hand_motions();
 
 	Fvector& hands_attach_pos();
 	Fvector& hands_attach_rot();
@@ -687,6 +692,7 @@ public:
 	xr_vector<script_layer*> m_script_layers = {};
 
 	IKinematicsAnimated* GetModel() { return m_model; }
+	u32				HandsGeneration		() const { return m_hands_generation; }
 	animator_item* create_animator_item(CHudAnimatorBase* animator, const shared_str& section);
 	void			delete_animator_item();
 	animator_item* GetAnimator() { return m_animator_item; }
@@ -714,6 +720,9 @@ private:
 	attachable_hud_item*				m_attached_items[2];
 	animator_item*						m_animator_item = nullptr;
 	xr_vector<attachable_hud_item*>		m_pool;
+	// Incremented on every hands model (re)load; hud items and the animator
+	// item reload their hand MotionIDs when theirs differs.
+	u32									m_hands_generation = 0;
 
 	u16									m_blocked_part_idx;
 	bool								m_bhands_visible;
