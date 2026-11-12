@@ -312,6 +312,9 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 		// difference column (ui-weapon-compare-numbers).
 		if (UIWeaponParams && UIWeaponParams->Check(*pInvItem))
 			ExtraWidth = std::max(ExtraWidth, UIWeaponParams->GetWidth() - (BaseDescriptionWidth - 10.0f));
+		// The armour tooltip with its difference column (ui-armor-tooltip-keys).
+		if (UIOutfitInfo && (pInvItem->cast_outfit() || pInvItem->cast_helmet()))
+			ExtraWidth = std::max(ExtraWidth, UIOutfitInfo->GetWidth() - (BaseDescriptionWidth - 10.0f));
 		SetWidth(BaseTooltipWidth + ExtraWidth);
 		UIDesc->SetWidth(BaseDescriptionWidth + ExtraWidth);
 		if (UIName)
@@ -590,6 +593,26 @@ void CUIItemInfo::TryAddOutfitInfo(CInventoryItem& pInvItem, CInventoryItem* pCo
 	CHelmet* helmet = pInvItem.cast_helmet();
 	CBackpack* backpack = pInvItem.cast_backpack();
 
+	// Keys as on the weapon tooltip (built every frame while hovered, so it follows
+	// them; none on a gamepad): the comparison with the item in the slot only while
+	// the left Alt is held, the item and the compared one as new with Ctrl.
+	if (UIOutfitInfo && (outfit || helmet))
+	{
+		const bool gamepad = pInput->GetControllerMode();
+		const bool compare_key = !gamepad && pInput->iGetAsyncKeyState(SDL_SCANCODE_LALT);
+		const bool as_new = !gamepad &&
+			(pInput->iGetAsyncKeyState(SDL_SCANCODE_LCTRL) || pInput->iGetAsyncKeyState(SDL_SCANCODE_RCTRL));
+		UIOutfitInfo->SetKeys(compare_key, as_new);
+		if (compare_key)
+		{
+			const bool same_kind = pCompareItem && (outfit ? pCompareItem->cast_outfit() != nullptr : pCompareItem->cast_helmet() != nullptr);
+			const bool other = same_kind && pCompareItem != &pInvItem;
+			const shared_str none = g_pStringTable->translate(pCompareItem == &pInvItem ? "ui_uip_outfit_compare_self" : "ui_uip_wpn_compare_none");
+			if (CUIStatic* line = UIOutfitInfo->SetCompareLine(other ? pCompareItem->NameShort() : none.c_str()))
+				UIDesc->AddWindow(line, false);
+		}
+	}
+
 	if (outfit && UIOutfitInfo)
 	{
 		CCustomOutfit* comp_outfit = pCompareItem ? pCompareItem->cast_outfit() : nullptr;
@@ -609,6 +632,10 @@ void CUIItemInfo::TryAddOutfitInfo(CInventoryItem& pInvItem, CInventoryItem* pCo
 		UIOutfitParams->SetInfo(pInvItem);
 		UIDesc->AddWindow(UIOutfitParams, false);
 	}
+
+	// The armour's detail blocks below its parameter rows (ui-armor-tooltip-keys).
+	if (UIOutfitInfo && (outfit || helmet) && UIOutfitInfo->Details())
+		UIDesc->AddWindow(UIOutfitInfo->Details(), false);
 
 	if (UIBackpackParams && backpack)
 	{
