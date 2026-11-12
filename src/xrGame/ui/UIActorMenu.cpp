@@ -349,6 +349,8 @@ void CUIActorMenu::Draw()
 
 void CUIActorMenu::Update()
 {	
+	UpdateBeltOccupied();
+
 	if (pInput->GetControllerMode())
 	{
 		UpdateInfoWindowVisibility();
