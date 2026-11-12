@@ -8,6 +8,7 @@
 #include "../Artefact.h"
 #include "../ActorCondition.h"
 #include "../inventory_item.h"
+#include "../CustomOutfit.h"
 
 #include "object_broker.h"
 #include "../../xrUI/UIXmlInit.h"
@@ -226,6 +227,22 @@ bool CUIArtefactParams::Check(const shared_str& af_section)
 	return !!pSettings->line_exist(af_section, "af_actor_properties");
 }
 
+// Pancerz: parametry z przedmiotu, z zainstalowanymi ulepszeniami (sekcja ma tylko
+// wartosci bazowe; CArmorBase/CCustomOutfit::install_upgrade_impl je dodaje).
+static float ArmourRestoreSpeed(CArmorBase& Armour, int Id, float Fallback)
+{
+	switch (Id)
+	{
+	case ALife::eHealthRestoreSpeed: return Armour.m_fHealthRestoreSpeed;
+	case ALife::eSatietyRestoreSpeed: return Armour.m_fSatietyRestoreSpeed;
+	case ALife::eThirstRestoreSpeed: return Armour.m_fThirstRestoreSpeed;
+	case ALife::ePowerRestoreSpeed: return Armour.m_fPowerRestoreSpeed;
+	case ALife::eBleedingRestoreSpeed: return Armour.m_fBleedingRestoreSpeed;
+	case ALife::eRadiationRestoreSpeed: return Armour.m_fRadiationRestoreSpeed;
+	default: return Fallback;
+	}
+}
+
 void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 {
 	DetachAll();
@@ -312,6 +329,8 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 
 			float actor_val = READ_IF_EXISTS(pSettings, r_float, "actor_condition", af_actor_param_names[id], 1.0f);
 			val = READ_IF_EXISTS(pSettings, r_float, af_section, restore_section, 0.0f);
+			if (CArmorBase* Armour = pInvItem.cast_armorbase())
+				val = ArmourRestoreSpeed(*Armour, id, val);
 			const bool unitRow = !m_restore_item[id]->GetLegacyMode();
 			const bool regenerationRow = unitRow && (id == ALife::eHealthRestoreSpeed || id == ALife::ePowerRestoreSpeed)
 				&& ConditionUi::RegenerationUnitsEnabled();
@@ -392,6 +411,8 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 	else if (!is_backpack())
 	{
 		u32 count = READ_IF_EXISTS(pSettings, r_u32, af_section, "artefact_count", 0);
+		if (CCustomOutfit* Outfit = pInvItem.cast_outfit())
+			count = Outfit->get_artefact_count();
 		if (count > 0 && m_af_slots)
 		{
 			setValue(m_af_slots, count);
@@ -401,6 +422,8 @@ void CUIArtefactParams::SetInfo(CInventoryItem& pInvItem)
 	if (m_additional_weight)
 	{
 		val	= READ_IF_EXISTS(pSettings, r_float, af_section, "additional_inventory_weight", 0.0f);
+		if (CCustomOutfit* Outfit = pInvItem.cast_outfit())
+			val = Outfit->m_additional_weight;
 		if ( !fis_zero(val) )
 		{
 			setValue(m_additional_weight, val * (is_artefact() ? pInvItem.GetCondition() : 1));
