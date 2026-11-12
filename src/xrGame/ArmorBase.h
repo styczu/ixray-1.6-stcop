@@ -31,6 +31,8 @@ public:
 	virtual float			HitThroughArmor			(float hit_power, u16 element, float ap, bool& add_wound, ALife::EHitType hit_type, bool ApplyCondition = true);
 	EEngineExternalBalance GetArmorBalance() const;
 	virtual float			GetDefHitTypeProtection	(ALife::EHitType hit_type);
+	// Ochrona bez stanu przedmiotu (dymek "jak nowy" z Ctrl, ui-armor-tooltip-keys).
+	float					GetBaseHitTypeProtection(ALife::EHitType hit_type) const { return m_HitTypeProtection[hit_type]; }
 	virtual float			GetHitTypeProtection	(ALife::EHitType hit_type, u16 element);
 	virtual float			GetBoneArmor			(u16 element);
 	// Najwyzszy prog przebicia sposrod kosci krytych przez warstwe (kombinezon albo helm),
