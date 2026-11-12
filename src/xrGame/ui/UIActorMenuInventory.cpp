@@ -212,3 +212,59 @@ void CUIActorMenu::PutBeltOverUnderList()
 		children.insert(std::find(children.begin(), children.end(), m_pInventoryBeltList), over);
 	}
 }
+
+// Every frame: belt contents change by drag and drop, double click, the context menu,
+// an outfit change and the relocation out of locked cells.
+void CUIActorMenu::UpdateBeltOccupied()
+{
+	if (m_belt_list_occupied.empty())
+		return;
+
+	const Ivector2& cap = m_pInventoryBeltList->CellsCapacity();
+	int usable = 0;
+	if (m_pActorInvOwner && m_pInventoryBeltList->IsShown() && cap.x > 0)
+		usable = int(m_pActorInvOwner->inventory().BeltWidth());
+
+	for (int i = 0; i < int(m_belt_list_occupied.size()); ++i)
+	{
+		bool lit = false;
+		if (i < usable)
+		{
+			Ivector2 cell;
+			cell.set(i % cap.x, i / cap.x);
+			if (cell.y < cap.y)
+			{
+				CUICellItem* ci = m_pInventoryBeltList->GetCellAt(cell).m_item;
+				lit = ci != nullptr;
+				PIItem item = ci ? (PIItem)ci->m_pData : nullptr;
+				if (item && item->object().cNameSect() != m_belt_occupied_sect[i])
+				{
+					m_belt_occupied_sect[i] = item->object().cNameSect();
+					m_belt_list_occupied[i]->SetTextureColor(BeltOccupiedColor(m_belt_occupied_sect[i]));
+				}
+			}
+		}
+		m_belt_list_occupied[i]->Show(lit);
+	}
+}
+
+// Light colour of the item section: inv_glow_color (r,g,b in 0..1) as written; otherwise
+// trail_light_color scaled so its brightest channel is 1 (the in-world light is dim and one
+// colour per anomaly type); otherwise the XML colour. The alpha always comes from the XML.
+u32 CUIActorMenu::BeltOccupiedColor(const shared_str& sect) const
+{
+	const u32 alpha = color_get_A(m_belt_occupied_xml_color);
+	if (pSettings->line_exist(sect, "inv_glow_color"))
+	{
+		const Fcolor c = pSettings->r_fcolor(sect, "inv_glow_color");
+		return subst_alpha(color_rgba_f(c.r, c.g, c.b, 0.f), alpha);
+	}
+	if (pSettings->line_exist(sect, "trail_light_color"))
+	{
+		const Fcolor c = pSettings->r_fcolor(sect, "trail_light_color");
+		const float peak = std::max(c.r, std::max(c.g, c.b));
+		if (peak > 0.f)
+			return subst_alpha(color_rgba_f(c.r / peak, c.g / peak, c.b / peak, 0.f), alpha);
+	}
+	return m_belt_occupied_xml_color;
+}
