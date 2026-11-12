@@ -56,6 +56,13 @@ protected:
 
 	// belt_list_over active="1": the statics mark the usable slots, under the belt list
 	bool						m_belt_over_active = false;
+	// belt_list_occupied: one light per belt slot, shown while a usable slot holds an item;
+	// drawn above the belt overlays and under the belt list
+	xr_vector<CUIStatic*>		m_belt_list_occupied;
+	// item section each light was last coloured for; the XML texture colour is the fallback
+	// and its alpha the strength of every light
+	xr_vector<shared_str>		m_belt_occupied_sect;
+	u32							m_belt_occupied_xml_color = 0;
 	CUIStatic*					m_HelmetOver;
 	
 	CUIStatic*					m_LeftBackground = nullptr;
@@ -188,6 +195,8 @@ protected:
 	void						UpdateActorMoneyMP();
 	virtual void				UpdateOutfit						();
 	void						PutBeltOverUnderList				();
+	void						UpdateBeltOccupied					();
+	u32							BeltOccupiedColor					(const shared_str& sect) const;
 	void						TryDisassembleItem					(CUIWindow* w, void* d);
 	
 
