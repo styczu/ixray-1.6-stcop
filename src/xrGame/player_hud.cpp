@@ -804,6 +804,18 @@ void weapon_inertion::base_params::Load(const shared_str& section, const shared_
 	rotation = READ_IF_EXISTS(pSettings, r_fvector3, section, *name, zero_vel);
 }
 
+void attachable_hud_item::reload_hand_motions()
+{
+	// Combined models play hand motions from their own visual, not from the hands.
+	if (!m_model_combined)
+	{
+		m_hand_motions = player_hud_motion_container();
+		m_hand_motions.load(m_parent->GetModel(), m_sect_name, m_model->dcast_PKinematicsAnimated());
+	}
+
+	m_hands_generation = m_parent->HandsGeneration();
+}
+
 attachable_hud_item::~attachable_hud_item()
 {
 	IRenderVisual* v			= m_model->dcast_RenderVisual();
@@ -1643,6 +1655,19 @@ void player_hud::load(const shared_str& player_hud_sect)
 			}
 		}
 
+		// MotionIDs of hand motions are only valid for the model they were
+		// resolved on: mark the cached ones stale and refresh those in use now.
+		++m_hands_generation;
+
+		for (attachable_hud_item* item : m_attached_items)
+		{
+			if (item)
+				item->reload_hand_motions();
+		}
+
+		if (m_animator_item)
+			m_animator_item->reload_hand_motions();
+
 		if (!b_reload) {
 			m_model->PlayCycle("hand_idle_doun");
 		}
@@ -2173,11 +2198,17 @@ attachable_hud_item* player_hud::create_hud_item(const shared_str& sect)
 	{
 		attachable_hud_item* itm = *it;
 		if(itm->m_sect_name==sect)
+		{
+			if (itm->m_hands_generation != m_hands_generation)
+				itm->reload_hand_motions();
+
 			return itm;
+		}
 	}
 	attachable_hud_item* res	= new attachable_hud_item(this);
 	res->load					(sect);
 	res->m_hand_motions.load	(res->m_model_combined ? res->m_model->dcast_PKinematicsAnimated() : m_model, sect, res->m_model->dcast_PKinematicsAnimated());
+	res->m_hands_generation		= m_hands_generation;
 	m_pool.push_back			(res);
 
 	return	res;
@@ -2909,6 +2940,10 @@ animator_item* player_hud::create_animator_item(CHudAnimatorBase* animator, cons
 	{
 		m_animator_item = new animator_item(animator, this, section);
 	}
+	else if (m_animator_item->m_hands_generation != m_hands_generation)
+	{
+		m_animator_item->reload_hand_motions();
+	}
 
 	return m_animator_item;
 }
@@ -2944,6 +2979,14 @@ animator_item::animator_item(CHudAnimatorBase* animator, player_hud* pParent, co
 	m_hands_positions.Load(section, UI().is_widescreen());
 
 	m_hand_motions.load(pParent->GetModel(), section);
+	m_hands_generation = pParent->HandsGeneration();
+}
+
+void animator_item::reload_hand_motions()
+{
+	m_hand_motions = player_hud_motion_container();
+	m_hand_motions.load(m_parent->GetModel(), m_section);
+	m_hands_generation = m_parent->HandsGeneration();
 }
 
 animator_item::~animator_item()
