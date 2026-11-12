@@ -760,8 +760,20 @@ CBlend* CKinematicsAnimated::IBlend_Create()
 	return nullptr;
 }
 
-void CKinematicsAnimated::LoadOmf(const char* path, const char* name)
+void CKinematicsAnimated::LoadOmf(const char* path, const char* name, bool skipLoaded)
 {
+	// A pooled model instance (CModelPool::Create returns it as is) keeps the
+	// motion slots appended before; appending the same file again would shift
+	// the slot layout and make cached MotionIDs of other instances invalid.
+	if (skipLoaded)
+	{
+		for (SMotionsSlot& MS : m_Motions)
+		{
+			if (MS.motions.motion_map() && xr_strcmp(MS.motions.id().c_str(), path) == 0)
+				return;
+		}
+	}
+
 	string_path fn = {};
 	if (!FS.exist(fn, "$level$", path))
 	{
@@ -796,7 +808,7 @@ void CKinematicsAnimated::LoadOmf(const char* path, const char* name)
 	}
 }
 
-void CKinematicsAnimated::ProcessOmfFiles(const char* pathOmf, const char* nameOgf) {
+void CKinematicsAnimated::ProcessOmfFiles(const char* pathOmf, const char* nameOgf, bool skipLoaded) {
 	string_path nm = {};
 	strcpy(nm, pathOmf);
 
@@ -815,13 +827,13 @@ void CKinematicsAnimated::ProcessOmfFiles(const char* pathOmf, const char* nameO
 
 		for (auto& it : fset)
 		{
-			LoadOmf(it.name.c_str(), nameOgf);
+			LoadOmf(it.name.c_str(), nameOgf, skipLoaded);
 		}
 	}
 	else
 	{
 		xr_strcat(nm, ".omf");
-		LoadOmf(nm, nameOgf);
+		LoadOmf(nm, nameOgf, skipLoaded);
 	}
 }
 
@@ -890,7 +902,7 @@ void CKinematicsAnimated::Load(const char* N, IReader* data, u32 dwFlags) {
 
 void CKinematicsAnimated::append_motion_from_path(const char* nameOgf, const char* pathOmf)
 {
-	ProcessOmfFiles(pathOmf, nameOgf);
+	ProcessOmfFiles(pathOmf, nameOgf, true);
 
 	// Reinitialize motions
 	for (SMotionsSlot& MS : m_Motions)
