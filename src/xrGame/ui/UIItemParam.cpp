@@ -287,6 +287,15 @@ void UIItemParam::SetReduction(float Reduction)
 	ApplyValueText(Text, Reduction >= 0.0f, Reduction < 0.0f ? color_argb(255, 210, 50, 50) : color_argb(255, 170, 170, 170));
 }
 
+void UIItemParam::SetDurabilityPoints(float Points)
+{
+	string64 Number;
+	ConditionUi::FormatNumber(Number, Points, ConditionUi::DecimalSeparator(), true, 0);
+	string64 Text;
+	xr_sprintf(Text, "%s %s", Number, g_pStringTable->translate("ui_uip_unit_protection").c_str());
+	ApplyValueText(Text, Points >= 0.0f, Points < 0.0f ? color_argb(255, 210, 50, 50) : color_argb(255, 170, 170, 170));
+}
+
 void UIItemParam::SetRadiationRate(float RatePerGameSecond)
 {
 	string64 Text;
