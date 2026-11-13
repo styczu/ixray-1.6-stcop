@@ -358,6 +358,15 @@ function action_reach_task_location:commander_execute()
 				object:set_mental_state (anim.free)
 				return
 			end
+			-- [IX-Ray Refinements] squad-self-target-calm
+			-- sim_board:get_squad_target returns the squad itself when it has no
+			-- target; reach_target never completes for it (am_i_reached needs
+			-- npc_count() == 0). Stand calm instead of danger at distance 0.
+			if target.id == squad.id then
+				object:set_movement_type(move.stand)
+				object:set_mental_state (anim.free)
+				return
+			end
 			if target:clsid() == clsid.online_offline_group_s then
 				object:set_movement_type(move.run)
 				if target.position:distance_to_sqr(object:position()) <= 10000 then
@@ -371,6 +380,10 @@ function action_reach_task_location:commander_execute()
 			end
 		else
 			object:set_movement_type(move.stand)
+			-- [IX-Ray Refinements] squad-self-target-calm
+			-- No target in the sim registry (e.g. the squad itself inside
+			-- *_sr_no_assault): do not keep a stale anim.danger.
+			object:set_mental_state (anim.free)
 		end
 	end
 
