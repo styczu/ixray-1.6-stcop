@@ -209,6 +209,7 @@ struct hud_item_measures final
 		Fvector obb_pos = zero_vel;
 		float dist_min = 0.5f;
 		float dist_max = 0.8f;
+		float aim_block_dist = 0.0f; // hud-collision-aim-block: 0 = off
 	} m_collision_params;
 
 	inertion_params m_inertion_params; //--#SM+#--
@@ -233,6 +234,7 @@ struct attachable_hud_item final
 	Fvector							m_collision_inertia_pos_vel = zero_vel;
 	Fvector							m_collision_inertia_rot = zero_vel;
 	Fvector							m_collision_inertia_rot_vel = zero_vel;
+	float							m_collision_nearest_dist = 1000.0f; // hud-collision-aim-block, 1000 = no contact
 	player_hud*						m_parent;
 	CHudItem*						m_parent_hud_item;
 	shared_str						m_sect_name;
@@ -274,6 +276,7 @@ struct attachable_hud_item final
 	void load						(const shared_str& sect_name);
 	void update						(bool bForce);
 	void update_hud_additional		(Fmatrix& trans);
+	bool collision_blocks_aim		(float hysteresis) const;
 	void setup_firedeps				(firedeps& fd);
 	void render						();	
 	void render_item_ui				();
