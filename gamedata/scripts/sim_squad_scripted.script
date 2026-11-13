@@ -363,6 +363,18 @@ function sim_squad_scripted:generic_update()
         local help_target_id = get_help_target_id(self)
     
         if help_target_id then
+            -- [IX-Ray Refinements] squad-help-keep-base
+            -- Helping the actor unassigns the squad from its smart (squad target
+            -- on_reach_target). Reserve its place there so the smart does not
+            -- refill meanwhile; assign_smart() drops the mark once it is back in
+            -- any smart. Not saved: after loading a game the reservation is gone.
+            if self.smart_id ~= nil and self.help_home_smart_id == nil then
+                self.help_home_smart_id = self.smart_id
+                local reserved = self.board.help_reserved or {}
+                self.board.help_reserved = reserved
+                reserved[self.smart_id] = reserved[self.smart_id] or {}
+                reserved[self.smart_id][self.id] = true
+            end
             self.assigned_target_id = help_target_id
             self.current_action = nil
             self:get_next_action(false)
@@ -516,6 +528,10 @@ function sim_squad_scripted:assign_smart(smart)
 	return PROF_EVENT_CLOSURE("assign_smart", function()
         local old_smart = self.smart_id
         self.smart_id = smart and smart.id
+        -- [IX-Ray Refinements] squad-help-keep-base
+        if smart ~= nil then
+            self.help_home_smart_id = nil
+        end
     
         local npcCountLast = self:npc_count() - 1
         for i = 0, npcCountLast, 1 do
