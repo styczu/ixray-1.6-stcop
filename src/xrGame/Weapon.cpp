@@ -1448,6 +1448,12 @@ void CWeapon::UpdateCL()
 		ForceUpdateHUD();
 	}
 
+	// hud-collision-aim-block: leave ADS when an obstacle comes closer than collision_aim_block_dist
+	if (isHudItemData && IsZoomed() && HudItemData()->collision_blocks_aim(0.0f) && CanLeaveAimNow())
+	{
+		OnZoomOut();
+	}
+
 	if (THudLightTorch* LightTorch = GetComponent<THudLightTorch>())
 	{
 		LightTorch->UpdateTorch(this, m_bTacticalTorchStatus);
@@ -2841,6 +2847,13 @@ bool CWeapon::CanAimNow()
 	{
 		u8 state = pDevice->GetNextState();
 		result = pDevice->IsHidden() && !pDevice->NeedActivation() || !!(state == CCustomDevice::eIdle || state == CCustomDevice::EDeviceStates::eHandAimStart || state == CCustomDevice::EDeviceStates::eHandAimEnd);
+	}
+
+	// hud-collision-aim-block: no ADS while the HUD collision box touches an obstacle
+	// closer than collision_aim_block_dist (+5 cm hysteresis against in/out flicker)
+	if (result && GetHUDmode() && HudItemData() != nullptr && HudItemData()->collision_blocks_aim(0.05f))
+	{
+		result = false;
 	}
 
 	if (!isDelayedWeaponActions && !m_eAnimationsFlags.test(EAnimationsFlags::af_aim_in_out))
