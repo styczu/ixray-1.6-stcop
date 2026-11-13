@@ -1271,6 +1271,27 @@ function se_smart_terrain:get_alife_task()
     end)
 end
 
+-- [IX-Ray Refinements] squad-help-keep-base
+-- Squads that left this smart to help the actor (sim_squad_scripted
+-- help_home_smart_id) still hold a place in it. Stale entries (squad gone,
+-- back in a smart, or marked for another smart) are dropped while counting.
+function se_smart_terrain:help_reserved_count(squad)
+	local reserved = self.board.help_reserved and self.board.help_reserved[self.id]
+	if reserved == nil then
+		return 0
+	end
+	local count = 0
+	for squad_id in pairs(reserved) do
+		local s = self.board.squads[squad_id]
+		if s == nil or s.help_home_smart_id ~= self.id or s.smart_id ~= nil then
+			reserved[squad_id] = nil
+		elseif squad == nil or squad_id ~= squad.id then
+			count = count + 1
+		end
+	end
+	return count
+end
+
 function smart_terrain_squad_count(board_smart_squads)
 	return PROF_EVENT_CLOSURE("smart_terrain_squad_count", function()
         local count = 0
@@ -1354,7 +1375,7 @@ function se_smart_terrain:target_precondition(squad, need_to_dec_population)
             return false
         end
     
-        local squad_count = smart_terrain_squad_count(self.board.smarts[self.id].squads)
+        local squad_count = smart_terrain_squad_count(self.board.smarts[self.id].squads) + self:help_reserved_count(squad) -- [IX-Ray Refinements] squad-help-keep-base
         if need_to_dec_population then
             squad_count = squad_count - 1
         end
@@ -1507,6 +1528,7 @@ function se_smart_terrain:try_respawn()
                 real_squad_count = real_squad_count + 1
             end
         end
+        real_squad_count = real_squad_count + self:help_reserved_count(nil) -- [IX-Ray Refinements] squad-help-keep-base
         
         if real_squad_count >= self.max_population then 
             printf("%s cannot respawn due to REAL squad_count %s of max %s", self:name(), real_squad_count, self.max_population) 
