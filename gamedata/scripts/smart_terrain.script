@@ -213,6 +213,14 @@ function se_smart_terrain:read_params()
 	self.squad_id		= utils.cfg_get_number(ini, SMART_TERRAIN_SECT, "squad_id", 		self, false, 0)
 	self.respawn_sector = utils.cfg_get_string(ini, SMART_TERRAIN_SECT, "respawn_sector", 	self, false, "")
 	self.respawn_radius  = utils.cfg_get_number(ini, SMART_TERRAIN_SECT, "respawn_radius", 	self, false, 150) -- радиус респауна (если актер ближе, то не спаунить)
+	-- [IX-Ray Refinements] smart-respawn-radius-online
+	-- Respawn only where the new squad starts offline: with a larger
+	-- [alife] switch_distance the vanilla 150 m let squads appear in sight.
+	local alife_switch_distance = system_ini():r_float("alife", "switch_distance")
+	local alife_offline_distance = alife_switch_distance * (1 + system_ini():r_float("alife", "switch_factor"))
+	if self.respawn_radius < alife_offline_distance then
+		self.respawn_radius = alife_offline_distance
+	end
 	self.respawn_time   = utils.cfg_get_number(ini, SMART_TERRAIN_SECT, "respawn_time", 	self, false, 1000) -- в секундах игрового времени																										   
 	if self.respawn_sector ~= nil then
 		if self.respawn_sector == "default" then
