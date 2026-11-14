@@ -16,5 +16,8 @@ namespace ActorStealth
 	float PeripheralFactor(float AlphaRatio);
 	// Detection speed factor of an alerted (danger) observer relative to a calm one.
 	float AlertFactor();
+	// The observer has selected the actor as its enemy, or was hit by him less than 30 s ago
+	// (LastHitTime and Now in ms, Device.dwTimeGlobal): it sees him with the vanilla formula.
+	bool FightsActor(bool SelectedActor, bool LastHitByActor, u32 LastHitTime, u32 Now);
 	void RegisterConsoleCommands();
 }
