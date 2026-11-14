@@ -761,7 +761,8 @@ function killed_by_actor(actor, npc)
 end
 
 -- [meet-weapon-ads-only] The actor aims down the sights (bind_stalker on_weapon_zoom_in, binoculars
--- excluded) with this NPC under the crosshair. Replaces actor_has_weapon in the generic meet settings.
+-- excluded) with this NPC under the crosshair, and the NPC sees the actor (r2: an NPC with its back to
+-- the actor does not notice the aiming). Replaces actor_has_weapon in the generic meet settings.
 function actor_aims_at_npc(actor, npc)
 	local ads_id = db.actor_ads_weapon_id
 	if ads_id == nil then
@@ -772,7 +773,10 @@ function actor_aims_at_npc(actor, npc)
 		return false
 	end
 	local target = level.get_target_obj()
-	return target ~= nil and target:id() == npc:id()
+	if target == nil or target:id() ~= npc:id() then
+		return false
+	end
+	return npc:see(actor) == true
 end
 
 function actor_has_weapon (actor, npc)
