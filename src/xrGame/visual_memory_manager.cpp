@@ -27,6 +27,7 @@
 #include "client_spawn_manager.h"
 #include "memory_manager.h"
 #include "ai/monsters/basemonster/base_monster.h"
+#include "ActorStealth.h"
 
 #ifndef MASTER_GOLD
 #	include "Actor.h"
@@ -239,7 +240,7 @@ void CVisualMemoryManager::enable		(const CObject *object, bool enable)
 	(*J).m_enabled					= enable;
 }
 
-float CVisualMemoryManager::object_visible_distance(const CGameObject *game_object, float &object_distance) const
+float CVisualMemoryManager::object_visible_distance(const CGameObject *game_object, float &object_distance, const float *stealth_range, float *alpha_ratio) const
 {
 	Fvector								eye_position = Fvector().set(0.f,0.f,0.f), eye_direction;
 	Fmatrix								eye_matrix;
@@ -289,6 +290,16 @@ float CVisualMemoryManager::object_visible_distance(const CGameObject *game_obje
 	float								max_view_distance = object_range, min_view_distance = object_range;
 	max_view_distance					*= current_state().m_max_view_distance;
 	min_view_distance					*= current_state().m_min_view_distance;
+
+	if (alpha_ratio)
+		*alpha_ratio					= (fov > EPS_L) ? alpha/fov : 0.f;
+
+	if (stealth_range && m_object && (m_object->eye_range > EPS_L) && (current_state().m_max_view_distance > EPS_L)) {
+		// npc-vision-actor-stealth: the range follows the actor brightness; object_range/eye_range keeps
+		// the fog, far plane and scope scaling, and the vision section keeps the edge/centre ratio.
+		max_view_distance				= *stealth_range*object_range/m_object->eye_range;
+		min_view_distance				= max_view_distance*current_state().m_min_view_distance/current_state().m_max_view_distance;
+	}
 
 	float distance = (1.f - alpha/fov)*(max_view_distance - min_view_distance) + min_view_distance;
 	clamp(distance, 0.f, GamePersistent().Environment().CurrentEnv->fog_far);
@@ -358,6 +369,24 @@ float CVisualMemoryManager::get_visible_value(const CGameObject *game_object, fl
 	);
 }
 
+float CVisualMemoryManager::actor_stealth_value(CActor &actor, float distance, float object_distance, float time_delta, float alpha_ratio) const
+{
+	const CVisionParameters				&state = current_state();
+	if (distance <= state.m_always_visible_distance + EPS_L)
+		return							(state.m_visibility_threshold);
+
+	if ((m_free.m_time_quant <= EPS_L) || (m_free.m_visibility_threshold <= EPS_L))
+		return							(0.f);
+
+	// Calm-state speed in units of the current threshold: alerted observers differ only by ai_stealth_alert.
+	float								value = time_delta/m_free.m_time_quant*state.m_visibility_threshold/m_free.m_visibility_threshold;
+	value								*= (distance - object_distance)/(distance - state.m_always_visible_distance);
+	value								*= ActorStealth::RateFactor(actor)*ActorStealth::PeripheralFactor(alpha_ratio);
+	if (&state == &m_danger)
+		value							*= ActorStealth::AlertFactor();
+	return								(value);
+}
+
 CNotYetVisibleObject *CVisualMemoryManager::not_yet_visible_object(const CGameObject *game_object)
 {
 	PROF_EVENT("Memory Manager/visuals/not_yet_visible_object")
@@ -408,7 +437,13 @@ bool CVisualMemoryManager::visible				(const CGameObject *game_object, float tim
 		return					(true);
 #endif
 
-	float						object_distance, distance = object_visible_distance(game_object,object_distance);
+	// npc-vision-actor-stealth: stalkers looking at the actor use the stealth model when ai_stealth is on.
+	CActor						*stealth_actor = (m_stalker && ActorStealth::Enabled()) ? const_cast<CGameObject*>(game_object)->cast_actor() : nullptr;
+	float						stealth_range = 0.f, alpha_ratio = 0.f;
+	if (stealth_actor)
+		stealth_range			= ActorStealth::VisualRange(*stealth_actor);
+
+	float						object_distance, distance = stealth_actor ? object_visible_distance(game_object,object_distance,&stealth_range,&alpha_ratio) : object_visible_distance(game_object,object_distance);
 
 	CNotYetVisibleObject		*object = not_yet_visible_object(game_object);
 
@@ -428,7 +463,7 @@ bool CVisualMemoryManager::visible				(const CGameObject *game_object, float tim
 		CNotYetVisibleObject		new_object;
 		new_object.m_object			= game_object;
 		new_object.m_prev_time		= 0;
-		new_object.m_value			= get_visible_value(game_object,distance,object_distance,time_delta,get_object_velocity(game_object,new_object),object_luminocity(game_object));
+		new_object.m_value			= stealth_actor ? actor_stealth_value(*stealth_actor,distance,object_distance,time_delta,alpha_ratio) : get_visible_value(game_object,distance,object_distance,time_delta,get_object_velocity(game_object,new_object),object_luminocity(game_object));
 		clamp						(new_object.m_value,0.f,current_state().m_visibility_threshold + EPS_L);
 		new_object.m_update_time	= Device.dwTimeGlobal;
 		new_object.m_prev_time		= get_prev_time(game_object);
@@ -437,7 +472,7 @@ bool CVisualMemoryManager::visible				(const CGameObject *game_object, float tim
 	}
 
 	object->m_update_time		= Device.dwTimeGlobal;
-	object->m_value				+= get_visible_value(game_object,distance,object_distance,time_delta,get_object_velocity(game_object,*object),object_luminocity(game_object));
+	object->m_value				+= stealth_actor ? actor_stealth_value(*stealth_actor,distance,object_distance,time_delta,alpha_ratio) : get_visible_value(game_object,distance,object_distance,time_delta,get_object_velocity(game_object,*object),object_luminocity(game_object));
 	clamp						(object->m_value,0.f,current_state().m_visibility_threshold + EPS_L);
 	object->m_prev_time			= get_prev_time(game_object);
 
