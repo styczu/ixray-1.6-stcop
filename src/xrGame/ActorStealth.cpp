@@ -143,6 +143,18 @@ float ActorStealth::VisualRange(CActor& Player, int ObserverRank)
 	return Night + (RangeDay - Night) * Brightness(Player);
 }
 
+float ActorStealth::CorpseRange(int ObserverRank)
+{
+	EnsureConfig();
+	const char* Weather = ActorStealthWorld::Weather();
+	if (UsesRawLight(Weather))
+		return RangeDay;
+	float Light = DayCurve(ActorStealthWorld::GameHours(), NightLevel(Weather));
+	clamp(Light, 0.f, 1.f);
+	const float Night = NightRange(ActorStealthWorld::RankName(ObserverRank));
+	return Night + (RangeDay - Night) * Light;
+}
+
 float ActorStealth::SilencedShotRange(const char* WeaponClass, float Hours)
 {
 	float Range = SilencerCarbine;
