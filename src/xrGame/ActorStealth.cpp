@@ -27,6 +27,13 @@ namespace
 	int TorchReveals = 1;
 	// How long a hit by the actor keeps the vanilla vision, as DANGER_INERTION_TIME in xr_danger.script.
 	const u32 HitMemoryTime = 30000;
+	// npc-hearing-actor-shots: suppressed shot hearing ranges (user model 2026-11-14: pistol 10, shotgun and
+	// carbine 20, rifle 50 m, half of it in the day) and the window in which a heard shot still counts.
+	float SilencerPistol = 10.f;
+	float SilencerCarbine = 20.f;
+	float SilencerRifle = 50.f;
+	float SilencerDay = 0.5f;
+	const u32 ShotFreshTime = 2000;
 
 	bool TorchRevealsActor(CActor& Player)
 	{
@@ -130,6 +137,22 @@ float ActorStealth::VisualRange(CActor& Player, int ObserverRank)
 {
 	const float Night = NightRange(ActorStealthWorld::RankName(ObserverRank));
 	return Night + (RangeDay - Night) * Brightness(Player);
+}
+
+float ActorStealth::SilencedShotRange(const char* WeaponClass, float Hours)
+{
+	float Range = SilencerCarbine;
+	if (!WeaponClass || !*WeaponClass)
+		Range = SilencerPistol;
+	else if (!xr_strcmp(WeaponClass, "sniper_rifle") || !xr_strcmp(WeaponClass, "heavy_weapon"))
+		Range = SilencerRifle;
+	return Range * (1.f - (1.f - SilencerDay) * DayCurve(Hours, 0.f));
+}
+
+bool ActorStealth::ShotStillFresh(u32 HeardTime, u32 Now)
+{
+	// A time ahead of Now (stored before a level reload) wraps around and does not count.
+	return HeardTime != 0 && Now - HeardTime <= ShotFreshTime;
 }
 
 float ActorStealth::NightRange(const char* Rank)
@@ -361,6 +384,10 @@ void ActorStealth::RegisterConsoleCommands()
 	CMD4(CCC_StealthFloat, "ai_stealth_peripheral", &Peripheral, 0.f, 1.f);
 	CMD4(CCC_StealthFloat, "ai_stealth_alert", &Alert, 0.f, 20.f);
 	CMD4(CCC_StealthInteger, "ai_stealth_torch", &TorchReveals, 0, 1);
+	CMD4(CCC_StealthFloat, "ai_stealth_silencer_pistol", &SilencerPistol, 0.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_silencer_carbine", &SilencerCarbine, 0.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_silencer_rifle", &SilencerRifle, 0.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_silencer_day", &SilencerDay, 0.f, 1.f);
 }
 
 // Called from CCC_RegisterCommands (console_commands.cpp).
