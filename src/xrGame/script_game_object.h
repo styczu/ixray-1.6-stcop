@@ -940,6 +940,7 @@ public:
 			void				SetRestrictionType(u8 typ);
 
 			void				RemoveDanger(const CDangerObject& dobject);
+			void				IgnoreDangerObject(CScriptGameObject* object);
 
 			void				RemoveMemorySoundObject(const MemorySpace::CSoundObject& memory_object);
 			void				RemoveMemoryHitObject(const MemorySpace::CHitObject& memory_object);
