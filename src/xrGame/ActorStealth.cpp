@@ -21,6 +21,8 @@ namespace
 	float Peripheral = 0.3f;
 	float Alert = 3.f;
 	int TorchReveals = 1;
+	// How long a hit by the actor keeps the vanilla vision, as DANGER_INERTION_TIME in xr_danger.script.
+	const u32 HitMemoryTime = 30000;
 
 	bool TorchRevealsActor(CActor& Player)
 	{
@@ -92,6 +94,14 @@ float ActorStealth::PeripheralFactor(float AlphaRatio)
 float ActorStealth::AlertFactor()
 {
 	return Alert;
+}
+
+bool ActorStealth::FightsActor(bool SelectedActor, bool LastHitByActor, u32 LastHitTime, u32 Now)
+{
+	if (SelectedActor)
+		return true;
+	// A time ahead of Now (a hit stored before a level reload) wraps around and does not count.
+	return LastHitByActor && (Now - LastHitTime < HitMemoryTime);
 }
 
 void ActorStealth::RegisterConsoleCommands()
