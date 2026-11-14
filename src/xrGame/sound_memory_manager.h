@@ -51,6 +51,8 @@ private:
 	
 private:
 	u32							m_last_sound_time;
+	// npc-hearing-actor-shots: when a shot of the actor was last heard (0 = not since the last reaction).
+	u32							m_actor_shot_time;
 	u32							m_sound_decrease_quant;
 	float						m_decrease_factor;
 	float						m_min_sound_threshold;
@@ -92,6 +94,8 @@ public:
 
 public:
 			void				enable					(const CObject *object, bool enable);
+	IC		u32					actor_shot_time			() const { return m_actor_shot_time; }
+	IC		void				clear_actor_shot		() { m_actor_shot_time = 0; }
 
 public:
 	IC		const SOUNDS		&objects				() const;
