@@ -139,6 +139,38 @@ function corpse_react(npc, corpse)
 	alarm_squad(corpse, npc)
 end
 
+-- npc-shot-search (ai_stealth 1): a shot of the actor that passed the NPC
+-- unheard (a suppressed shot beyond the range of its weapon_class, reported by
+-- ixray-npc-shot-reaction) puts the NPC on alert without telling it who shoots:
+-- the engine danger "bullet ricochet" from the actor at the miss point runs the
+-- danger-unknown planner (take cover, look around, search) for SHOT_SEARCH_TIME,
+-- whatever the relation and the distance. Then the danger is removed.
+local SHOT_SEARCH_TIME = 60000
+-- [npc id] = start of the alert
+local shot_searches = {}
+
+function shot_search(npc, position)
+	if get_console():get_integer("ai_stealth") == 0 or npc:best_enemy() ~= nil or not corpse_observer(npc) then
+		return false
+	end
+	shot_searches[npc:id()] = time_global()
+	npc:add_shot_danger(position)
+	return true
+end
+
+-- The ricochet danger of the actor counts for an alerted NPC (no side effects);
+-- nil when it is no shot search, false when the alert is over.
+local function shot_search_danger(npc, bd_type, danger_object_)
+	if bd_type ~= danger_object.bullet_ricochet or not (db.actor and danger_object_:id() == db.actor:id()) then
+		return nil
+	end
+	local start = shot_searches[npc:id()]
+	if start == nil then
+		return nil
+	end
+	return time_global() - start < SHOT_SEARCH_TIME
+end
+
 -- xr_motivator death_callback: remember a kill by the actor; allies within
 -- ai_stealth_death_hear m hear the death.
 function on_npc_death(victim, who)
@@ -200,8 +232,16 @@ function is_danger(npc)
 		return false
 	end
 
+	-- npc-shot-search: an unheard shot of the actor, see shot_search
+	local shot_alarm = shot_search_danger(npc, bd_type, best_danger_object)
+	if shot_alarm == false then
+		shot_searches[npc:id()] = nil
+		npc:remove_danger(best_danger)
+		return false
+	end
+
 	-- Игнорим денжеры не от врагов. (кроме трупов и гранат)
-	if bd_type ~= danger_object.entity_corpse and bd_type ~= danger_object.grenade and
+	if bd_type ~= danger_object.entity_corpse and bd_type ~= danger_object.grenade and not shot_alarm and
 		 npc:relation(best_danger_object) ~= game_object.enemy
 	then
 		--printf("[%s] check danger RELATION", npc:name())
@@ -246,8 +286,8 @@ function is_danger(npc)
 	local ignore_distance_by_type = ignore_distance[bd_type]
 	--printf("[%s] check danger type %s, distance %s", npc:name(), bd_type, tostring(ignore_distance_by_type))
 	--log(string.format( "[%s] check danger type %s, distance %s", npc:name(), bd_type, tostring(ignore_distance_by_type) ))
-	if alarm_corpse ~= nil then
-		-- seen or passed by the squad: no distance limit
+	if alarm_corpse ~= nil or shot_alarm then
+		-- seen or passed by the squad, or an unheard shot: no distance limit
 	elseif ignore_distance_by_type ~= nil then
 	 	if danger_distance_sqr >= ignore_distance_by_type*ignore_distance_by_type then
 			return false
