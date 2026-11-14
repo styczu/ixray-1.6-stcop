@@ -11,6 +11,8 @@ public:
 	void Load();
 	void Reset();
 	void Update(CActor& Player, CCreature& Observer);
+	// Headlamp, hand torch or weapon light is on (same sources as the torch detection below).
+	static bool IsLightOn(CActor& Player);
 
 private:
 	enum class Visibility
