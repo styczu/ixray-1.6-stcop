@@ -2731,6 +2731,10 @@ void CCC_RegisterCommands()
 	extern bool dr_disable_time_factor_influence;
 	CMD2(CCC_Boolean, "demo_record_disable_time_factor_influence", &dr_disable_time_factor_influence);
 
+	// npc-vision-actor-stealth: ai_stealth* commands (ActorStealth.cpp)
+	void RegisterActorStealthConsoleCommands();
+	RegisterActorStealthConsoleCommands();
+
 #ifndef MASTER_GOLD
 	CMD3(CCC_Mask64, "ai_obstacles_avoiding", &psAI_Flags, aiObstaclesAvoiding);
 	CMD3(CCC_Mask64, "ai_obstacles_avoiding_static", &psAI_Flags, aiObstaclesAvoidingStatic);
