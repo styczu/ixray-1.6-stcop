@@ -25,6 +25,7 @@
 #include "memory_manager.h"
 #include "../xrEngine/IGame_Persistent.h"
 #include "Actor.h"
+#include "ActorStealth.h"
 
 #ifndef MASTER_GOLD
 #	include "ai_debug.h"
@@ -62,6 +63,7 @@ void CSoundMemoryManager::reinit				()
 	m_sounds				= 0;
 	m_priorities.clear		();
 	m_last_sound_time		= 0;
+	m_actor_shot_time		= 0;
 	m_sound_threshold		= m_min_sound_threshold;
 	VERIFY					(_valid(m_sound_threshold));
 #ifdef USE_SELECTED_SOUND
@@ -146,6 +148,12 @@ void CSoundMemoryManager::feel_sound_new(CObject* object, int sound_type, CSound
 	if (!m_sounds)
 		return;
 	PROF_EVENT("SoundMemory::feel_sound_new");
+
+	// npc-hearing-actor-shots: a suppressed shot of the actor reaches a stalker only within the range of its
+	// weapon class and the time of day (the STCoP sound files carry it up to 200 m); not heard = ignored.
+	CActor* shooter = (m_stalker && ActorStealth::Enabled() && object && is_sound_type(sound_type, SOUND_TYPE_WEAPON_SHOOTING)) ? object->cast_actor() : nullptr;
+	if (shooter && !ActorStealthWorld::ShotHeard(*shooter, m_object->Position().distance_to(position)))
+		return;
 	if (user_data)
 		user_data->accept(m_visitor);
 
@@ -187,6 +195,8 @@ void CSoundMemoryManager::feel_sound_new(CObject* object, int sound_type, CSound
 
 	VERIFY(_valid(sound_power));
 	if (sound_power >= m_sound_threshold) {
+		if (shooter)
+			m_actor_shot_time = std::max<u32>(Device.dwTimeGlobal, 1);
 		if (is_sound_type(sound_type, SOUND_TYPE_WEAPON_SHOOTING)) {
 			// this is fake!
 			CEntityAlive* _entity_alive = object ? object->cast_entity_alive() : NULL;

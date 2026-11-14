@@ -25,6 +25,7 @@
 #include "agent_enemy_manager.h"
 #include "script_game_object.h"
 #include "Actor.h"
+#include "ActorStealth.h"
 
 CMemoryManager::CMemoryManager		(CEntityAlive *entity_alive, CSound_UserDataVisitor *visitor)
 {
@@ -137,6 +138,18 @@ void CMemoryManager::update			(float time_delta)
 	visual().update		(time_delta);
 	sound().update		();
 	hit().update		();
+
+	// npc-hearing-actor-shots: a hostile stalker that heard a shot of the actor in the last 2 s (also the shot
+	// that made him hostile, a hit on his group) knows where the actor is and takes him as an enemy.
+	if (m_stalker && ActorStealth::Enabled() && ActorStealth::ShotStillFresh(sound().actor_shot_time(), Device.dwTimeGlobal))
+	{
+		CActor* Player = Actor();
+		if (Player && Player->g_Alive() && m_stalker->is_relation_enemy(Player))
+		{
+			sound().clear_actor_shot();
+			make_object_visible_somewhen(Player);
+		}
+	}
 	
 	bool				registered_in_combat = false;
 	if (m_stalker)
