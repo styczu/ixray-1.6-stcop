@@ -450,7 +450,7 @@ bool CVisualMemoryManager::visible				(const CGameObject *game_object, float tim
 	}
 	float						stealth_range = 0.f, alpha_ratio = 0.f;
 	if (stealth_actor)
-		stealth_range			= ActorStealth::VisualRange(*stealth_actor);
+		stealth_range			= ActorStealth::VisualRange(*stealth_actor, m_stalker->Rank());
 
 	float						object_distance, distance = stealth_actor ? object_visible_distance(game_object,object_distance,&stealth_range,&alpha_ratio) : object_visible_distance(game_object,object_distance);
 
