@@ -22,6 +22,7 @@
 #include "AnomalyZone.h"
 #include "patrol_path_manager.h"
 #include "memory_manager.h"
+#include "ActorStealth.h"
 #include "visual_memory_manager.h"
 #include "sound_memory_manager.h"
 #include "hit_memory_manager.h"
@@ -1848,6 +1849,13 @@ void CScriptGameObject::IgnoreDangerObject(CScriptGameObject* object)
 	CAI_Stalker* stalker = this->object().cast_stalker();
 	if (stalker && object)
 		stalker->memory().danger().ignore(&object->object());
+}
+
+// npc-corpse-alarm: how far this stalker notices a body (ActorStealth::CorpseRange by its rank).
+float CScriptGameObject::StealthCorpseRange()
+{
+	CAI_Stalker* stalker = object().cast_stalker();
+	return stalker ? ActorStealth::CorpseRange(stalker->Rank()) : 0.f;
 }
 
 void CScriptGameObject::SetSpatialType(u64 sptype)
