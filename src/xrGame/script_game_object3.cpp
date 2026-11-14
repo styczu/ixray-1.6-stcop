@@ -23,6 +23,7 @@
 #include "patrol_path_manager.h"
 #include "memory_manager.h"
 #include "ActorStealth.h"
+#include "enemy_manager.h"
 #include "visual_memory_manager.h"
 #include "sound_memory_manager.h"
 #include "hit_memory_manager.h"
@@ -1856,6 +1857,29 @@ float CScriptGameObject::StealthCorpseRange()
 {
 	CAI_Stalker* stalker = object().cast_stalker();
 	return stalker ? ActorStealth::CorpseRange(stalker->Rank()) : 0.f;
+}
+
+// npc-shot-search: this stalker hears the current shot of the actor (ActorStealthWorld::ShotHeard at its
+// distance: a suppressed shot beyond the range of its weapon_class is silent); always with ai_stealth 0.
+bool CScriptGameObject::StealthHearsActorShot()
+{
+	CAI_Stalker* stalker = object().cast_stalker();
+	CActor* player = Actor();
+	if (!stalker || !player || !ActorStealth::Enabled())
+		return true;
+	return ActorStealthWorld::ShotHeard(*player, stalker->Position().distance_to(player->Position()));
+}
+
+// npc-shot-search: a danger of an unknown source at Position for an unheard shot of the actor that passed
+// the stalker ("bullet ricochet": the danger-unknown planner takes cover, looks around and searches once
+// xr_danger accepts it). Not for a stalker with an enemy: the danger manager would ignore the actor.
+void CScriptGameObject::AddShotDanger(const Fvector& position)
+{
+	CAI_Stalker* stalker = object().cast_stalker();
+	CActor* player = Actor();
+	if (stalker && player && stalker->g_Alive() && !stalker->memory().enemy().selected())
+		stalker->memory().danger().add(CDangerObject(player, position, Device.dwTimeGlobal,
+			CDangerObject::eDangerTypeBulletRicochet, CDangerObject::eDangerPerceiveTypeSound));
 }
 
 void CScriptGameObject::SetSpatialType(u64 sptype)
