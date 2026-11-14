@@ -69,6 +69,23 @@ bool IsHudLightActive(CHudItem* Item)
 }
 } // namespace ActorLightTrace
 
+bool ActorLightPerception::IsLightOn(CActor& Player)
+{
+	PIItem HeadItem = Player.inventory().ItemFromSlot(TORCH_SLOT);
+	CTorch* Headlamp = HeadItem ? HeadItem->cast_torch() : nullptr;
+	if (Headlamp && Headlamp->torch_active())
+	{
+		return true;
+	}
+	if (ActorLightTrace::IsHudLightActive(Player.GetDevice()))
+	{
+		return true;
+	}
+	PIItem ActiveItem = Player.inventory().ActiveItem();
+	CWeapon* Weapon = ActiveItem ? ActiveItem->cast_weapon() : nullptr;
+	return ActorLightTrace::IsHudLightActive(Weapon);
+}
+
 void ActorLightPerception::Load()
 {
 	Enabled = pSettings->section_exist("gunslinger_base");
