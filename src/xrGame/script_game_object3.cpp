@@ -1841,6 +1841,15 @@ void CScriptGameObject::RemoveDanger(const CDangerObject& dobject)
 	}
 }
 
+// npc-corpse-alarm: dangers of the object stop counting for this stalker (CDangerManager::ignore, as after a
+// fight), so a corpse rejected for good no longer hides a newer danger from best_danger().
+void CScriptGameObject::IgnoreDangerObject(CScriptGameObject* object)
+{
+	CAI_Stalker* stalker = this->object().cast_stalker();
+	if (stalker && object)
+		stalker->memory().danger().ignore(&object->object());
+}
+
 void CScriptGameObject::SetSpatialType(u64 sptype)
 {
 	object().SpatialComponent->type = (ESPATIAL_TYPE)sptype;
