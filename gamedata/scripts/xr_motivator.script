@@ -371,6 +371,7 @@ function motivator_binder:death_callback(victim, who)
         self:hit_callback(victim, 1, vector():set(0,0,0), who, "from_death_callback")
     
         SendScriptCallback("npc_on_death_callback", victim, who)
+        xr_danger.on_npc_death(victim, who) -- npc-corpse-alarm
     
         xrs_dyn_music.npc_table[self.object:id()] = nil
         xr_combat_ignore.fighting_with_actor_npcs[self.object:id()] = nil

@@ -20,6 +20,136 @@ local ignore_distance = {
 
 local DANGER_INERTION_TIME	= 30000
 
+-- npc-corpse-alarm (stealth model stage 5, ai_stealth 1 and ai_stealth_corpses 1):
+-- a human killed by the actor alarms its allies. The danger is the vanilla
+-- "fresh corpse" danger of the engine (take cover, look around, search):
+-- * the first ally that sees the body (or hears the death, ai_stealth_death_hear m)
+--   reacts and passes the danger to its online squad;
+-- * then the body is known (saved in its pstor) and alarms nobody else.
+-- An alarmed NPC reacts for CORPSE_REACT_TIME. With the model off the
+-- vanilla rule stays: every corpse is ignored.
+local CORPSE_REACT_TIME = 60000
+-- The danger time of a corpse is the last time the NPC saw it: discovery
+-- needs a body seen now, not one remembered from before.
+local CORPSE_SEEN_TIME = 1000
+local KILLED_BY_ACTOR = "ixr_killed_by_actor"
+local CORPSE_KNOWN = "ixr_corpse_known"
+
+-- [corpse id] = {[npc id] = start of the reaction, 0 = alarmed, not reacting yet}
+local corpse_alarms = {}
+
+function corpse_alarm_enabled()
+	local console = get_console()
+	return console:get_integer("ai_stealth") ~= 0 and console:get_integer("ai_stealth_corpses") ~= 0
+end
+
+local function pstor_get(obj, name)
+	local st = db.storage[obj:id()]
+	return st ~= nil and st.pstor ~= nil and st.pstor[name] or nil
+end
+
+-- Humans that may react: no zombies, traders and story NPCs (own or squad story id).
+function corpse_observer(npc)
+	if not IsStalker(npc) or (db.actor and npc:id() == db.actor:id()) or not npc:alive() then
+		return false
+	end
+	local community = character_community(npc)
+	if community == "zombied" or community == "trader" or npc:clsid() == clsid.trader then
+		return false
+	end
+	if get_object_story_id(npc:id()) then
+		return false
+	end
+	local squad = get_object_squad(npc)
+	return not (squad ~= nil and get_object_story_id(squad.id) ~= nil)
+end
+
+local function alarmed_corpse(npc, corpse)
+	return IsStalker(corpse) and not corpse:alive() and pstor_get(corpse, KILLED_BY_ACTOR) == true
+		and corpse_observer(npc) and npc:relation(corpse) ~= game_object.enemy
+end
+
+local function alarm(corpse, npc)
+	local list = corpse_alarms[corpse:id()]
+	if list == nil then
+		list = {}
+		corpse_alarms[corpse:id()] = list
+	end
+	if list[npc:id()] == nil then
+		list[npc:id()] = 0
+		npc:make_object_visible_somewhen(corpse)
+	end
+end
+
+local function alarm_squad(corpse, npc)
+	local squad = get_object_squad(npc)
+	if squad == nil then
+		return
+	end
+	for i = 0, squad:npc_count() - 1 do
+		local st = db.storage[squad:getSquadMemberId(i)]
+		local member = st and st.object
+		if member and member:id() ~= npc:id() and alarmed_corpse(member, corpse) then
+			alarm(corpse, member)
+		end
+	end
+end
+
+-- Does the corpse danger count for the NPC (no side effects).
+function corpse_danger(npc, danger, corpse)
+	if not (corpse_alarm_enabled() and alarmed_corpse(npc, corpse)) then
+		return false
+	end
+	local list = corpse_alarms[corpse:id()]
+	local start = list and list[npc:id()]
+	if start ~= nil then
+		return start == 0 or time_global() - start < CORPSE_REACT_TIME
+	end
+	if pstor_get(corpse, CORPSE_KNOWN) == true then
+		return false
+	end
+	return danger:time() >= corpse:death_time() and time_global() - danger:time() < CORPSE_SEEN_TIME
+end
+
+-- The NPC reacts: the body becomes known, the squad of the NPC gets the danger.
+function corpse_react(npc, corpse)
+	local list = corpse_alarms[corpse:id()]
+	if list == nil then
+		list = {}
+		corpse_alarms[corpse:id()] = list
+	end
+	local start = list[npc:id()]
+	if start ~= nil and start ~= 0 then
+		return
+	end
+	list[npc:id()] = time_global()
+	xr_logic.pstor_store(corpse, CORPSE_KNOWN, true)
+	alarm_squad(corpse, npc)
+end
+
+-- xr_motivator death_callback: remember a kill by the actor; allies within
+-- ai_stealth_death_hear m hear the death.
+function on_npc_death(victim, who)
+	if not (db.actor and who and who:id() == db.actor:id() and IsStalker(victim) and db.storage[victim:id()]) then
+		return
+	end
+	xr_logic.pstor_store(victim, KILLED_BY_ACTOR, true)
+	if not corpse_alarm_enabled() then
+		return
+	end
+	local range = get_console():get_float("ai_stealth_death_hear")
+	local range_sqr = range * range
+	local position = victim:position()
+	for id, st in pairs(db.storage) do
+		local npc = st.object
+		if npc and id ~= victim:id() and alarmed_corpse(npc, victim)
+			and npc:position():distance_to_sqr(position) <= range_sqr
+		then
+			alarm(victim, npc)
+		end
+	end
+end
+
 
 function get_danger_name(best_danger)
 	local best_danger_object = best_danger:object()
@@ -73,8 +203,13 @@ function is_danger(npc)
 	end
 
 	-- Игнорируем старые трупы
+	-- npc-corpse-alarm: except a body of an ally killed by the actor (above)
+	local alarm_corpse = nil
 	if bd_type == danger_object.entity_corpse then
-		return false
+		if not corpse_danger(npc, best_danger, best_danger_object) then
+			return false
+		end
+		alarm_corpse = best_danger_object
 		--local corpse_object = best_danger:object()
 		--if time_global() - corpse_object:death_time() >= DANGER_INERTION_TIME then
 		--	return false
@@ -93,7 +228,9 @@ function is_danger(npc)
 	local ignore_distance_by_type = ignore_distance[bd_type]
 	--printf("[%s] check danger type %s, distance %s", npc:name(), bd_type, tostring(ignore_distance_by_type))
 	--log(string.format( "[%s] check danger type %s, distance %s", npc:name(), bd_type, tostring(ignore_distance_by_type) ))
-	if ignore_distance_by_type ~= nil then
+	if alarm_corpse ~= nil then
+		-- seen or passed by the squad: no distance limit
+	elseif ignore_distance_by_type ~= nil then
 	 	if danger_distance_sqr >= ignore_distance_by_type*ignore_distance_by_type then
 			return false
 		end
@@ -121,6 +258,10 @@ function is_danger(npc)
 		 bd_type ~= danger_object.grenade
 	then
 		return false
+	end
+
+	if alarm_corpse ~= nil then
+		corpse_react(npc, alarm_corpse)
 	end
 
 	return true
