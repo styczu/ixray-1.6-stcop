@@ -25,6 +25,8 @@ public:
 	void SyncNavigationVisibility();
 	void UpdateNavigationHud();
 	void DrawNavigationHud();
+	// hud-motion-icon-over-frame: the motion icon is a child of the minimap frame window
+	bool IsMotionIconOnMinimap() const;
 	void RebindNavigationChildren();
 
 	void PersistNavigationMode(ENavigationHudMode mode);
