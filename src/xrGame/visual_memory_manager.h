@@ -13,6 +13,7 @@
 
 class CCreature;
 class CAI_Stalker;
+class CActor;
 class vision_client;
 
 class CVisualMemoryManager {
@@ -66,7 +67,8 @@ protected:
 	IC		void	fill_object				(CVisibleObject &visible_object, const CGameObject *game_object);
 			bool	should_ignore_object	(CObject const* object) const;
 			void	add_visible_object		(const CVisibleObject visible_object);
-			float	object_visible_distance	(const CGameObject *game_object, float &object_distance) const;
+			float	object_visible_distance	(const CGameObject *game_object, float &object_distance, const float *stealth_range = nullptr, float *alpha_ratio = nullptr) const;
+			float	actor_stealth_value		(CActor &actor, float distance, float object_distance, float time_delta, float alpha_ratio) const;
 			float	object_luminocity		(const CGameObject *game_object) const;
 			float	get_visible_value		(const CGameObject *game_object,float distance, float object_distance, float time_delta, float object_velocity, float luminocity) const;
 			float	get_object_velocity		(const CGameObject *game_object, const CNotYetVisibleObject &not_yet_visible_object) const;
