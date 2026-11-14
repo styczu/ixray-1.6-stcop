@@ -4,6 +4,8 @@
 #include "Level.h"
 #include "GamePersistent.h"
 #include "ui/UIInventoryUtilities.h"
+#include "Inventory.h"
+#include "Weapon.h"
 
 // Engine side of the stealth model (npc-vision-actor-stealth): weather clock, weather name, sun shadow
 // and the configuration from the ixray-npc-stealth addon.
@@ -42,6 +44,23 @@ float ActorStealthWorld::Seconds()
 const char* ActorStealthWorld::RankName(int Rank)
 {
 	return InventoryUtilities::GetRankAsText(Rank);
+}
+
+bool ActorStealthWorld::ShotHeard(CActor& Player, float Distance)
+{
+	PIItem Item = Player.inventory().ActiveItem();
+	CWeapon* Weapon = Item ? Item->cast_weapon() : nullptr;
+	if (!Weapon || !Weapon->IsSilencerAttached() || Weapon->IsGrenadeMode())
+		return true;
+	const char* Class = "";
+	const shared_str& Section = Weapon->cNameSect();
+	if (pSettings->line_exist(Section, "weapon_class"))
+	{
+		const char* Value = pSettings->r_string(Section, "weapon_class");
+		if (Value)
+			Class = Value;
+	}
+	return Distance <= ActorStealth::SilencedShotRange(Class, GameHours());
 }
 
 void ActorStealthWorld::LoadConfig()
