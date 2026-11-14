@@ -13,6 +13,8 @@ namespace ActorStealthWorld
 	bool SunBlocked(CActor& Player);
 	// Real time in seconds, for smoothing.
 	float Seconds();
+	// Rank name of a character rank value (game_relations.ltx rating: novice, experienced, veteran, master).
+	const char* RankName(int Rank);
 	// Reads [npc_stealth_light] and [npc_stealth_light_night] (ixray-npc-stealth) when they exist.
 	void LoadConfig();
 }
@@ -22,9 +24,11 @@ namespace ActorStealthWorld
 namespace ActorStealth
 {
 	bool Enabled();
-	// Distance at which a stalker can notice the actor straight ahead,
-	// interpolated between night and day ranges by the actor brightness.
-	float VisualRange(CActor& Player);
+	// Distance at which a stalker of rank ObserverRank can notice the actor straight ahead:
+	// N + (day range - N) x brightness, N = the night range of the rank.
+	float VisualRange(CActor& Player, int ObserverRank);
+	// Night range of a rank name (novice for an unknown one).
+	float NightRange(const char* Rank);
 	// Actor brightness 0..1 for the sight range: day curve of the weather clock with the night level of
 	// the weather, times the shade factor in the sun shadow, at least the actor ROS (level lamps);
 	// 1 with a lit torch. Underground weathers use the ROS alone.
