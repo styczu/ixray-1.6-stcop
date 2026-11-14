@@ -34,6 +34,10 @@ namespace
 	float SilencerRifle = 50.f;
 	float SilencerDay = 0.5f;
 	const u32 ShotFreshTime = 2000;
+	// npc-corpse-alarm: reaction of the allies to a human killed by the actor (xr_danger.script reads both
+	// commands; user model 2026-11-14: a death is heard within 10 m).
+	int CorpseAlarm = 1;
+	float DeathHearRange = 10.f;
 
 	bool TorchRevealsActor(CActor& Player)
 	{
@@ -388,6 +392,8 @@ void ActorStealth::RegisterConsoleCommands()
 	CMD4(CCC_StealthFloat, "ai_stealth_silencer_carbine", &SilencerCarbine, 0.f, 300.f);
 	CMD4(CCC_StealthFloat, "ai_stealth_silencer_rifle", &SilencerRifle, 0.f, 300.f);
 	CMD4(CCC_StealthFloat, "ai_stealth_silencer_day", &SilencerDay, 0.f, 1.f);
+	CMD4(CCC_StealthInteger, "ai_stealth_corpses", &CorpseAlarm, 0, 1);
+	CMD4(CCC_StealthFloat, "ai_stealth_death_hear", &DeathHearRange, 0.f, 50.f);
 }
 
 // Called from CCC_RegisterCommands (console_commands.cpp).
