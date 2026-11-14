@@ -28,6 +28,8 @@
 #include "memory_manager.h"
 #include "ai/monsters/basemonster/base_monster.h"
 #include "ActorStealth.h"
+#include "enemy_manager.h"
+#include "hit_memory_manager.h"
 
 #ifndef MASTER_GOLD
 #	include "Actor.h"
@@ -439,6 +441,13 @@ bool CVisualMemoryManager::visible				(const CGameObject *game_object, float tim
 
 	// npc-vision-actor-stealth: stalkers looking at the actor use the stealth model when ai_stealth is on.
 	CActor						*stealth_actor = (m_stalker && ActorStealth::Enabled()) ? const_cast<CGameObject*>(game_object)->cast_actor() : nullptr;
+	// r2: a stalker fighting the actor, or recently hit by him, keeps the vanilla formula.
+	if (stealth_actor) {
+		const CEntityAlive		*enemy = m_stalker->memory().enemy().selected();
+		const CHitMemoryManager	&hits = m_stalker->memory().hit();
+		if (ActorStealth::FightsActor(enemy && (enemy->ID() == game_object->ID()), hits.last_hit_object_id() == game_object->ID(), hits.last_hit_time(), Device.dwTimeGlobal))
+			stealth_actor		= nullptr;
+	}
 	float						stealth_range = 0.f, alpha_ratio = 0.f;
 	if (stealth_actor)
 		stealth_range			= ActorStealth::VisualRange(*stealth_actor);
