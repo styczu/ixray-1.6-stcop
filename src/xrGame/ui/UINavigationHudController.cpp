@@ -443,6 +443,31 @@ void CUINavigationHudController::DrawNavigationHud()
 
 	if (!IsCompassBarActive() && _host.UIZoneMap && _host.UIZoneMap->visible)
 	{
+		// hud-motion-icon-over-frame: CUIZoneMap::Render draws the map window (with the
+		// motion icon as its child) before the frame texture, which covered the icon's
+		// overlays (detection progress, luminosity overlay). Draw the icon after the frame.
+		const bool iconOnMinimap = IsMotionIconOnMinimap();
+		const bool iconShown = iconOnMinimap && _host.UIMotionIcon->IsShown();
+		if (iconOnMinimap)
+		{
+			_host.UIMotionIcon->Show(false);
+		}
+
 		_host.UIZoneMap->Render();
+
+		if (iconOnMinimap)
+		{
+			_host.UIMotionIcon->Show(iconShown);
+			if (iconShown)
+			{
+				_host.UIMotionIcon->Draw();
+			}
+		}
 	}
+}
+
+bool CUINavigationHudController::IsMotionIconOnMinimap() const
+{
+	return _host.UIMotionIcon && _host.UIZoneMap &&
+		_host.UIMotionIcon->GetParent() == &_host.UIZoneMap->MapFrame();
 }
