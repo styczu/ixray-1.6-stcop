@@ -941,6 +941,7 @@ public:
 
 			void				RemoveDanger(const CDangerObject& dobject);
 			void				IgnoreDangerObject(CScriptGameObject* object);
+			float				StealthCorpseRange();
 
 			void				RemoveMemorySoundObject(const MemorySpace::CSoundObject& memory_object);
 			void				RemoveMemoryHitObject(const MemorySpace::CHitObject& memory_object);
