@@ -762,7 +762,9 @@ void CUIMainIngameWnd::Draw()
 	}
 
 	UIMotionIcon->SetNoise((s16)(0xffff&iFloor(pActor->m_snd_noise*100)));
-	UIMotionIcon->Draw();
+	// hud-motion-icon-over-frame: on the minimap DrawNavigationHud draws the icon after the frame
+	if (!m_navigationHud->IsMotionIconOnMinimap())
+		UIMotionIcon->Draw();
 
 	DrawNavigationHud();
 
