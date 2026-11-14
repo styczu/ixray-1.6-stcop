@@ -10,7 +10,11 @@ namespace
 	// Values come from the mod options menu (ixray-npc-stealth) and are not saved to user.ltx.
 	int StealthEnabled = 0;
 	float RangeDay = 100.f;
-	float RangeNight = 20.f;
+	// Night range by the rank of the observer (user model 2026-11-14).
+	float RangeNovice = 20.f;
+	float RangeExperienced = 30.f;
+	float RangeVeteran = 45.f;
+	float RangeMaster = 100.f;
 	float MoveStill = 0.25f;
 	float MoveSneak = 0.5f;
 	float MoveWalk = 1.f;
@@ -122,9 +126,24 @@ bool ActorStealth::Enabled()
 	return StealthEnabled != 0;
 }
 
-float ActorStealth::VisualRange(CActor& Player)
+float ActorStealth::VisualRange(CActor& Player, int ObserverRank)
 {
-	return RangeNight + (RangeDay - RangeNight) * Brightness(Player);
+	const float Night = NightRange(ActorStealthWorld::RankName(ObserverRank));
+	return Night + (RangeDay - Night) * Brightness(Player);
+}
+
+float ActorStealth::NightRange(const char* Rank)
+{
+	if (Rank)
+	{
+		if (!xr_strcmp(Rank, "experienced"))
+			return RangeExperienced;
+		if (!xr_strcmp(Rank, "veteran"))
+			return RangeVeteran;
+		if (!xr_strcmp(Rank, "master"))
+			return RangeMaster;
+	}
+	return RangeNovice;
 }
 
 float ActorStealth::Brightness(CActor& Player)
@@ -328,7 +347,10 @@ void ActorStealth::RegisterConsoleCommands()
 {
 	CMD4(CCC_StealthInteger, "ai_stealth", &StealthEnabled, 0, 1);
 	CMD4(CCC_StealthFloat, "ai_stealth_range_day", &RangeDay, 1.f, 300.f);
-	CMD4(CCC_StealthFloat, "ai_stealth_range_night", &RangeNight, 1.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_range_novice", &RangeNovice, 1.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_range_experienced", &RangeExperienced, 1.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_range_veteran", &RangeVeteran, 1.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_range_master", &RangeMaster, 1.f, 300.f);
 	CMD4(CCC_StealthFloat, "ai_stealth_still", &MoveStill, 0.f, 10.f);
 	CMD4(CCC_StealthFloat, "ai_stealth_sneak", &MoveSneak, 0.f, 10.f);
 	CMD4(CCC_StealthFloat, "ai_stealth_walk", &MoveWalk, 0.f, 10.f);
