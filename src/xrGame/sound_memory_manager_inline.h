@@ -16,6 +16,7 @@ IC	CSoundMemoryManager::CSoundMemoryManager						(CCreature *object, CAI_Stalker
 	m_visitor					= visitor;
 	m_stalker					= stalker;
 	m_max_sound_count			= 0;
+	m_actor_shot_time			= 0;
 #ifdef USE_SELECTED_SOUND
 	m_selected_sound			= 0;
 #endif
