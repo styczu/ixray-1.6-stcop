@@ -31,6 +31,10 @@ namespace ActorStealth
 	// Distance at which a stalker of rank ObserverRank can notice the actor straight ahead:
 	// N + (day range - N) x brightness, N = the night range of the rank.
 	float VisualRange(CActor& Player, int ObserverRank);
+	// npc-corpse-alarm: distance at which a stalker of rank ObserverRank can notice a body: the sight range
+	// for the actor with the brightness of the weather clock alone (the shade, torch and lamps are measured
+	// at the actor only); the day range in underground weathers.
+	float CorpseRange(int ObserverRank);
 	// Night range of a rank name (novice for an unknown one).
 	float NightRange(const char* Rank);
 	// npc-hearing-actor-shots: hearing range of a suppressed shot by weapon_class ("" = pistol: ai_stealth_
