@@ -3,6 +3,7 @@
 #include "Actor.h"
 #include "Level.h"
 #include "GamePersistent.h"
+#include "ui/UIInventoryUtilities.h"
 
 // Engine side of the stealth model (npc-vision-actor-stealth): weather clock, weather name, sun shadow
 // and the configuration from the ixray-npc-stealth addon.
@@ -36,6 +37,11 @@ bool ActorStealthWorld::SunBlocked(CActor& Player)
 float ActorStealthWorld::Seconds()
 {
 	return Device.fTimeGlobal;
+}
+
+const char* ActorStealthWorld::RankName(int Rank)
+{
+	return InventoryUtilities::GetRankAsText(Rank);
 }
 
 void ActorStealthWorld::LoadConfig()
