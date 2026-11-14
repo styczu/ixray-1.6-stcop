@@ -23,7 +23,8 @@ local DANGER_INERTION_TIME	= 30000
 -- npc-corpse-alarm (stealth model stage 5, ai_stealth 1 and ai_stealth_corpses 1):
 -- a human killed by the actor alarms its allies. The danger is the vanilla
 -- "fresh corpse" danger of the engine (take cover, look around, search):
--- * the first ally that sees the body (or hears the death, ai_stealth_death_hear m)
+-- * the first ally that sees the body within its stealth sight range (rank and
+--   time of day, as for the actor), or hears the death (ai_stealth_death_hear m),
 --   reacts and passes the danger to its online squad;
 -- * then the body is known (saved in its pstor) and alarms nobody else.
 -- An alarmed NPC reacts for CORPSE_REACT_TIME. A body that will never count
@@ -114,7 +115,12 @@ function corpse_danger(npc, danger, corpse)
 	if pstor_get(corpse, CORPSE_KNOWN) == true then
 		return false, true
 	end
-	return danger:time() >= corpse:death_time() and time_global() - danger:time() < CORPSE_SEEN_TIME, false
+	if not (danger:time() >= corpse:death_time() and time_global() - danger:time() < CORPSE_SEEN_TIME) then
+		return false, false
+	end
+	-- the stealth sight range of the observer (rank, time of day): at night a body is noticed as late as the actor
+	local range = npc:stealth_corpse_range()
+	return npc:position():distance_to_sqr(corpse:position()) <= range * range, false
 end
 
 -- The NPC reacts: the body becomes known, the squad of the NPC gets the danger.
