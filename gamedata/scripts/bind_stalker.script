@@ -90,6 +90,7 @@ function actor_binder:net_spawn(data)
 	self.bCheckStart = true
 	self.weapon_hide = false -- спрятано или нет оружие при разговоре.
 	self.weapon_hide_in_dialog = false
+	db.actor_ads_weapon_id = nil -- [meet-weapon-ads-only] no zoom carried over from a previous game or load
 	weapon_hide = {} -- устанавливаем глобальный дефолтовый флаг.
 	if object_binder.net_spawn(self,data) == false then
 		return false
@@ -393,11 +394,14 @@ end
 
 ----------------------------------------------------------------------------------------------------------------------
 function actor_binder:on_weapon_zoom_in(obj, wpn)
+	-- [meet-weapon-ads-only] read by xr_conditions.actor_aims_at_npc
+	db.actor_ads_weapon_id = (wpn and get_clsid(wpn) ~= clsid.wpn_binocular_s) and wpn:id() or nil
 	SendScriptCallback("actor_on_weapon_zoom_in", wpn)
 end
 
 ----------------------------------------------------------------------------------------------------------------------
 function actor_binder:on_weapon_zoom_out(obj, wpn)
+	db.actor_ads_weapon_id = nil
 	SendScriptCallback("actor_on_weapon_zoom_out", wpn)
 end
 
