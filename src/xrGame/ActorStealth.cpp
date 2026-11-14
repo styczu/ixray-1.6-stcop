@@ -29,6 +29,79 @@ namespace
 		return TorchReveals != 0 && ActorLightPerception::IsLightOn(Player);
 	}
 
+	// Brightness by time of day (user model 2026-11-14): day 1, evening and dawn 0.55, night by weather
+	// (bright moonlit ~0.2, dark ~0), 0.75 of it in the sun shadow. Defaults equal mod_system_npc_stealth.ltx.
+	struct CurvePoint
+	{
+		float Hour;
+		float Value; // NightValue = the night level of the weather
+	};
+	const float NightValue = -1.f;
+	const int MaxCurvePoints = 24;
+	CurvePoint Curve[MaxCurvePoints] = {
+		{4.5f, NightValue}, {5.5f, 0.55f}, {6.5f, 1.f}, {20.f, 1.f}, {22.f, 0.55f}, {23.5f, NightValue},
+	};
+	int CurveCount = 6;
+	float ShadeFactor = 0.75f;
+	float NightDefault = 0.1f;
+	xr_vector<std::pair<xr_string, float>> NightLevels = {
+		{"default_cloudy", 0.2f}, {"default_pure", 0.2f}, {"default_rain", 0.17f}, {"default_white", 0.15f},
+		{"default_clear", 0.13f}, {"default_dark", 0.1f}, {"default_drops", 0.1f}, {"default_thunder", 0.06f},
+		{"default_storm", 0.f}, {"default_fog", 0.f},
+	};
+	xr_vector<xr_string> RawLightWeathers = {"indoor", "indoor_ambient", "default_way_to_pripyat"};
+
+	// Smoothing: the night level follows a weather change within ~10 s, the shade ~0.5 s.
+	const float NightBlendTime = 10.f;
+	const float ShadeBlendTime = 0.5f;
+	const float ShadeCheckPeriod = 0.25f;
+	bool ConfigLoaded = false;
+	bool LightStarted = false;
+	float LastTime = 0.f;
+	float NextShadeCheck = 0.f;
+	float NightNow = 0.f;
+	float ShadeNow = 0.f;
+	float ShadeTarget = 0.f;
+
+	void EnsureConfig()
+	{
+		if (ConfigLoaded)
+			return;
+		ConfigLoaded = true;
+		ActorStealthWorld::LoadConfig();
+	}
+
+	const char* SkipSpaces(const char* Text)
+	{
+		while (*Text == ' ' || *Text == '\t')
+			++Text;
+		return Text;
+	}
+
+	// Next comma-separated item without surrounding spaces; false at the end of the text.
+	bool NextItem(const char*& Text, xr_string& Item)
+	{
+		Text = SkipSpaces(Text);
+		if (!*Text)
+			return false;
+		const char* End = Text;
+		while (*End && *End != ',')
+			++End;
+		const char* Last = End;
+		while (Last > Text && (Last[-1] == ' ' || Last[-1] == '\t'))
+			--Last;
+		Item.assign(Text, Last - Text);
+		Text = *End ? End + 1 : End;
+		return true;
+	}
+
+	bool ParseNumber(const xr_string& Item, float& Value)
+	{
+		char* End = nullptr;
+		Value = strtof(Item.c_str(), &End);
+		return !Item.empty() && End && !*End;
+	}
+
 	class CCC_StealthFloat : public CCC_Float
 	{
 	public:
@@ -51,13 +124,160 @@ bool ActorStealth::Enabled()
 
 float ActorStealth::VisualRange(CActor& Player)
 {
-	float Light = 1.f;
-	if (!TorchRevealsActor(Player))
+	return RangeNight + (RangeDay - RangeNight) * Brightness(Player);
+}
+
+float ActorStealth::Brightness(CActor& Player)
+{
+	EnsureConfig();
+	if (TorchRevealsActor(Player))
+		return 1.f;
+
+	float Raw = Player.ROS() ? Player.ROS()->get_luminocity() : 1.f;
+	clamp(Raw, 0.f, 1.f);
+	const char* Weather = ActorStealthWorld::Weather();
+	if (UsesRawLight(Weather))
+		return Raw;
+
+	const float Now = ActorStealthWorld::Seconds();
+	const float Night = NightLevel(Weather);
+	if (!LightStarted || Now < LastTime)
 	{
-		Light = Player.ROS() ? Player.ROS()->get_luminocity() : 1.f;
-		clamp(Light, 0.f, 1.f);
+		LightStarted = true;
+		LastTime = Now;
+		NightNow = Night;
+		ShadeTarget = ShadeNow = ActorStealthWorld::SunBlocked(Player) ? 1.f : 0.f;
+		NextShadeCheck = Now + ShadeCheckPeriod;
 	}
-	return RangeNight + (RangeDay - RangeNight) * Light;
+	const float Delta = Now - LastTime;
+	LastTime = Now;
+	if (Now >= NextShadeCheck)
+	{
+		ShadeTarget = ActorStealthWorld::SunBlocked(Player) ? 1.f : 0.f;
+		NextShadeCheck = Now + ShadeCheckPeriod;
+	}
+	NightNow += (Night - NightNow) * std::min(1.f, Delta / NightBlendTime);
+	ShadeNow += (ShadeTarget - ShadeNow) * std::min(1.f, Delta / ShadeBlendTime);
+
+	float Light = DayCurve(ActorStealthWorld::GameHours(), NightNow) * (1.f + (ShadeFactor - 1.f) * ShadeNow);
+	Light = std::max(Light, Raw);
+	clamp(Light, 0.f, 1.f);
+	return Light;
+}
+
+float ActorStealth::DayCurve(float Hours, float Night)
+{
+	if (CurveCount <= 0)
+		return 1.f;
+	Hours = fmodf(Hours, 24.f);
+	if (Hours < 0.f)
+		Hours += 24.f;
+	for (int Index = 0; Index < CurveCount; ++Index)
+	{
+		const CurvePoint& From = Curve[Index];
+		const CurvePoint& To = Curve[(Index + 1) % CurveCount];
+		float Start = From.Hour, End = To.Hour, At = Hours;
+		if (End <= Start)
+			End += 24.f; // the segment crosses midnight (or the curve has one point)
+		if (At < Start)
+			At += 24.f;
+		if (At > End)
+			continue;
+		const float A = From.Value == NightValue ? Night : From.Value;
+		const float B = To.Value == NightValue ? Night : To.Value;
+		return A + (B - A) * (At - Start) / (End - Start);
+	}
+	return 1.f;
+}
+
+float ActorStealth::NightLevel(const char* Weather)
+{
+	if (Weather)
+	{
+		for (const auto& Level : NightLevels)
+		{
+			if (Level.first == Weather)
+				return Level.second;
+		}
+	}
+	return NightDefault;
+}
+
+bool ActorStealth::UsesRawLight(const char* Weather)
+{
+	if (!Weather)
+		return false;
+	for (const xr_string& Name : RawLightWeathers)
+	{
+		if (Name == Weather)
+			return true;
+	}
+	return false;
+}
+
+bool ActorStealth::SetCurve(const char* Text)
+{
+	CurvePoint Points[MaxCurvePoints];
+	int Count = 0;
+	xr_string Hour, Value;
+	while (NextItem(Text, Hour))
+	{
+		if (Count == MaxCurvePoints || !NextItem(Text, Value))
+			return false;
+		CurvePoint& Point = Points[Count];
+		if (!ParseNumber(Hour, Point.Hour) || Point.Hour < 0.f || Point.Hour >= 24.f)
+			return false;
+		if (Count && Point.Hour <= Points[Count - 1].Hour)
+			return false;
+		if (Value == "night")
+			Point.Value = NightValue;
+		else if (!ParseNumber(Value, Point.Value) || Point.Value < 0.f || Point.Value > 1.f)
+			return false;
+		++Count;
+	}
+	if (!Count)
+		return false;
+	for (int Index = 0; Index < Count; ++Index)
+		Curve[Index] = Points[Index];
+	CurveCount = Count;
+	return true;
+}
+
+void ActorStealth::SetShade(float Factor)
+{
+	clamp(Factor, 0.f, 1.f);
+	ShadeFactor = Factor;
+}
+
+void ActorStealth::SetNightDefault(float Value)
+{
+	clamp(Value, 0.f, 1.f);
+	NightDefault = Value;
+}
+
+void ActorStealth::SetNight(const char* Weather, float Value)
+{
+	clamp(Value, 0.f, 1.f);
+	for (auto& Level : NightLevels)
+	{
+		if (Level.first == Weather)
+		{
+			Level.second = Value;
+			return;
+		}
+	}
+	NightLevels.emplace_back(Weather, Value);
+}
+
+void ActorStealth::SetRawLightWeathers(const char* List)
+{
+	RawLightWeathers.clear();
+	xr_string Name;
+	while (NextItem(List, Name))
+	{
+		if (!Name.empty())
+			RawLightWeathers.push_back(Name);
+	}
 }
 
 float ActorStealth::RateFactor(CActor& Player)
