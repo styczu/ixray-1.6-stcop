@@ -30,6 +30,7 @@
 #include "ActorStealth.h"
 #include "enemy_manager.h"
 #include "hit_memory_manager.h"
+#include "sound_memory_manager.h"
 
 #ifndef MASTER_GOLD
 #	include "Actor.h"
@@ -389,6 +390,31 @@ float CVisualMemoryManager::actor_stealth_value(CActor &actor, float distance, f
 	return								(value);
 }
 
+namespace
+{
+	template <typename T>
+	void latest_news(const xr_vector<T> &objects, u16 id, u64 mask, u32 &result)
+	{
+		for (const T &object : objects)
+			if (object.m_enabled && (object == id) && object.m_squad_mask.test(mask) && (object.m_level_time > result))
+				result = object.m_level_time;
+	}
+}
+
+// npc-vision-contact-loss: the latest time the object was seen, heard or hit by anyone, in the memory lists
+// this stalker shares with its agent, counting only the entries it knows (m_squad_mask), 0 = none.
+// Like CMemoryManager::memory_time, but aware of the mask.
+u32 CVisualMemoryManager::actor_contact_time(const CGameObject *game_object) const
+{
+	const u16 id = CMemoryObject::object_id(game_object);
+	const u64 mask = this->mask();
+	u32 result = 0;
+	latest_news(*m_objects, id, mask, result);
+	latest_news(m_stalker->memory().sound().objects(), id, mask, result);
+	latest_news(m_stalker->memory().hit().objects(), id, mask, result);
+	return result;
+}
+
 CNotYetVisibleObject *CVisualMemoryManager::not_yet_visible_object(const CGameObject *game_object)
 {
 	PROF_EVENT("Memory Manager/visuals/not_yet_visible_object")
@@ -442,10 +468,13 @@ bool CVisualMemoryManager::visible				(const CGameObject *game_object, float tim
 	// npc-vision-actor-stealth: stalkers looking at the actor use the stealth model when ai_stealth is on.
 	CActor						*stealth_actor = (m_stalker && ActorStealth::Enabled()) ? const_cast<CGameObject*>(game_object)->cast_actor() : nullptr;
 	// r2: a stalker fighting the actor, or recently hit by him, keeps the vanilla formula.
+	// npc-vision-contact-loss: fighting counts only while the latest news of the actor (seen, heard, hit) is
+	// younger than the contact time of the stalker's rank; then he must find the actor again.
 	if (stealth_actor) {
 		const CEntityAlive		*enemy = m_stalker->memory().enemy().selected();
 		const CHitMemoryManager	&hits = m_stalker->memory().hit();
-		if (ActorStealth::FightsActor(enemy && (enemy->ID() == game_object->ID()), hits.last_hit_object_id() == game_object->ID(), hits.last_hit_time(), Device.dwTimeGlobal))
+		const bool				selected_actor = enemy && (enemy->ID() == game_object->ID());
+		if (ActorStealth::FightsActor(selected_actor, selected_actor ? actor_contact_time(game_object) : 0, ActorStealth::ContactSeconds(m_stalker->Rank()), hits.last_hit_object_id() == game_object->ID(), hits.last_hit_time(), Device.dwTimeGlobal))
 			stealth_actor		= nullptr;
 	}
 	float						stealth_range = 0.f, alpha_ratio = 0.f;
