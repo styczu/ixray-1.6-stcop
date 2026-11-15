@@ -1376,6 +1376,61 @@ function surge_stats()
     end)
 end
 
+-- [IX-Ray Refinements] surge-shelter-fallback
+-- During an emission a squad without a free shelter may be sent to the
+-- nearest one beyond max_population (sim_board:get_squad_target). Every
+-- NPC registered in a smart must get an exclusive job, otherwise
+-- select_npc_job aborts with "Insufficient smart_terrain jobs". Only jobs
+-- without any precondition (e.g. the 20 generic <smart>_point_N jobs) are
+-- counted: they stay available in every phase, also after the emission
+-- ends and the surge jobs disappear.
+local function count_unconditional_jobs(jobs)
+	local count = 0
+	for _, v in pairs(jobs) do
+		if v._precondition_function == nil and v._precondition_is_monster ~= true then
+			if v.job_id == nil then
+				if v.jobs ~= nil then
+					count = count + count_unconditional_jobs(v.jobs)
+				end
+			else
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+-- Unconditional jobs left for squad: minus stalkers already registered or
+-- arriving (except squad's own members). A squad joins its target smart
+-- when it sets off (reach_target:make -> on_reach_target), so squads on
+-- their way are counted through arriving_npc.
+function se_smart_terrain:surge_fallback_capacity(squad)
+	if self.jobs == nil then
+		return 0
+	end
+	local used = 0
+	local function count_npc(se_obj)
+		if se_obj ~= nil and IsStalker(se_obj) and se_obj.group_id ~= squad.id then
+			used = used + 1
+		end
+	end
+	for _, info in pairs(self.npc_info) do
+		count_npc(info.se_obj)
+	end
+	for _, obj in pairs(self.arriving_npc) do
+		count_npc(obj)
+	end
+	return count_unconditional_jobs(self.jobs) - used
+end
+
+-- During an emission a surge smart keeps its squads (occupants and those
+-- sent by the fallback, assigned when they set off) even when
+-- max_population is exceeded.
+function se_smart_terrain:surge_population_exempt(squad)
+	return tonumber(self.props["surge"]) > 0 and xr_conditions.surge_started()
+		and squad.smart_id == self.id
+end
+
 -- Мой прекондишн.
 function se_smart_terrain:target_precondition(squad, need_to_dec_population)
 	return PROF_EVENT_CLOSURE("target_precondition", function()
@@ -1387,7 +1442,7 @@ function se_smart_terrain:target_precondition(squad, need_to_dec_population)
         if need_to_dec_population then
             squad_count = squad_count - 1
         end
-        if squad_count ~= nil and (self.max_population <= squad_count) then
+        if squad_count ~= nil and (self.max_population <= squad_count) and not self:surge_population_exempt(squad) then -- [IX-Ray Refinements] surge-shelter-fallback
             --printf("smart terrain [%s] precondition returns false for squad [%s]", self:name(), squad:name())
     --		if tonumber(self.props["surge"]) > 0 and xr_conditions.surge_started() then
     --			printf("SURGE_SMART_STATS : smart [%s]\n max_population = %d \ squad_count = %d", self:name(), self.max_population, squad_count)
