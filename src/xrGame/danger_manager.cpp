@@ -352,6 +352,16 @@ void CDangerManager::ignore			(const CGameObject *object)
 	m_ignored.push_back		(object->ID());
 }
 
+// IX-Ray: the ignored list is saved, so an object once ignored during a fight stays
+// filtered out for good; a script danger that must count (AddShotDanger) clears it.
+void CDangerManager::unignore		(const CGameObject *object)
+{
+	VERIFY					(object);
+	IGNORED::iterator		I = std::find(m_ignored.begin(),m_ignored.end(),object->ID());
+	if (I != m_ignored.end())
+		m_ignored.erase		(I);
+}
+
 void CDangerManager::save			(NET_Packet &packet) const
 {
 	save_data				(m_ignored,packet);
