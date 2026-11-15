@@ -18,6 +18,9 @@
 const char* MOTION_ICON_XML = "motion_icon.xml";
 static const float OVERLAY_LUMINOSITY_SMOOTH_SPEED = 4.5f;
 static const float OVERLAY_NOISE_SMOOTH_SPEED = 5.5f;
+// hud-enemy-contact-ring: the ring lights up within ~0.25 s and fades out within ~1 s.
+static const float CONTACT_OVERLAY_FADE_IN_SPEED = 4.f;
+static const float CONTACT_OVERLAY_FADE_OUT_SPEED = 1.f;
 
 namespace
 {
@@ -285,6 +288,9 @@ CUIMotionIcon::CUIMotionIcon()
 	_noiseNormalized = 0.f;
 	_luminosityOverlayCur = 0.f;
 	_noiseOverlayCur = 0.f;
+	_contactOverlay = nullptr;
+	_contactOverlayBaseColor = 0;
+	_contactOverlayCur = 0.f;
 	_compassBackground = nullptr;
 	_statusEnabled = false;
 	_statusIcon = nullptr;
@@ -307,6 +313,12 @@ void CUIMotionIcon::ResetVisibility()
 	_luminosityOverlayCur	= 0.f;
 	_noiseOverlayCur		= 0.f;
 	_contextualAlpha		= 0.f;
+	m_npc_contact.clear		();
+	_contactOverlayCur		= 0.f;
+	if (_contactOverlay)
+	{
+		_contactOverlay->SetTextureColor(subst_alpha(_contactOverlayBaseColor, 0));
+	}
 	if (_compassContextualFade)
 	{
 		ApplyCompassContextualAlpha(0.f);
@@ -347,6 +359,23 @@ void CUIMotionIcon::InitMinimapLuminosityOverlay(CUIXml& uiXml)
 	_luminosityOverlayBaseColor = _luminosityOverlay->GetTextureColor();
 	_luminosityOverlay->SetTextureColor(subst_alpha(_luminosityOverlayBaseColor, 0));
 	LoadContextualFadeSettings(uiXml, "minimap_layout", _minimapContextualFade);
+}
+
+void CUIMotionIcon::InitMinimapContactOverlay(CUIXml& uiXml)
+{
+	if (_contactOverlay || !uiXml.NavigateToNode("contact_overlay", 0))
+	{
+		return;
+	}
+
+	_contactOverlay = UIHelper::CreateStatic(uiXml, "contact_overlay", this, false);
+	if (!_contactOverlay)
+	{
+		return;
+	}
+
+	_contactOverlayBaseColor = _contactOverlay->GetTextureColor();
+	_contactOverlay->SetTextureColor(subst_alpha(_contactOverlayBaseColor, 0));
 }
 
 void CUIMotionIcon::EnsureCompassLayout(CUIXml& uiXml)
@@ -891,6 +920,7 @@ bool CUIMotionIcon::Init(Frect const& zonemap_rect, bool useCompassBar, bool use
     if (!useCompassBar)
     {
         InitMinimapLuminosityOverlay(uiXml);
+        InitMinimapContactOverlay(uiXml);
     }
 
     if (useNoiseOverlay && !useCompassBar)
@@ -953,6 +983,7 @@ void CUIMotionIcon::EnsureMinimapOverlays(CUIXml& uiXml, Fvector2 const& sz, Fve
     }
 
     InitMinimapLuminosityOverlay(uiXml);
+    InitMinimapContactOverlay(uiXml);
 }
 
 void CUIMotionIcon::SetMinimapOverlayVisibility(bool visible)
@@ -972,6 +1003,7 @@ void CUIMotionIcon::SetMinimapOverlayVisibility(bool visible)
     toggle(m_noise_progress_bar);
     toggle(_luminosityOverlay);
     toggle(_noiseOverlay);
+    toggle(_contactOverlay);
 }
 
 void CUIMotionIcon::SetCompassOverlayVisibility(bool visible)
@@ -1285,6 +1317,17 @@ void CUIMotionIcon::Update()
 		u32 alpha = (u32)clampr(iFloor(_noiseOverlayCur * float(maxA)), 0, 255);
 		_noiseOverlay->SetTextureColor(subst_alpha(_noiseOverlayBaseColor, alpha));
 	}
+	if (_contactOverlay != nullptr)
+	{
+		const float target = m_npc_contact.empty() ? 0.f : 1.f;
+		if (_contactOverlayCur < target)
+			_contactOverlayCur = std::min(target, _contactOverlayCur + CONTACT_OVERLAY_FADE_IN_SPEED * Device.fTimeDelta);
+		else
+			_contactOverlayCur = std::max(target, _contactOverlayCur - CONTACT_OVERLAY_FADE_OUT_SPEED * Device.fTimeDelta);
+		const u32 maxA = color_get_A(_contactOverlayBaseColor);
+		const u32 alpha = (u32)clampr(iFloor(_contactOverlayCur * float(maxA)), 0, 255);
+		_contactOverlay->SetTextureColor(subst_alpha(_contactOverlayBaseColor, alpha));
+	}
 
 	if (_compassModeActive && _compassContextualFade)
 	{
@@ -1303,6 +1346,29 @@ void SetActorVisibility		(u16 who_id, float value)
 
 	if(g_pMotionIcon)
 		g_pMotionIcon->SetActorVisibility(who_id, value);
+}
+
+// hud-enemy-contact-ring: NPC who_id knows (contact) or does not know where the actor is. NPCs report it on
+// every memory update, so the list also refills after the HUD is created again.
+void SetActorContact		(u16 who_id, bool contact)
+{
+	if(!IsGameTypeSingleCompatible())
+		return;
+
+	if(g_pMotionIcon)
+		g_pMotionIcon->SetActorContact(who_id, contact);
+}
+
+void CUIMotionIcon::SetActorContact		(u16 who_id, bool contact)
+{
+	auto it = std::find(m_npc_contact.begin(), m_npc_contact.end(), who_id);
+	if (contact)
+	{
+		if (it == m_npc_contact.end())
+			m_npc_contact.push_back(who_id);
+	}
+	else if (it != m_npc_contact.end())
+		m_npc_contact.erase(it);
 }
 
 float CUIMotionIcon::GetThreatNormalized() const
