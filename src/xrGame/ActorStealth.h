@@ -74,5 +74,8 @@ namespace ActorStealth
 	// 0 = none) is younger than ContactSeconds, or it was hit by him less than 30 s ago (times in ms,
 	// Device.dwTimeGlobal): it sees him with the vanilla formula. A time ahead of Now does not count.
 	bool FightsActor(bool SelectedActor, u32 LastContact, float ContactSeconds, bool LastHitByActor, u32 LastHitTime, u32 Now);
+	// The latest news of the actor (LastContact in ms, 0 = none) is younger than ContactSeconds; a time ahead of
+	// Now does not count. Shared by FightsActor and the contact report (npc-contact-report).
+	bool HasContact(u32 LastContact, float ContactSeconds, u32 Now);
 	void RegisterConsoleCommands();
 }
