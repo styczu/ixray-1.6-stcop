@@ -38,6 +38,13 @@ namespace
 	// commands; user model 2026-11-14: a death is heard within 10 m).
 	int CorpseAlarm = 1;
 	float DeathHearRange = 10.f;
+	// npc-vision-contact-loss: seconds without news of the actor after which a stalker fighting him loses
+	// contact and falls back to the stealth model, by rank (user request 2026-11-15). The minimum stays
+	// above the stalker memory update interval (up to ~1 s), or contact would not hold even in plain sight.
+	float ContactNovice = 10.f;
+	float ContactExperienced = 15.f;
+	float ContactVeteran = 20.f;
+	float ContactMaster = 30.f;
 
 	bool TorchRevealsActor(CActor& Player)
 	{
@@ -374,11 +381,26 @@ float ActorStealth::AlertFactor()
 	return Alert;
 }
 
-bool ActorStealth::FightsActor(bool SelectedActor, bool LastHitByActor, u32 LastHitTime, u32 Now)
+float ActorStealth::ContactSeconds(int ObserverRank)
 {
-	if (SelectedActor)
+	const char* Rank = ActorStealthWorld::RankName(ObserverRank);
+	if (Rank)
+	{
+		if (!xr_strcmp(Rank, "experienced"))
+			return ContactExperienced;
+		if (!xr_strcmp(Rank, "veteran"))
+			return ContactVeteran;
+		if (!xr_strcmp(Rank, "master"))
+			return ContactMaster;
+	}
+	return ContactNovice;
+}
+
+bool ActorStealth::FightsActor(bool SelectedActor, u32 LastContact, float ContactSeconds, bool LastHitByActor, u32 LastHitTime, u32 Now)
+{
+	// A time ahead of Now (stored before a level reload) wraps around and does not count.
+	if (SelectedActor && LastContact != 0 && float(Now - LastContact) < ContactSeconds * 1000.f)
 		return true;
-	// A time ahead of Now (a hit stored before a level reload) wraps around and does not count.
 	return LastHitByActor && (Now - LastHitTime < HitMemoryTime);
 }
 
@@ -406,6 +428,10 @@ void ActorStealth::RegisterConsoleCommands()
 	CMD4(CCC_StealthFloat, "ai_stealth_silencer_day", &SilencerDay, 0.f, 1.f);
 	CMD4(CCC_StealthInteger, "ai_stealth_corpses", &CorpseAlarm, 0, 1);
 	CMD4(CCC_StealthFloat, "ai_stealth_death_hear", &DeathHearRange, 0.f, 50.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_contact_novice", &ContactNovice, 2.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_contact_experienced", &ContactExperienced, 2.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_contact_veteran", &ContactVeteran, 2.f, 300.f);
+	CMD4(CCC_StealthFloat, "ai_stealth_contact_master", &ContactMaster, 2.f, 300.f);
 }
 
 // Called from CCC_RegisterCommands (console_commands.cpp).
