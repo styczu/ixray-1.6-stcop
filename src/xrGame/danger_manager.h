@@ -58,6 +58,7 @@ public:
 			void		add					(const CHitObject &object);
 			void		add					(const CDangerObject &object);
 			void		ignore				(const CGameObject *object);
+			void		unignore			(const CGameObject *object);
 
 public:
 	IC		u32			time_line			() const;
