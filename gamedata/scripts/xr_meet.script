@@ -4,12 +4,6 @@
 --	TODO:
 ----------------------------------------------------------------------------------------------------------------------
 
--- [meet-weapon-ads-only] ADS at the NPC within this distance raises the abuse counter (the reach
--- of xr_effects.actor_punch, 2 m); the threshold (5, abuse_rate 2) is reached after ADS_ABUSE_TIME ms.
-local ADS_ABUSE_DISTANCE = 2
-local ADS_ABUSE_TIME = 3000
-local ADS_ABUSE_RATE = 5 / (2 * ADS_ABUSE_TIME)
-
 ---------------------------------------------------------------------------------------------------------------------
 --Evaluators
 ----------------------------------------------------------------------------------------------------------------------
@@ -200,18 +194,8 @@ function Cmeet_manager:update()
         
         	local actor_visible = self.npc:see(db.actor)
         
-        	-- [meet-weapon-ads-only] Aiming down the sights at the NPC from close range raises the abuse
-        	-- counter (vanilla raised it on every "use" while the NPC refused to talk). The rate reaches the
-        	-- xr_abuse threshold (5, abuse_rate 2) after ADS_ABUSE_TIME of aiming.
-        	if distance <= ADS_ABUSE_DISTANCE and xr_conditions.actor_aims_at_npc(db.actor, self.npc) then
-        		local now = time_global()
-        		if self.ads_abuse_time then
-        			xr_abuse.add_abuse(self.npc, (now - self.ads_abuse_time) * ADS_ABUSE_RATE)
-        		end
-        		self.ads_abuse_time = now
-        	else
-        		self.ads_abuse_time = nil
-        	end
+        	-- [meet-weapon-ads-only r3] Neither "use" nor aiming down the sights raises the abuse counter;
+        	-- the push after 5 s of aiming belongs to the addon ixray-npc-shot-reaction (0.3.0).
         
         	if actor_visible then
         		--printf("%s check distance %s <= %s <= %s", self.npc:name(), distance, tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_snd_distance)), tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_snd_distance)) )
@@ -389,8 +373,8 @@ function notify_on_use(victim, who)
         end
     
     
-        -- [meet-weapon-ads-only] "use" no longer raises the abuse counter; aiming down the sights
-        -- at the NPC does (Cmeet_manager:update).
+        -- [meet-weapon-ads-only] "use" no longer raises the abuse counter (r3: neither does aiming
+        -- down the sights, the addon ixray-npc-shot-reaction pushes the actor).
     end)
 end
 
