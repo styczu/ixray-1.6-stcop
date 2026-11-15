@@ -966,8 +966,10 @@ void CMissile::net_Relcase(CObject* O)
 
 	if (PPhysicsShell() != nullptr && PPhysicsShell()->isActive())
 	{
-		CPhysicsShellHolder* callback_data = (CPhysicsShellHolder*)PPhysicsShell()->get_CallbackData();
-		if (callback_data != nullptr && O == callback_data->dcast_CObject())
+		// Compare addresses only: callback data may be a released object or another type
+		// (telekinesis stores STelekineticObject*), so it must not be dereferenced.
+		void* callback_data = PPhysicsShell()->get_CallbackData();
+		if (callback_data != nullptr && (callback_data == O->cast_game_object() || callback_data == O->cast_physics_shell_holder()))
 		{
 			PPhysicsShell()->remove_ObjectContactCallback(ExitContactCallback);
 			PPhysicsShell()->set_CallbackData(nullptr);
