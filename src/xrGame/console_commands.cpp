@@ -792,6 +792,15 @@ public:
 	}
 };
 
+extern int g_NpcStandingObstacle;
+
+class CCC_NpcStandingObstacle : public CCC_Integer
+{
+public:
+	CCC_NpcStandingObstacle(LPCSTR Name, int* Value) : CCC_Integer(Name, Value, 0, 2) {}
+	void Save(IWriter*) override {}
+};
+
 class CCC_FlushLog : public IConsole_Command {
 public:
 	CCC_FlushLog(const char* N) : IConsole_Command(N) { bEmptyArgsHandled = true; };
@@ -2677,6 +2686,7 @@ void CCC_RegisterCommands()
 		CMD1(CCC_LoadLastSave, "load_last_save");		// load last saved game from ...
 	}
 
+	CMD2(CCC_NpcStandingObstacle, "ai_npc_standing_obstacle", &g_NpcStandingObstacle);
 	CMD1(CCC_FlushLog, "flush");		// flush log
 	CMD1(CCC_ClearLog, "clear_log");
 	CMD1(CCC_UI_Reload, "ui_reload");
