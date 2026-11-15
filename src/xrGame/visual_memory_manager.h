@@ -69,6 +69,7 @@ protected:
 			void	add_visible_object		(const CVisibleObject visible_object);
 			float	object_visible_distance	(const CGameObject *game_object, float &object_distance, const float *stealth_range = nullptr, float *alpha_ratio = nullptr) const;
 			float	actor_stealth_value		(CActor &actor, float distance, float object_distance, float time_delta, float alpha_ratio) const;
+			u32		actor_contact_time		(const CGameObject *game_object) const;
 			float	object_luminocity		(const CGameObject *game_object) const;
 			float	get_visible_value		(const CGameObject *game_object,float distance, float object_distance, float time_delta, float object_velocity, float luminocity) const;
 			float	get_object_velocity		(const CGameObject *game_object, const CNotYetVisibleObject &not_yet_visible_object) const;
