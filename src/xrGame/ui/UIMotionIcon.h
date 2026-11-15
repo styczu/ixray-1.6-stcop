@@ -36,6 +36,13 @@ private:
 	float _noiseNormalized;
 	float _luminosityOverlayCur;
 	float _noiseOverlayCur;
+	// hud-enemy-contact-ring: ring inside the minimap, lit while at least one NPC reports that it knows
+	// where the actor is (SetActorContact). Its own node: a luminosity_overlay node would stop the
+	// luminosity_progress shape from being created.
+	CUIStatic* _contactOverlay;
+	u32 _contactOverlayBaseColor;
+	float _contactOverlayCur;
+	xr_vector<u16> m_npc_contact;
 
 		struct _npc_visibility{
 			u16				id;
@@ -54,6 +61,7 @@ private:
 		float						m_cur_pos;
 
 		void			EnsureMinimapOverlays(CUIXml& uiXml, Fvector2 const& sz, Fvector2 const& pos);
+		void			InitMinimapContactOverlay(CUIXml& uiXml);
 		void			EnsureCompassLayout(CUIXml& uiXml);
 		void			ApplyNavigationPresentation(bool useCompassBar, CUIXml* uiXml = nullptr, Fvector2 const* overlaySize = nullptr, Fvector2 const* overlayPos = nullptr);
 		void			SetMinimapOverlayVisibility(bool visible);
@@ -129,6 +137,7 @@ public:
 			void			SetNoise			(float Pos);
 			void			SetLuminosity		(float newPos);
 			void			SetActorVisibility	(u16 who_id, float value);
+			void			SetActorContact		(u16 who_id, bool contact);
 			void			ResetVisibility		();
 			float			GetThreatNormalized	() const;
 
