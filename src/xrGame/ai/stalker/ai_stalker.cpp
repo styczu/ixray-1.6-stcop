@@ -92,6 +92,9 @@ CObjectHandler(this),
 	m_boneHitProtection				= nullptr;
 	m_power_fx_factor				= flt_max;
 	m_wounded						= false;
+	m_obstacle_position				= Fvector().set(0.f, 0.f, 0.f);
+	m_obstacle_since				= 0;
+	m_obstacle_last_query			= 0;
 #ifdef DEBUG
 	m_debug_planner					= 0;
 	m_dbg_hud_draw					= false;
@@ -559,6 +562,38 @@ void CAI_Stalker::BoneCallback(CBoneInstance* HeadBone)
 	CAI_Stalker* Object = static_cast<CAI_Stalker*>(HeadBone->callback_param());
 	Object->LookAtActor(HeadBone);
 	R_ASSERT2(_valid(HeadBone->mTransform), "CAI_Stalker::BoneCallback");
+}
+
+// ai_npc_standing_obstacle (console, not saved): 0 - stalkers are not obstacles (the base behaviour);
+// 1 - a stalker that has stood still for s_standing_obstacle_ms is an obstacle for the path planning of other
+// stalkers (static obstacles avoider: they go round it instead of pushing it); 2 - the same without the extra
+// half cell around the body (ai_obstacle::prepare_inside). Moving stalkers are never obstacles.
+int g_NpcStandingObstacle = 0;
+
+static const u32 s_standing_obstacle_ms = 3000;		// standing this long makes a stalker an obstacle
+static const u32 s_standing_obstacle_gap_ms = 1000;	// a longer pause between two queries restarts the count
+static const float s_standing_obstacle_radius = .3f;	// m from the position the count started; further restarts it
+
+bool CAI_Stalker::is_ai_obstacle() const
+{
+	if (!g_NpcStandingObstacle || !g_Alive())
+	{
+		m_obstacle_last_query = 0;
+		return false;
+	}
+
+	const u32 now = Device.dwTimeGlobal;
+	const Fvector& position = Position();
+	if (!m_obstacle_last_query
+		|| (now - m_obstacle_last_query) > s_standing_obstacle_gap_ms
+		|| position.distance_to_sqr(m_obstacle_position) > s_standing_obstacle_radius * s_standing_obstacle_radius)
+	{
+		m_obstacle_position = position;
+		m_obstacle_since = now;
+	}
+
+	m_obstacle_last_query = now;
+	return (now - m_obstacle_since) >= s_standing_obstacle_ms;
 }
 
 void CAI_Stalker::LookAtActor(CBoneInstance* HeadBone, float Weight)
