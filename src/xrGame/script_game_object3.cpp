@@ -1877,9 +1877,12 @@ void CScriptGameObject::AddShotDanger(const Fvector& position)
 {
 	CAI_Stalker* stalker = object().cast_stalker();
 	CActor* player = Actor();
-	if (stalker && player && stalker->g_Alive() && !stalker->memory().enemy().selected())
+	if (stalker && player && stalker->g_Alive() && !stalker->memory().enemy().selected()) {
+		// the actor stays ignored after any former fight with it (CDangerManager::add)
+		stalker->memory().danger().unignore(player);
 		stalker->memory().danger().add(CDangerObject(player, position, Device.dwTimeGlobal,
 			CDangerObject::eDangerTypeBulletRicochet, CDangerObject::eDangerPerceiveTypeSound));
+	}
 }
 
 void CScriptGameObject::SetSpatialType(u64 sptype)
