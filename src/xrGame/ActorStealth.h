@@ -67,8 +67,12 @@ namespace ActorStealth
 	float PeripheralFactor(float AlphaRatio);
 	// Detection speed factor of an alerted (danger) observer relative to a calm one.
 	float AlertFactor();
-	// The observer has selected the actor as its enemy, or was hit by him less than 30 s ago
-	// (LastHitTime and Now in ms, Device.dwTimeGlobal): it sees him with the vanilla formula.
-	bool FightsActor(bool SelectedActor, bool LastHitByActor, u32 LastHitTime, u32 Now);
+	// npc-vision-contact-loss: how long a stalker of rank ObserverRank keeps contact with the actor after the
+	// latest news of him (seen, heard, hit), in seconds (ai_stealth_contact_novice ... _master).
+	float ContactSeconds(int ObserverRank);
+	// The observer has selected the actor as its enemy and the latest news of him it knows (LastContact,
+	// 0 = none) is younger than ContactSeconds, or it was hit by him less than 30 s ago (times in ms,
+	// Device.dwTimeGlobal): it sees him with the vanilla formula. A time ahead of Now does not count.
+	bool FightsActor(bool SelectedActor, u32 LastContact, float ContactSeconds, bool LastHitByActor, u32 LastHitTime, u32 Now);
 	void RegisterConsoleCommands();
 }
