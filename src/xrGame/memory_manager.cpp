@@ -363,6 +363,10 @@ void CMemoryManager::make_object_visible_somewhen	(const CEntityAlive *enemy)
 	visual().add_visible_object	(enemy,.001f,true);
 	MemorySpace::CVisibleObject	*obj1 = object().memory().visual().visible_object(enemy);
 	VERIFY						(obj1);
+	// npc-vision-contact-loss: news of the actor (a heard shot, a script) renews an older entry too, as vanilla
+	// does for a new one, so the stalker regains contact with him (ActorStealth::FightsActor).
+	if (obj && obj1 && ActorStealth::Enabled() && const_cast<CEntityAlive*>(enemy)->cast_actor())
+		obj1->fill				(enemy,&object(),obj1->m_squad_mask.get(),0);
 //	if (obj1)
 //		Msg						("[%6d] make_object_visible_somewhen [%s] = %x",Device.dwTimeGlobal,*enemy->cName(),obj1->m_squad_mask.get());
 	obj1->visible				(mask,prev);
