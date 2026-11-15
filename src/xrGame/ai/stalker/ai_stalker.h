@@ -210,6 +210,13 @@ public:
 	virtual CPhysicsShellHolder*		cast_physics_shell_holder	()						{return this;}
 	virtual	Feel::Sound*				dcast_FeelSound				()						{return this;}
 	virtual CAI_Stalker*				cast_stalker				()						{return this;}
+	virtual	bool						is_ai_obstacle				() const override;
+private:
+	// ai_npc_standing_obstacle: the state follows the obstacle queries (is_ai_obstacle), not the frames.
+	mutable Fvector						m_obstacle_position;
+	mutable u32							m_obstacle_since;
+	mutable u32							m_obstacle_last_query;
+public:
 	virtual CCreature*				cast_creature			()						{return this;}
 	virtual CScriptEntity*				cast_script_entity			()						{return this;}
 	virtual CPhraseDialogManager*		cast_phrase_dialog_manager	()						{return this;}
