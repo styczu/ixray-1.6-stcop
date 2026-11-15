@@ -58,6 +58,8 @@
 #endif // DEBUG
 
 void SetActorVisibility(u16 who, float value);
+// npc-contact-report: the ring inside the minimap (hud-enemy-contact-ring).
+void SetActorContact(u16 who, bool contact);
 extern int g_AI_inactive_time;
 
 #ifndef MASTER_GOLD
@@ -588,6 +590,7 @@ void CCreature::Die	(CObject* who)
 	inherited::Die			(who);
 	//Level().RemoveMapLocationByID(this->ID());
 	SetActorVisibility	(ID(),0.f);
+	SetActorContact		(ID(),false);
 	SpatialComponent->type |= ESPATIAL_TYPE::AI_DEAD;
 	SpatialComponent->type &= ~ESPATIAL_TYPE::AI_ALIVE;
 }
@@ -720,6 +723,7 @@ void CCreature::net_Destroy()
 	xr_delete				(m_moving_object);
 
 	SetActorVisibility		(ID(), 0.0f);
+	SetActorContact			(ID(), false);
 }
 
 bool CCreature::UsedAI_Locations()
