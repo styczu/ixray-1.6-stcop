@@ -22,6 +22,8 @@
 
 const bool use_additional_radius	= true;
 
+extern int g_NpcStandingObstacle;
+
 static const Fvector		local_points[8] = {
 	Fvector().set(-1.f,-1.f,-1.f),
 	Fvector().set(-1.f,-1.f,+1.f),
@@ -172,7 +174,9 @@ void ai_obstacle::prepare_inside	(Fvector &min, Fvector &max)
 	max							= Fvector().set(flt_min,flt_min,flt_min);
 
 	Fmatrix						matrix;
-	float						half_cell_size = (use_additional_radius ? 1.f : 0.f)*ai().level_graph().header().cell_size()*.5f;
+	// ai_npc_standing_obstacle 2: a stalker's area is its body box only, without the extra half cell.
+	const bool					extra_radius = use_additional_radius && !(g_NpcStandingObstacle == 2 && m_object->cast_stalker());
+	float						half_cell_size = (extra_radius ? 1.f : 0.f)*ai().level_graph().header().cell_size()*.5f;
 	Fvector						half_size = Fvector().set(half_cell_size,half_cell_size,half_cell_size);
 	compute_matrix				(matrix,half_size);
 
