@@ -44,6 +44,8 @@ using namespace luabind; //Alundaio
 //-Alundaio
 
 void SetActorVisibility(u16 who, float value);
+// hud-enemy-contact-ring (UIMotionIcon.cpp): the ring inside the minimap.
+void SetActorContact(u16 who, bool contact);
 
 struct SRemoveOfflinePredicate {
 	bool		operator()						(const CVisibleObject &object) const
@@ -415,6 +417,18 @@ u32 CVisualMemoryManager::actor_contact_time(const CGameObject *game_object) con
 	return result;
 }
 
+// npc-contact-report: this stalker knows where the actor is: it selected him as its enemy and has news of him
+// within the contact time of its rank (the rule of ActorStealth::FightsActor without the 30 s hit rule).
+bool CVisualMemoryManager::actor_contact() const
+{
+	if (!m_stalker || !ActorStealth::Enabled() || !m_stalker->g_Alive())
+		return false;
+	const CEntityAlive *enemy = m_stalker->memory().enemy().selected();
+	if (!enemy || !const_cast<CEntityAlive*>(enemy)->cast_actor())
+		return false;
+	return ActorStealth::HasContact(actor_contact_time(enemy), ActorStealth::ContactSeconds(m_stalker->Rank()), Device.dwTimeGlobal);
+}
+
 CNotYetVisibleObject *CVisualMemoryManager::not_yet_visible_object(const CGameObject *game_object)
 {
 	PROF_EVENT("Memory Manager/visuals/not_yet_visible_object")
@@ -727,6 +741,11 @@ void CVisualMemoryManager::update				(float time_delta)
 	PROF_EVENT("Memory Manager/visuals/update")
 
 	clear_delayed_objects				();
+
+	// npc-contact-report: on every update, before the early return, so a stalker that stops fighting the actor,
+	// turns neutral or has its vision disabled clears its report.
+	if (m_stalker)
+		SetActorContact					(m_stalker->ID(), actor_contact());
 
 	if (!enabled())
 		return;
