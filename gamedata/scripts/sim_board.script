@@ -468,6 +468,35 @@ function get_sim_board()
 	return board
 end
 
+-- [IX-Ray Refinements] surge-shelter-fallback
+-- A squad of a faction that hides from emissions, with no free shelter left
+-- (every surge smart at max_population), goes to the nearest sim-available
+-- surge smart on its level that still has unconditional jobs for all its
+-- members. Without such a smart the squad keeps the vanilla target.
+local function surge_fallback_shelter(squad)
+	if not xr_conditions.surge_started() then
+		return nil
+	end
+	local squad_params = simulation_activities[squad.player_id]
+	if squad_params == nil or squad_params.smart == nil or squad_params.smart.surge == nil then
+		return nil
+	end
+	local need = squad:npc_count()
+	local best, best_dist = nil, nil
+	for _, obj in pairs(simulation_objects.get_sim_obj_registry().objects) do
+		if obj:clsid() == clsid.smart_terrain and tonumber(obj.props["surge"]) > 0
+			and obj.respawn_only_smart ~= true
+			and simulation_objects.is_on_the_same_level(obj, squad)
+			and obj:surge_fallback_capacity(squad) >= need then
+			local dist = simulation_objects.sim_dist_to(obj, squad)
+			if best == nil or dist < best_dist then
+				best, best_dist = obj, dist
+			end
+		end
+	end
+	return best
+end
+
 function sim_board:get_squad_target(squad)
 	return PROF_EVENT_CLOSURE("get_squad_target", function()
         --printf("List of available target for %s", squad.id)
@@ -494,6 +523,9 @@ function sim_board:get_squad_target(squad)
         end
         --print_table(available_targets)
         --printf("end of List of available target for %s", squad.id)
+        if most_priority_task == nil then -- [IX-Ray Refinements] surge-shelter-fallback
+            most_priority_task = surge_fallback_shelter(squad)
+        end
         return most_priority_task or (squad.smart_id and alife():object(squad.smart_id)) or squad
     end)
 end
