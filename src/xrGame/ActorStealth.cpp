@@ -396,10 +396,15 @@ float ActorStealth::ContactSeconds(int ObserverRank)
 	return ContactNovice;
 }
 
-bool ActorStealth::FightsActor(bool SelectedActor, u32 LastContact, float ContactSeconds, bool LastHitByActor, u32 LastHitTime, u32 Now)
+bool ActorStealth::HasContact(u32 LastContact, float ContactSeconds, u32 Now)
 {
 	// A time ahead of Now (stored before a level reload) wraps around and does not count.
-	if (SelectedActor && LastContact != 0 && float(Now - LastContact) < ContactSeconds * 1000.f)
+	return LastContact != 0 && float(Now - LastContact) < ContactSeconds * 1000.f;
+}
+
+bool ActorStealth::FightsActor(bool SelectedActor, u32 LastContact, float ContactSeconds, bool LastHitByActor, u32 LastHitTime, u32 Now)
+{
+	if (SelectedActor && HasContact(LastContact, ContactSeconds, Now))
 		return true;
 	return LastHitByActor && (Now - LastHitTime < HitMemoryTime);
 }
