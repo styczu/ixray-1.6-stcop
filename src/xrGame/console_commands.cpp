@@ -793,11 +793,19 @@ public:
 };
 
 extern int g_NpcStandingObstacle;
+extern float g_NpcStandingObstacleTime;
 
 class CCC_NpcStandingObstacle : public CCC_Integer
 {
 public:
 	CCC_NpcStandingObstacle(LPCSTR Name, int* Value) : CCC_Integer(Name, Value, 0, 2) {}
+	void Save(IWriter*) override {}
+};
+
+class CCC_NpcStandingObstacleTime : public CCC_Float
+{
+public:
+	CCC_NpcStandingObstacleTime(LPCSTR Name, float* Value) : CCC_Float(Name, Value, 0.5f, 30.f) {}
 	void Save(IWriter*) override {}
 };
 
@@ -2687,6 +2695,7 @@ void CCC_RegisterCommands()
 	}
 
 	CMD2(CCC_NpcStandingObstacle, "ai_npc_standing_obstacle", &g_NpcStandingObstacle);
+	CMD2(CCC_NpcStandingObstacleTime, "ai_npc_standing_obstacle_time", &g_NpcStandingObstacleTime);
 	CMD1(CCC_FlushLog, "flush");		// flush log
 	CMD1(CCC_ClearLog, "clear_log");
 	CMD1(CCC_UI_Reload, "ui_reload");
