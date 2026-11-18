@@ -259,7 +259,7 @@ void CAI_Stalker::process_enemies		()
 		if (!memory().visual().visible_now(member))
 			continue;
 
-		memory().make_object_visible_somewhen	(member->memory().enemy().selected());
+		memory().ShareEnemyMemory(member->memory().enemy().selected(), &member->memory());
 		break;
 	}
 }
