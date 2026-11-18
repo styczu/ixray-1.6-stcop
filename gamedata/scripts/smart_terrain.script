@@ -1521,10 +1521,16 @@ function se_smart_terrain:try_respawn()
             return 
         end
 
-        local dist_to_actor = alife():actor().position:distance_to_sqr(self.position)
-        if dist_to_actor < self.respawn_radius^2 then 
-            printf("%s cannot respawn due to distance", self:name()) 
-            return 
+        -- [IX-Ray Refinements] smart-respawn-radius-online r2
+        -- The radius only applies on the actor's level: positions on two levels
+        -- are not comparable, and the online radius never reaches another level.
+        local actor = alife():actor()
+        if simulation_objects.is_on_the_same_level(self, actor) then
+            local dist_to_actor = actor.position:distance_to_sqr(self.position)
+            if dist_to_actor < self.respawn_radius^2 then 
+                printf("%s cannot respawn due to distance", self:name()) 
+                return 
+            end
         end
 
         self.last_respawn_update = curr_time
