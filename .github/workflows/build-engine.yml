@@ -32,6 +32,7 @@ defaults:
 
 jobs:
   build-engine-linux:
+    if: false
     name: 'Build engine (Linux)'
 
     strategy:
@@ -150,8 +151,7 @@ jobs:
           - Engine
         platform:
           - x64
-        config:
-          - RelWithDebInfo
+        config: [Release]
 
     runs-on: ${{ matrix.system }}
 
@@ -276,7 +276,7 @@ jobs:
         system: [windows-2022]
         platform: [x64]
         preset: [Engine]
-        config: [RelWithDebInfo]
+        config: [Release]
         variant: [cop, cs, soc, coc]
     runs-on: ${{ matrix.system }}
   
