@@ -372,6 +372,68 @@ void CMemoryManager::make_object_visible_somewhen	(const CEntityAlive *enemy)
 	obj1->visible				(mask,prev);
 }
 
+namespace
+{
+	template <typename T>
+	void FindLatestEnemyMemory(const xr_vector<T>& Records, u16 Id, u64 Mask, const CMemoryObject*& Latest)
+	{
+		const auto Record = std::find(Records.begin(), Records.end(), Id);
+		if (Record != Records.end() && Record->m_enabled && Record->m_squad_mask.test(Mask)
+			&& Record->m_level_time != 0 && Record->m_level_time <= Device.dwTimeGlobal
+			&& (!Latest || Record->m_level_time > Latest->m_level_time))
+		{
+			Latest = &*Record;
+		}
+	}
+}
+
+void CMemoryManager::ShareEnemyMemory(const CEntityAlive* Enemy, const CMemoryManager* Source)
+{
+	if (!Enemy || Enemy->getDestroy())
+	{
+		return;
+	}
+	if (!ActorStealth::Enabled() || !const_cast<CEntityAlive*>(Enemy)->cast_actor())
+	{
+		make_object_visible_somewhen(Enemy);
+		return;
+	}
+
+	const u64 Mask = stalker().agent_manager().member().mask(&stalker());
+	CVisibleObject* Entry = visual().visible_object(Enemy);
+
+	// Enemy assignment shares a record that is already in the group's memory.
+	// Reports between stalkers may need to copy an observation from another group.
+	if (Source)
+	{
+		const u16 Id = Enemy->ID();
+		const u64 SourceMask = Source->stalker().agent_manager().member().mask(&Source->stalker());
+		const CMemoryObject* Latest = nullptr;
+		FindLatestEnemyMemory(Source->visual().objects(), Id, SourceMask, Latest);
+		FindLatestEnemyMemory(Source->sound().objects(), Id, SourceMask, Latest);
+		FindLatestEnemyMemory(Source->hit().objects(), Id, SourceMask, Latest);
+		if (!Latest)
+		{
+			return;
+		}
+		if (!Entry || Entry->m_level_time > Device.dwTimeGlobal || Latest->m_level_time > Entry->m_level_time)
+		{
+			CVisibleObject Shared = Entry ? *Entry : CVisibleObject{};
+			const u64 Recipients = Entry ? Entry->m_squad_mask.get() : 0;
+			static_cast<CMemoryObject&>(Shared) = *Latest;
+			Shared.m_squad_mask.assign(Recipients | Mask);
+			visual().add_visible_object(Shared);
+			return;
+		}
+	}
+
+	if (Entry)
+	{
+		Entry->m_squad_mask.assign(Entry->m_squad_mask.get() | Mask);
+		Entry->m_enabled = true;
+	}
+}
+
 void CMemoryManager::save							(NET_Packet &packet) const
 {
 	visual().save				(packet);
