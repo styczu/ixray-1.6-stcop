@@ -62,6 +62,7 @@ private:
 
 public:
 			void	add_visible_object		(const CObject *object, float time_delta, bool fictitious = false);
+	void ShareEnemyMemory(const CGameObject* Enemy, const CMemoryObject* Observation);
 
 protected:
 	IC		void	fill_object				(CVisibleObject &visible_object, const CGameObject *game_object);
