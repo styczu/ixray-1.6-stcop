@@ -595,6 +595,27 @@ void CVisualMemoryManager::add_visible_object(const CObject* object, float time_
 	}
 }
 
+void CVisualMemoryManager::ShareEnemyMemory(const CGameObject* Enemy, const CMemoryObject* Observation)
+{
+	const u64 Mask = mask();
+	CVisibleObject* Entry = visible_object(Enemy);
+	if (Observation && (!Entry || Entry->m_level_time > Device.dwTimeGlobal || Observation->m_level_time > Entry->m_level_time))
+	{
+		CVisibleObject Shared = Entry ? *Entry : CVisibleObject{};
+		const u64 Recipients = Entry ? Entry->m_squad_mask.get() : 0;
+		static_cast<CMemoryObject&>(Shared) = *Observation;
+		Shared.m_squad_mask.assign(Recipients | Mask);
+		add_visible_object(Shared);
+		return;
+	}
+
+	if (Entry)
+	{
+		Entry->m_squad_mask.assign(Entry->m_squad_mask.get() | Mask);
+		Entry->m_enabled = true;
+	}
+}
+
 void CVisualMemoryManager::add_visible_object(const CVisibleObject visible_object)
 {
 	if (should_ignore_object(visible_object.m_object))
