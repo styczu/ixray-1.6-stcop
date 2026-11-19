@@ -52,7 +52,9 @@ void CStateControllerAttackAbstract::execute()
 {
 	this->object->anim().clear_override_animation	();
 
-	if	( check_home_point() )
+	const CEntityAlive* enemy = this->object->EnemyMan.get_enemy();
+	const bool focused = enemy && this->object->npc_focus_id() == enemy->ID();
+	if (!focused && check_home_point())
 	{
 		this->select_state					(eStateAttack_MoveToHomePoint);
 		this->get_state_current()->execute	();
@@ -61,9 +63,14 @@ void CStateControllerAttackAbstract::execute()
 	}
 
 	EMonsterState		state_id	=	eStateUnknown;
-	const CEntityAlive* enemy		=	this->object->EnemyMan.get_enemy();
 
-	if (this->current_substate == eStateAttack_Melee )
+
+	if (focused)
+	{
+		if (this->current_substate != (u32)eStateUnknown)
+			this->get_state_current()->critical_finalize();
+	}
+	else if (this->current_substate == eStateAttack_Melee )
 	{
 		if (this->get_state(eStateAttack_Melee)->check_completion() )
 			state_id				=	eStateAttack_Run;
@@ -78,7 +85,7 @@ void CStateControllerAttackAbstract::execute()
 			state_id				=	eStateAttack_Run;
 	}
 
-	if ( !this->object->enemy_accessible() && state_id == eStateAttack_Run )
+	if (focused || (!this->object->enemy_accessible() && state_id == eStateAttack_Run))
 	{
 		this->current_substate			=	(u32)eStateUnknown;
 		this->prev_substate				= this->current_substate;
