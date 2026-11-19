@@ -9,6 +9,9 @@
 #include "StdAfx.h"
 #include "pch_script.h"
 #include "script_game_object.h"
+#include "ai/monsters/controller/controller.h"
+#include "ai_space.h"
+#include "../xrScripts/script_engine.h"
 #include "alife_space.h"
 #include "script_entity_space.h"
 #include "movement_manager_space.h"
@@ -35,6 +38,41 @@
 using namespace luabind;
 
 extern CScriptActionPlanner *script_action_planner(CScriptGameObject *obj);
+
+namespace
+{
+CController* focus_controller(CScriptGameObject* self)
+{
+	auto controller = smart_cast<CController*>(&self->object());
+	if (!controller)
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError, "NPC psi focus requires a controller");
+	return controller;
+}
+
+bool set_controller_focus(CScriptGameObject* self, u16 id, u32 lease_ms)
+{
+	auto controller = focus_controller(self);
+	return controller && controller->set_npc_focus(id, lease_ms);
+}
+
+void clear_controller_focus(CScriptGameObject* self)
+{
+	if (auto controller = focus_controller(self))
+		controller->clear_npc_focus();
+}
+
+u16 controller_focus_id(CScriptGameObject* self)
+{
+	auto controller = focus_controller(self);
+	return controller ? controller->npc_focus_id() : u16(-1);
+}
+
+bool controller_sees_enemy_now(CScriptGameObject* self)
+{
+	auto controller = focus_controller(self);
+	return controller && controller->EnemyMan.get_enemy() && controller->EnemyMan.see_enemy_now();
+}
+}
 
 class_<CScriptGameObject> script_register_game_object1(class_<CScriptGameObject> &&instance)
 {
@@ -211,6 +249,10 @@ class_<CScriptGameObject> script_register_game_object1(class_<CScriptGameObject>
 		.def("memory_position",				&CScriptGameObject::memory_position)
 		.def("best_weapon",					&CScriptGameObject::best_weapon)
 		.def("explode",						&CScriptGameObject::explode)
+		.def("set_controller_focus", &set_controller_focus)
+		.def("clear_controller_focus", &clear_controller_focus)
+		.def("controller_focus_id", &controller_focus_id)
+		.def("controller_sees_enemy_now", &controller_sees_enemy_now)
 		.def("get_enemy",					&CScriptGameObject::GetEnemy)
 		.def("get_corpse",					&CScriptGameObject::GetCorpse)
 		.def("get_enemy_strength",			&CScriptGameObject::GetEnemyStrength)
