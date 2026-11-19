@@ -149,11 +149,14 @@ void CSoundMemoryManager::feel_sound_new(CObject* object, int sound_type, CSound
 		return;
 	PROF_EVENT("SoundMemory::feel_sound_new");
 
-	// npc-hearing-actor-shots: a suppressed shot of the actor reaches a stalker only within the range of its
-	// weapon class and the time of day (the STCoP sound files carry it up to 200 m); not heard = ignored.
-	CActor* shooter = (m_stalker && ActorStealth::Enabled() && object && is_sound_type(sound_type, SOUND_TYPE_WEAPON_SHOOTING)) ? object->cast_actor() : nullptr;
+	// npc-shot-hearing-range: a shot of the actor or an NPC reaches a stalker only within the range of the
+	// weapon class and the silencer of the shooter (the STCoP sound files carry shots 150-300 m, suppressed
+	// ones up to 250 m); not heard = ignored: no memory entry, danger, fake hit or script callback.
+	CInventoryOwner* shooter = (m_stalker && object && is_sound_type(sound_type, SOUND_TYPE_WEAPON_SHOOTING)) ? object->cast_inventory_owner() : nullptr;
 	if (shooter && !ActorStealthWorld::ShotHeard(*shooter, m_object->Position().distance_to(position)))
 		return;
+	// npc-hearing-actor-shots: a heard shot of the actor makes a hostile listener target him (ai_stealth 1).
+	const bool actor_shot = shooter && ActorStealth::Enabled() && object->cast_actor();
 	if (user_data)
 		user_data->accept(m_visitor);
 
@@ -195,7 +198,7 @@ void CSoundMemoryManager::feel_sound_new(CObject* object, int sound_type, CSound
 
 	VERIFY(_valid(sound_power));
 	if (sound_power >= m_sound_threshold) {
-		if (shooter)
+		if (actor_shot)
 			m_actor_shot_time = std::max<u32>(Device.dwTimeGlobal, 1);
 		if (is_sound_type(sound_type, SOUND_TYPE_WEAPON_SHOOTING)) {
 			// this is fake!
