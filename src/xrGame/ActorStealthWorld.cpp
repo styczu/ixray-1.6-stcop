@@ -46,11 +46,11 @@ const char* ActorStealthWorld::RankName(int Rank)
 	return InventoryUtilities::GetRankAsText(Rank);
 }
 
-bool ActorStealthWorld::ShotHeard(CActor& Player, float Distance)
+bool ActorStealthWorld::ShotHeard(CInventoryOwner& Shooter, float Distance)
 {
-	PIItem Item = Player.inventory().ActiveItem();
+	PIItem Item = Shooter.inventory().ActiveItem();
 	CWeapon* Weapon = Item ? Item->cast_weapon() : nullptr;
-	if (!Weapon || !Weapon->IsSilencerAttached() || Weapon->IsGrenadeMode())
+	if (!Weapon || Weapon->IsGrenadeMode())
 		return true;
 	const char* Class = "";
 	const shared_str& Section = Weapon->cNameSect();
@@ -60,7 +60,9 @@ bool ActorStealthWorld::ShotHeard(CActor& Player, float Distance)
 		if (Value)
 			Class = Value;
 	}
-	return Distance <= ActorStealth::SilencedShotRange(Class, GameHours());
+	if (Weapon->IsSilencerAttached())
+		return Distance <= ActorStealth::SilencedShotRange(Class, GameHours());
+	return Distance <= ActorStealth::OpenShotRange(Class);
 }
 
 void ActorStealthWorld::LoadConfig()
