@@ -1,6 +1,7 @@
 #pragma once
 
 class CActor;
+class CInventoryOwner;
 
 // Engine queries of the stealth model (ActorStealthWorld.cpp), kept apart so the model can be tested alone.
 namespace ActorStealthWorld
@@ -15,10 +16,11 @@ namespace ActorStealthWorld
 	float Seconds();
 	// Rank name of a character rank value (game_relations.ltx rating: novice, experienced, veteran, master).
 	const char* RankName(int Rank);
-	// npc-hearing-actor-shots: a stalker at Distance hears the shot of the actor's active weapon. A suppressed
-	// shot (not in grenade launcher mode) reaches only ActorStealth::SilencedShotRange of the weapon_class of
-	// the weapon section; any other shot keeps the range of its sound files.
-	bool ShotHeard(CActor& Player, float Distance);
+	// npc-shot-hearing-range: a stalker at Distance hears the shot of the active weapon of Shooter (the actor
+	// or an NPC). Not in grenade launcher mode, a shot reaches at most ActorStealth::SilencedShotRange (with a
+	// silencer) or ActorStealth::OpenShotRange (without) of the weapon_class of the weapon section; a shorter
+	// range of the sound files still applies. Independent of ai_stealth.
+	bool ShotHeard(CInventoryOwner& Shooter, float Distance);
 	// Reads [npc_stealth_light] and [npc_stealth_light_night] (ixray-npc-stealth) when they exist.
 	void LoadConfig();
 }
@@ -38,9 +40,12 @@ namespace ActorStealth
 	// Night range of a rank name (novice for an unknown one).
 	float NightRange(const char* Rank);
 	// npc-hearing-actor-shots: hearing range of a suppressed shot by weapon_class ("" = pistol: ai_stealth_
-	// silencer_pistol; shotgun, assault_rifle and unknown: _carbine; sniper_rifle, heavy_weapon: _rifle), times
-	// 1 - (1 - ai_stealth_silencer_day) x the day curve (full day: x0.5, night: x1).
+	// silencer_pistol; shotgun: _shotgun; assault_rifle and unknown: _carbine; sniper_rifle, heavy_weapon:
+	// _rifle), times 1 - (1 - ai_stealth_silencer_day) x the day curve (full day: x0.5, night: x1).
 	float SilencedShotRange(const char* WeaponClass, float Hours);
+	// npc-shot-hearing-range: hearing range of a shot without a silencer by weapon_class: pistol ("") and
+	// shotgun 55 m, assault_rifle and unknown 80 m, sniper_rifle and heavy_weapon 100 m, at any time of day.
+	float OpenShotRange(const char* WeaponClass);
 	// A heard shot of the actor (HeardTime in ms, 0 = none) still makes a hostile listener target him: within
 	// 2 s, so a shot that turns the listener hostile (a hit on his group) counts as well.
 	bool ShotStillFresh(u32 HeardTime, u32 Now);
