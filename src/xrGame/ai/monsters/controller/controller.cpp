@@ -38,6 +38,7 @@
 #include "../../../../xrServerEntities/character_info.h"
 
 #include "controller_psy_hit.h"
+#include "../../stalker/ai_stalker.h"
 #include "../monster_cover_manager.h"
 #include "controller_psy_aura.h"
 
@@ -380,6 +381,7 @@ void CController::reload(const char* section)
 
 void CController::reinit()
 {
+	clear_npc_focus();
 	// must be before inherited call because of its use in ControlAnimation com
 	m_mental_state = eStateIdle;
 	
@@ -475,6 +477,9 @@ void CController::shedule_Update(u32 dt)
 	
 	if (g_Alive()) {
 		UpdateControlled();
+		if (m_npc_focus != u16(-1) && (npc_focus_id() == u16(-1) || !EnemyMan.get_enemy() ||
+			EnemyMan.get_enemy()->ID() != m_npc_focus))
+			clear_npc_focus();
 		if (can_tube_fire()) tube_fire();
 	}
 
@@ -489,6 +494,7 @@ void CController::shedule_Update(u32 dt)
 
 void CController::Die(CObject* who)
 {
+	clear_npc_focus();
 	inherited::Die(who);
 	FreeFromControl();
 	
@@ -501,6 +507,7 @@ void CController::Die(CObject* who)
 
 void CController::net_Destroy()
 {
+	clear_npc_focus();
 	inherited::net_Destroy();
 
 	if (m_aura)
@@ -512,6 +519,8 @@ void CController::net_Destroy()
 
 void CController::net_Relcase(CObject *O)
 {
+	if (O->ID() == m_npc_focus)
+		clear_npc_focus();
 	inherited::net_Relcase(O);
 }
 
@@ -628,8 +637,36 @@ void CController::tube_fire()
 	control().activate(ControlCom::eComCustom1);
 }
 
+u16 CController::npc_focus_id() const
+{
+	if (m_npc_focus == u16(-1) || s32(m_npc_focus_until - Device.dwTimeGlobal) <= 0)
+		return u16(-1);
+	return m_npc_focus;
+}
+
+bool CController::set_npc_focus(u16 id, u32 lease_ms)
+{
+	const CEntityAlive* enemy = EnemyMan.get_enemy();
+	if (!IsGameTypeSingle() || !g_Alive() || !enemy || enemy->ID() != id ||
+		!smart_cast<const CAI_Stalker*>(enemy) || m_psy_hit->is_active() || !lease_ms ||
+		(npc_focus_id() != u16(-1) && m_npc_focus != id))
+		return false;
+	m_npc_focus = id;
+	m_npc_focus_until = Device.dwTimeGlobal + std::min(lease_ms, 5000u);
+	return true;
+}
+
+void CController::clear_npc_focus()
+{
+	m_npc_focus = u16(-1);
+	m_npc_focus_until = 0;
+}
+
 bool CController::can_tube_fire()
 {
+	if (npc_focus_id() != u16(-1))
+		return false;
+
 	static const bool IsSuicideLogic = EngineExternal()[EEngineExternalGame::EnableSuicideByController];
 
 	if (IsSuicideLogic)
