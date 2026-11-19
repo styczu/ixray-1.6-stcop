@@ -15,6 +15,9 @@ class CController final : public CBaseMonster,
 {
 	typedef		CBaseMonster	inherited;
 
+	u16 m_npc_focus = u16(-1);
+	u32 m_npc_focus_until = 0;
+
 	u8					m_max_controlled_number;
 	ref_sound			control_start_sound;		// звук, который играется в голове у актера
 	ref_sound			control_hit_sound;			// звук, который играется в голове у актера
@@ -54,6 +57,9 @@ public:
 
 public:	
 	CControllerPsyHit	*m_psy_hit;
+	u16 npc_focus_id() const;
+	bool set_npc_focus(u16 id, u32 lease_ms);
+	void clear_npc_focus();
 
 	ref_sound			m_sound_aura_left_channel;
 	ref_sound			m_sound_aura_right_channel;
