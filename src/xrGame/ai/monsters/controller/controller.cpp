@@ -477,9 +477,16 @@ void CController::shedule_Update(u32 dt)
 	
 	if (g_Alive()) {
 		UpdateControlled();
-		if (m_npc_focus != u16(-1) && (npc_focus_id() == u16(-1) || !EnemyMan.get_enemy() ||
-			EnemyMan.get_enemy()->ID() != m_npc_focus))
-			clear_npc_focus();
+		// The focused victim is pinned as the script enemy, so ordinary re-selection between
+		// stalkers cannot drop it. The focus ends when the lease runs out, the victim is no longer
+		// the enemy (dead, removed) or the actor becomes the controller's own best enemy.
+		if (m_npc_focus != u16(-1))
+		{
+			const CEntityAlive* natural = EnemyMemory.get_enemy();
+			if (npc_focus_id() == u16(-1) || !EnemyMan.get_enemy() || EnemyMan.get_enemy()->ID() != m_npc_focus ||
+				(natural && Actor() && natural->ID() == Actor()->ID()))
+				clear_npc_focus();
+		}
 		if (can_tube_fire()) tube_fire();
 	}
 
@@ -653,11 +660,14 @@ bool CController::set_npc_focus(u16 id, u32 lease_ms)
 		return false;
 	m_npc_focus = id;
 	m_npc_focus_until = Device.dwTimeGlobal + std::min(lease_ms, 5000u);
+	EnemyMan.script_enemy(*enemy);
 	return true;
 }
 
 void CController::clear_npc_focus()
 {
+	if (m_npc_focus != u16(-1) && EnemyMan.get_script_enemy() && EnemyMan.get_script_enemy()->ID() == m_npc_focus)
+		EnemyMan.script_enemy();
 	m_npc_focus = u16(-1);
 	m_npc_focus_until = 0;
 }
