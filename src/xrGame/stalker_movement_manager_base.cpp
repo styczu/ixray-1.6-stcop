@@ -147,7 +147,7 @@ void stalker_movement_manager_base::reinit				()
 
 IC	void stalker_movement_manager_base::setup_head_speed		(stalker_movement_params& movement_params)
 {
-	if (movement_params.m_mental_state == eMentalStateFree) {
+	if (movement_params.m_mental_state == eMentalStateFree && !object().IsTalking()) {
 		if (object().sight().enabled())
 			m_head.speed		= PI_DIV_2;
 	}
@@ -394,7 +394,7 @@ void stalker_movement_manager_base::parse_velocity_mask	(stalker_movement_params
 		)
 	{
 		object().m_fCurSpeed	= 0;
-		if (movement_params.m_mental_state != eMentalStateDanger)
+		if (movement_params.m_mental_state != eMentalStateDanger && !object().IsTalking())
 			m_body.speed		= 1*PI_DIV_2;
 		else
 			m_body.speed		= PI_MUL_2;
