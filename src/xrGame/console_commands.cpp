@@ -3020,6 +3020,9 @@ void CCC_RegisterCommands()
 	extern bool EnableTalkDof;
 	CMD2(CCC_Boolean, "enable_dof_talk", &EnableTalkDof);
 
+	extern void RegisterTalkCameraAndTurnConsoleCommands();
+	RegisterTalkCameraAndTurnConsoleCommands();
+
 #ifndef MASTER_GOLD
 	CMD1(CCC_StartTimeSingle, "start_time_single");
 	CMD4(CCC_TimeFactorSingle, "time_factor_single", &g_fTimeFactor, 0.f, 10000.0f);
