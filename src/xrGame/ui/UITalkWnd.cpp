@@ -3,6 +3,9 @@
 #include "UITalkDialogWnd.h"
 
 #include "../Actor.h"
+#include "../ai/stalker/ai_stalker.h"
+#include "../stalker_movement_manager_smart_cover.h"
+#include "../sight_manager.h"
 #include "../trade.h"
 #include "UIGameSP.h"
 #include "../PDA.h"
@@ -108,22 +111,27 @@ void CUITalkWnd::InitTalkDialog()
 	UITalkDialogWnd->ClearAll();
 	UITalkDialogWnd->ResetQuestionSelection();
 
-	InitOthersStartDialog();
-	if (!IsShown() || !m_pActor)
+	UITalkDialogWnd->mechanic_mode = m_pOthersInvOwner->SpecificCharacter().upgrade_mechanic();
+	UITalkDialogWnd->SetOsoznanieMode(m_pOthersInvOwner->NeedOsoznanieMode());
+
+	m_hasCameraTarget = false;
+	m_waitingForTurn = false;
+	m_turnWaitStart = 0;
+
+	if (ShouldWaitForPartnerTurn())
 	{
-		return;
-	}
-	NeedUpdateQuestions();
-	Update();
-	if (!IsShown() || !m_pActor)
-	{
+		m_waitingForTurn = true;
+		m_turnWaitStart = Device.dwTimeGlobal;
+		UITalkDialogWnd->CUIWindow::Show(false);
+		UITalkDialogWnd->CUIWindow::Enable(false);
+		if (CGameObject* other_go = m_pOthersInvOwner->cast_game_object())
+		{
+			UpdateCameraDirection(other_go);
+		}
 		return;
 	}
 
-	UITalkDialogWnd->mechanic_mode = m_pOthersInvOwner->SpecificCharacter().upgrade_mechanic();
-	UITalkDialogWnd->SetOsoznanieMode(m_pOthersInvOwner->NeedOsoznanieMode());
-	UITalkDialogWnd->Show();
-	UITalkDialogWnd->UpdateButtonsLayout(b_disable_break, m_pOthersInvOwner->IsTradeEnabled());
+	RevealTalkDialog();
 }
 
 void CUITalkWnd::InitOthersStartDialog()
@@ -226,24 +234,73 @@ void CUITalkWnd::SendMessage(CUIWindow* pWnd, s16 msg, void* pData)
 }
 
 //////////////////////////////////////////////////////////////////////////
-void UpdateCameraDirection(CGameObject* pTo, bool isFocus)
+namespace
 {
-	CCameraBase* cam = Actor()->cam_Active();
+constexpr float kTalkCameraAnchorMoveSq = 0.20f * 0.20f;
+constexpr float kTalkCameraAnchorVertMove = 0.35f;
+constexpr float kTalkTurnStartAngle = 0.4363323f;    // 25 deg
+constexpr float kTalkTurnDoneHeadAngle = 0.3490659f; // 20 deg
+constexpr float kTalkTurnDoneBodyAngle = 0.2617994f; // 15 deg
+constexpr float kTalkBodyTurnThreshold = 1.0122910f; // 58 deg
+constexpr u32 kTalkTurnSightGraceMs = 250;
+constexpr u32 kTalkTurnMaxWaitMs = 1500;
 
+Fvector ComputeTalkCameraTarget(CGameObject* pTo)
+{
 	Fvector target_pos;
 	if (pTo->cast_inventory_owner()->GetFocusingOnNpc())
 	{
 		if (IKinematics* pk = PKinematics(pTo->Visual()))
+		{
 			pk->LL_GetBoneWorldPosition(pk->LL_BoneID("bip01_head"), pTo->XFORM(), target_pos);
+			return target_pos;
+		}
 	}
-	else
+	pTo->Center(target_pos);
+	target_pos.y += pTo->Radius() * 0.5f;
+	return target_pos;
+}
+
+bool ComputeDesiredTalkYaw(CGameObject* npc, CGameObject* actor, float& out_yaw)
+{
+	Fvector dir;
+	dir.sub(actor->Position(), npc->Position());
+	dir.y = 0.f;
+	if (dir.square_magnitude() <= EPS_S)
+		return false;
+	float h, p;
+	dir.getHP(h, p);
+	out_yaw = angle_normalize_signed(-h);
+	return true;
+}
+} // namespace
+
+void CUITalkWnd::UpdateCameraDirection(CGameObject* pTo)
+{
+	CCameraBase* cam = Actor()->cam_Active();
+	if (!cam)
+		return;
+
+	const Fvector raw_target = ComputeTalkCameraTarget(pTo);
+	const Fvector npc_pos = pTo->Position();
+
+	// Anchor the camera target once the NPC has settled so idle head/torso swaying
+	// does not make the camera swim; re-anchor only while turning or on real movement.
+	const bool should_reanchor = !m_hasCameraTarget ||
+		m_waitingForTurn ||
+		npc_pos.distance_to_sqr(m_cameraNpcPos) > kTalkCameraAnchorMoveSq ||
+		std::abs(raw_target.y - m_cameraTargetPos.y) > kTalkCameraAnchorVertMove;
+	if (should_reanchor)
 	{
-		pTo->Center(target_pos);
-		target_pos.y += pTo->Radius() * 0.5f;
+		m_cameraTargetPos = raw_target;
+		m_cameraNpcPos = npc_pos;
+		m_hasCameraTarget = true;
 	}
 
 	Fvector target_dir;
-	target_dir.sub(target_pos, cam->vPosition);
+	target_dir.sub(m_cameraTargetPos, cam->vPosition);
+	if (target_dir.square_magnitude() <= EPS_S)
+		return;
 	target_dir.normalize();
 	float p, h;
 	target_dir.getHP(h, p);
@@ -251,6 +308,93 @@ void UpdateCameraDirection(CGameObject* pTo, bool isFocus)
 	Fvector targ_angles = EulerYawPitchRollInertion({ cam->pitch , cam->yaw, 0.f }, { -p, -h, 0.f }, 0.5f, Device.fTimeDelta);
 	cam->pitch = targ_angles.x;
 	cam->yaw = targ_angles.y;
+}
+
+bool CUITalkWnd::ShouldWaitForPartnerTurn() const
+{
+	if (!m_pActor || !m_pOthersInvOwner || m_pOthersInvOwner->NeedOsoznanieMode())
+		return false;
+	CGameObject* other_go = m_pOthersInvOwner->cast_game_object();
+	if (!other_go)
+		return false;
+	CAI_Stalker* stalker = other_go->cast_stalker();
+	if (!stalker || !stalker->g_Alive() || stalker->wounded())
+		return false;
+	if (stalker->animation_movement_controlled() || stalker->movement().in_smart_cover())
+		return false;
+
+	float desired_yaw = 0.f;
+	if (!ComputeDesiredTalkYaw(other_go, m_pActor, desired_yaw))
+		return false;
+
+	const float head_diff = angle_difference(stalker->movement().m_head.current.yaw, desired_yaw);
+	return head_diff > kTalkTurnStartAngle;
+}
+
+bool CUITalkWnd::IsPartnerTurnFinished() const
+{
+	if (!m_waitingForTurn || !m_pActor || !m_pOthersInvOwner)
+		return true;
+
+	const u32 elapsed = Device.dwTimeGlobal - m_turnWaitStart;
+	if (elapsed >= kTalkTurnMaxWaitMs)
+		return true;
+
+	CGameObject* other_go = m_pOthersInvOwner->cast_game_object();
+	CAI_Stalker* stalker = other_go ? other_go->cast_stalker() : nullptr;
+	if (!stalker || !stalker->g_Alive() || stalker->wounded())
+		return true;
+
+	bool looking_at_actor = false;
+	if (!stalker->sight().actions().empty())
+	{
+		const CSightControlAction& act = stalker->sight().current_action();
+		looking_at_actor = (act.sight_type() == SightManager::eSightTypeObject) &&
+			(act.object_to_look() == m_pActor);
+	}
+	if (!looking_at_actor)
+	{
+		return elapsed >= kTalkTurnSightGraceMs;
+	}
+
+	float desired_yaw = 0.f;
+	if (!ComputeDesiredTalkYaw(other_go, m_pActor, desired_yaw))
+		return true;
+
+	if (angle_difference(stalker->movement().m_head.current.yaw, desired_yaw) > kTalkTurnDoneHeadAngle)
+		return false;
+
+	if (angle_difference(stalker->movement().m_body.current.yaw, desired_yaw) > kTalkBodyTurnThreshold)
+		return false;
+
+	if (stalker->sight().turning_in_place())
+	{
+		const float body_diff = angle_difference(stalker->movement().m_body.current.yaw, stalker->movement().m_body.target.yaw);
+		if (body_diff > kTalkTurnDoneBodyAngle)
+			return false;
+	}
+
+	return true;
+}
+
+void CUITalkWnd::RevealTalkDialog()
+{
+	m_waitingForTurn = false;
+
+	InitOthersStartDialog();
+	if (!IsShown() || !m_pActor)
+	{
+		return;
+	}
+	NeedUpdateQuestions();
+	Update();
+	if (!IsShown() || !m_pActor)
+	{
+		return;
+	}
+
+	UITalkDialogWnd->Show();
+	UITalkDialogWnd->UpdateButtonsLayout(b_disable_break, m_pOthersInvOwner->IsTradeEnabled());
 }
 
 void CUITalkWnd::Update()
@@ -273,6 +417,17 @@ void CUITalkWnd::Update()
 		}
 	}
 
+	if (m_waitingForTurn)
+	{
+		UpdateCameraDirection(m_pOthersInvOwner->cast_game_object());
+		UpdateTalkDof();
+		if (IsPartnerTurnFinished())
+		{
+			RevealTalkDialog();
+		}
+		return;
+	}
+
 	if (m_bNeedToUpdateQuestions)
 	{
 		UpdateQuestions();
@@ -289,7 +444,7 @@ void CUITalkWnd::Update()
 	UITalkDialogWnd->UpdateQuestionSelection();
 
 	inherited::Update();
-	UpdateCameraDirection(m_pOthersInvOwner->cast_game_object(), m_pOthersInvOwner->GetFocusingOnNpc());
+	UpdateCameraDirection(m_pOthersInvOwner->cast_game_object());
 	UpdateTalkDof();
 	UITalkDialogWnd->UpdateButtonsLayout(b_disable_break, m_pOthersInvOwner->IsTradeEnabled());
 
@@ -340,9 +495,14 @@ void CUITalkWnd::Show(bool status)
 	}
 	else
 	{
+		m_waitingForTurn = false;
+		m_hasCameraTarget = false;
 		RestoreTalkEffects();
 		StopSnd();
-		UITalkDialogWnd->Hide();
+		if (UITalkDialogWnd->IsShown())
+		{
+			UITalkDialogWnd->Hide();
+		}
 
 		if (m_pActor)
 		{
@@ -492,7 +652,7 @@ bool CUITalkWnd::OnKeyboardAction(int dik, EUIMessages keyboard_action)
 				return true;
 			}
 		}
-		else if(is_binded(kSPRINT_TOGGLE, dik))
+		else if (!m_waitingForTurn && is_binded(kSPRINT_TOGGLE, dik))
 		{
             if (!m_pOthersInvOwner->NeedOsoznanieMode())
             {
@@ -505,6 +665,11 @@ bool CUITalkWnd::OnKeyboardAction(int dik, EUIMessages keyboard_action)
 		}
 	}
 
+	if (m_waitingForTurn)
+	{
+		return true;
+	}
+
 	return inherited::OnKeyboardAction(dik,keyboard_action);
 }
 
@@ -512,6 +677,14 @@ bool CUITalkWnd::OnGamepadKeyAction(int id, EUIMessages gamepad_action)
 {
 	if (gamepad_action==WINDOW_KEY_PRESSED)
 	{
+		if (m_waitingForTurn)
+		{
+			if (get_binded_action(id, agUIGeneral) == kUI_BACK && !b_disable_break)
+			{
+				HideDialog();
+			}
+			return true;
+		}
 		switch (get_binded_action(id, agUIGeneral))
 		{
 			case kUI_BACK:
