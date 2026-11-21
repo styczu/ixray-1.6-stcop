@@ -191,7 +191,19 @@ void CSightManager::update			()
 	}
 
 	if (!m_turning_in_place) {
-		if (angle_difference(object().movement().m_body.current.yaw,object().movement().m_head.current.yaw) > (left_angle(-object().movement().m_head.current.yaw,-object().movement().m_body.current.yaw) ? m_max_left_angle : m_max_right_angle)) {
+		// While talking, start turning the body immediately from head.target.yaw when
+		// the actor is beyond 58 deg (above the 55 deg head-only animpoint cone).
+		const bool talking_body_turn =
+			object().IsTalking() &&
+			!object().animation_movement_controlled() &&
+			!actions().empty() &&
+			(current_action().sight_type() == SightManager::eSightTypeObject) &&
+			(angle_difference(object().movement().m_body.current.yaw, object().movement().m_head.target.yaw) > deg2rad(58.f));
+		if (talking_body_turn) {
+			m_turning_in_place	= true;
+			object().movement().m_body.target.yaw	= object().movement().m_head.target.yaw;
+		}
+		else if (angle_difference(object().movement().m_body.current.yaw,object().movement().m_head.current.yaw) > (left_angle(-object().movement().m_head.current.yaw,-object().movement().m_body.current.yaw) ? m_max_left_angle : m_max_right_angle)) {
 			m_turning_in_place	= true;
 //			Msg				("%6d started turning in place",Device.dwTimeGlobal);
 			object().movement().m_body.target.yaw	= object().movement().m_head.current.yaw;
