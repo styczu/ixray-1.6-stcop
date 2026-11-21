@@ -4,6 +4,30 @@ local function angle_to_direction(oangle)
 	return vector():setHP(yaw,pitch):normalize()
 end
 
+-- 55 deg is strictly below CSightManager m_max_right_angle (60 deg) and
+-- m_max_left_angle (90 deg), so a seated/leaning NPC turns head and upper
+-- torso toward the actor during dialogue without triggering body turn-in-place.
+local TALK_LOOK_COS = math.cos(math.rad(55))
+
+local function animpoint_look_target(npc, animpoint)
+	if db.actor ~= nil and npc:is_talking() and animpoint.smart_direction ~= nil then
+		local actor_pos = db.actor:position()
+		local npc_pos = npc:position()
+		local dx = actor_pos.x - npc_pos.x
+		local dz = actor_pos.z - npc_pos.z
+		local len = math.sqrt(dx * dx + dz * dz)
+		local sdir = animpoint.smart_direction
+		local s_len = math.sqrt(sdir.x * sdir.x + sdir.z * sdir.z)
+		if len > 0.01 and s_len > 0.01 then
+			local dot = (dx * sdir.x + dz * sdir.z) / (len * s_len)
+			if dot >= TALK_LOOK_COS then
+				return {look_object = db.actor}
+			end
+		end
+	end
+	return {look_position = animpoint.look_position}
+end
+
 local assoc_tbl = 	{
 						idle = {director = {"", "_eat_bread", "_eat_kolbasa", "_drink_vodka", "_drink_energy", "_weapon"}, listener = {"", "_eat_bread", "_eat_kolbasa", "_drink_vodka", "_drink_energy", "_weapon"}},
 						harmonica = {director = {"_harmonica"}, listener = {"", "_eat_bread", "_eat_kolbasa", "_drink_vodka", "_drink_energy", "_weapon"}},
@@ -77,7 +101,8 @@ function action_animpoint:execute()
 
 --	printf("%s animpoint action %s", self.object:name(), tostring(self.st.animpoint:get_action()))
 --	state_mgr.set_state(self.object, self.st.animpoint:get_action(), nil, nil, nil,
-	state_mgr.set_state(self.object, self.st.animpoint:get_action(), nil, nil, {look_position = self.st.animpoint.look_position},
+	state_mgr.set_state(self.object, self.st.animpoint:get_action(), nil, nil,
+						animpoint_look_target(self.object, self.st.animpoint),
 						{animation_position = pos, animation_direction = dir} )
 
 
