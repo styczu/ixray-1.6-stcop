@@ -10,6 +10,7 @@
 #include "../PhraseDialogDefs.h"
 
 class CActor;
+class CGameObject;
 class CInventoryOwner;
 class CPhraseDialogManager;
 class CUITalkDialogWnd;
@@ -83,6 +84,10 @@ protected:
 	void				ToTopicMode				();
 
 private:
+	void UpdateCameraDirection(CGameObject* pTo);
+	bool ShouldWaitForPartnerTurn() const;
+	bool IsPartnerTurnFinished() const;
+	void RevealTalkDialog();
 	void UpdateTalkDof();
 	void RestoreTalkEffects();
 	float SavedFov = 0.0f;
@@ -90,4 +95,9 @@ private:
 	bool HasTalkDof = false;
 	Fvector4 m_TalkDof = {};
 	float m_talkFovScale;
+	bool m_hasCameraTarget = false;
+	Fvector m_cameraTargetPos = {};
+	Fvector m_cameraNpcPos = {};
+	bool m_waitingForTurn = false;
+	u32 m_turnWaitStart = 0;
 };
