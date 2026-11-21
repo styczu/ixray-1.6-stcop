@@ -83,6 +83,15 @@ end
 
 ]]
 
+local function is_in_reached_animpoint(npc)
+	local st = db.storage[npc:id()]
+	if st == nil or st.active_scheme ~= "animpoint" then
+		return false
+	end
+	local animpoint = st.animpoint and st.animpoint.animpoint
+	return animpoint ~= nil and animpoint:position_riched() == true
+end
+
 class "Cmeet_manager"
 function Cmeet_manager:__init(npc, storage)
 	self.npc = npc
@@ -130,6 +139,14 @@ function Cmeet_manager:update_state()
         else
             victim = nil
         end
+        if self.npc:is_talking() then
+            if tostring(state) == "nil" then
+                state = "wait"
+            end
+            if victim == nil then
+                victim = db.actor
+            end
+        end
         if tostring(state) ~= "nil" then
             if victim == nil then
                 state_mgr.set_state(self.npc, state, nil, nil, nil)
@@ -145,6 +162,31 @@ function Cmeet_manager:update_state()
             xr_sound.set_sound_play(self.npc:id(), snd)
         end
     end)
+end
+
+function Cmeet_manager:should_meet_on_talking()
+	if not self.npc:is_talking() then
+		return false
+	end
+	if self.a.meet_section == "no_meet" then
+		return false
+	end
+	if is_in_reached_animpoint(self.npc) then
+		return false
+	end
+	if self.npc.in_smart_cover ~= nil and self.npc:in_smart_cover() then
+		return false
+	end
+	local st = db.storage[self.npc:id()]
+	if st ~= nil and st.active_scheme == "remark" then
+		local meet_on_talking = self.a.meet_on_talking ~= nil and xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.meet_on_talking) == "true"
+		if not meet_on_talking then
+			return false
+		end
+		local state = xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_anim)
+		return tostring(state) ~= "nil"
+	end
+	return true
 end
 
 function Cmeet_manager:set_start_distance()
@@ -169,7 +211,7 @@ function Cmeet_manager:set_start_distance()
         local actor_visible = self.npc:see(db.actor)
     
         local is_object_far = actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_distance))
-        local is_object_close = (actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self.npc:is_talking()
+        local is_object_close = (actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self:should_meet_on_talking()
     
         if is_object_close == true then
             self.hello_passed = true
@@ -228,7 +270,7 @@ function Cmeet_manager:update()
         	end
         	
         	local is_object_far = actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_distance))
-        	local is_object_close = (actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or (self.npc:is_talking() and self.a.meet_on_talking)
+        	local is_object_close = (actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self:should_meet_on_talking()
         
         	--printf("!!! %s %s %s", self.npc:name(), tostring(is_object_far), tostring(is_object_close))
         	--printf("%s",  xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))
