@@ -25,6 +25,9 @@
 #include "smart_cover_animation_selector.h"
 #include "Legacy/StalkerPlanner/stalker_planner.h"
 
+extern float g_TalkTurnSpeedHeadDeg;
+extern float g_TalkTurnSpeedBodyDeg;
+
 #ifdef DEBUG
 #	include "script_game_object.h"
 #include "Legacy/StalkerPlanner/stalker_combat_planner.h"
@@ -147,7 +150,10 @@ void stalker_movement_manager_base::reinit				()
 
 IC	void stalker_movement_manager_base::setup_head_speed		(stalker_movement_params& movement_params)
 {
-	if (movement_params.m_mental_state == eMentalStateFree && !object().IsTalking()) {
+	if (object().IsTalking()) {
+		m_head.speed			= deg2rad(g_TalkTurnSpeedHeadDeg);
+	}
+	else if (movement_params.m_mental_state == eMentalStateFree) {
 		if (object().sight().enabled())
 			m_head.speed		= PI_DIV_2;
 	}
@@ -394,7 +400,9 @@ void stalker_movement_manager_base::parse_velocity_mask	(stalker_movement_params
 		)
 	{
 		object().m_fCurSpeed	= 0;
-		if (movement_params.m_mental_state != eMentalStateDanger && !object().IsTalking())
+		if (object().IsTalking())
+			m_body.speed		= deg2rad(g_TalkTurnSpeedBodyDeg);
+		else if (movement_params.m_mental_state != eMentalStateDanger)
 			m_body.speed		= 1*PI_DIV_2;
 		else
 			m_body.speed		= PI_MUL_2;
