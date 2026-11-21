@@ -29,6 +29,13 @@ function eva_state_mgr_direction:evaluate()
 
 	-- Если задана позиция в которую смотреть
 	if self.st.look_position ~= nil then
+		if self.st.animpoint_talk_look == true
+			and self.object:is_talking()
+			and self.st.animstate ~= nil
+			and self.st.animstate.states.current_state ~= nil
+		then
+			return true
+		end
 		if sight_type.m_sight_type ~= look_position_type(self.object, self.st) then
 			--printf("false type")
 			return false
