@@ -18,6 +18,8 @@
 #include "../game_cl_base.h"
 #include "../../xrEngine/string_table.h"
 #include "../../xrEngine/CameraBase.h"
+#include "../../xrEngine/xr_ioc_cmd.h"
+#include "../../xrEngine/XR_IOConsole.h"
 #include "../../xrUI/UIXmlInit.h"
 #include "../../xrUI/Widgets/UI3tButton.h"
 
@@ -234,16 +236,34 @@ void CUITalkWnd::SendMessage(CUIWindow* pWnd, s16 msg, void* pData)
 }
 
 //////////////////////////////////////////////////////////////////////////
+int g_TalkCameraStable = 1;
+float g_TalkCameraMoveDist = 0.20f;
+float g_TalkCameraVertDist = 0.35f;
+float g_TalkTurnSpeedHeadDeg = 270.f;
+float g_TalkTurnSpeedBodyDeg = 360.f;
+float g_TalkBodyTurnAngleDeg = 58.f;
+int g_TalkWaitTurn = 1;
+float g_TalkWaitStartAngleDeg = 25.f;
+float g_TalkWaitDoneAngleDeg = 20.f;
+float g_TalkWaitMaxTimeSec = 1.5f;
+
 namespace
 {
-constexpr float kTalkCameraAnchorMoveSq = 0.20f * 0.20f;
-constexpr float kTalkCameraAnchorVertMove = 0.35f;
-constexpr float kTalkTurnStartAngle = 0.4363323f;    // 25 deg
-constexpr float kTalkTurnDoneHeadAngle = 0.3490659f; // 20 deg
-constexpr float kTalkTurnDoneBodyAngle = 0.2617994f; // 15 deg
-constexpr float kTalkBodyTurnThreshold = 1.0122910f; // 58 deg
 constexpr u32 kTalkTurnSightGraceMs = 250;
-constexpr u32 kTalkTurnMaxWaitMs = 1500;
+
+class CCC_TalkInteger : public CCC_Integer
+{
+public:
+	CCC_TalkInteger(const char* N, int* V, int Min, int Max) : CCC_Integer(N, V, Min, Max) {}
+	void Save(IWriter*) override {}
+};
+
+class CCC_TalkFloat : public CCC_Float
+{
+public:
+	CCC_TalkFloat(const char* N, float* V, float Min, float Max) : CCC_Float(N, V, Min, Max) {}
+	void Save(IWriter*) override {}
+};
 
 Fvector ComputeTalkCameraTarget(CGameObject* pTo)
 {
@@ -286,10 +306,12 @@ void CUITalkWnd::UpdateCameraDirection(CGameObject* pTo)
 
 	// Anchor the camera target once the NPC has settled so idle head/torso swaying
 	// does not make the camera swim; re-anchor only while turning or on real movement.
-	const bool should_reanchor = !m_hasCameraTarget ||
+	const float move_dist_sq = g_TalkCameraMoveDist * g_TalkCameraMoveDist;
+	const bool should_reanchor = !g_TalkCameraStable ||
+		!m_hasCameraTarget ||
 		m_waitingForTurn ||
-		npc_pos.distance_to_sqr(m_cameraNpcPos) > kTalkCameraAnchorMoveSq ||
-		std::abs(raw_target.y - m_cameraTargetPos.y) > kTalkCameraAnchorVertMove;
+		npc_pos.distance_to_sqr(m_cameraNpcPos) > move_dist_sq ||
+		std::abs(raw_target.y - m_cameraTargetPos.y) > g_TalkCameraVertDist;
 	if (should_reanchor)
 	{
 		m_cameraTargetPos = raw_target;
@@ -312,7 +334,7 @@ void CUITalkWnd::UpdateCameraDirection(CGameObject* pTo)
 
 bool CUITalkWnd::ShouldWaitForPartnerTurn() const
 {
-	if (!m_pActor || !m_pOthersInvOwner || m_pOthersInvOwner->NeedOsoznanieMode())
+	if (!g_TalkWaitTurn || !m_pActor || !m_pOthersInvOwner || m_pOthersInvOwner->NeedOsoznanieMode())
 		return false;
 	CGameObject* other_go = m_pOthersInvOwner->cast_game_object();
 	if (!other_go)
@@ -328,7 +350,7 @@ bool CUITalkWnd::ShouldWaitForPartnerTurn() const
 		return false;
 
 	const float head_diff = angle_difference(stalker->movement().m_head.current.yaw, desired_yaw);
-	return head_diff > kTalkTurnStartAngle;
+	return head_diff > deg2rad(g_TalkWaitStartAngleDeg);
 }
 
 bool CUITalkWnd::IsPartnerTurnFinished() const
@@ -337,7 +359,8 @@ bool CUITalkWnd::IsPartnerTurnFinished() const
 		return true;
 
 	const u32 elapsed = Device.dwTimeGlobal - m_turnWaitStart;
-	if (elapsed >= kTalkTurnMaxWaitMs)
+	const u32 max_wait_ms = static_cast<u32>(std::max(0.f, g_TalkWaitMaxTimeSec) * 1000.f);
+	if (elapsed >= max_wait_ms)
 		return true;
 
 	CGameObject* other_go = m_pOthersInvOwner->cast_game_object();
@@ -361,16 +384,17 @@ bool CUITalkWnd::IsPartnerTurnFinished() const
 	if (!ComputeDesiredTalkYaw(other_go, m_pActor, desired_yaw))
 		return true;
 
-	if (angle_difference(stalker->movement().m_head.current.yaw, desired_yaw) > kTalkTurnDoneHeadAngle)
+	const float done_angle = deg2rad(g_TalkWaitDoneAngleDeg);
+	if (angle_difference(stalker->movement().m_head.current.yaw, desired_yaw) > done_angle)
 		return false;
 
-	if (angle_difference(stalker->movement().m_body.current.yaw, desired_yaw) > kTalkBodyTurnThreshold)
+	if (angle_difference(stalker->movement().m_body.current.yaw, desired_yaw) > deg2rad(g_TalkBodyTurnAngleDeg))
 		return false;
 
 	if (stalker->sight().turning_in_place())
 	{
 		const float body_diff = angle_difference(stalker->movement().m_body.current.yaw, stalker->movement().m_body.target.yaw);
-		if (body_diff > kTalkTurnDoneBodyAngle)
+		if (body_diff > done_angle)
 			return false;
 	}
 
@@ -857,4 +881,18 @@ bool CUITalkWnd::IsActiveTalkUi()
 
 void CUITalkWnd::Stop()
 {
+}
+
+void RegisterTalkCameraAndTurnConsoleCommands()
+{
+	CMD4(CCC_TalkInteger, "ai_talk_camera_stable", &g_TalkCameraStable, 0, 1);
+	CMD4(CCC_TalkFloat, "ai_talk_camera_move_dist", &g_TalkCameraMoveDist, 0.05f, 1.0f);
+	CMD4(CCC_TalkFloat, "ai_talk_camera_vert_dist", &g_TalkCameraVertDist, 0.05f, 1.0f);
+	CMD4(CCC_TalkFloat, "ai_talk_turn_speed_head", &g_TalkTurnSpeedHeadDeg, 90.f, 720.f);
+	CMD4(CCC_TalkFloat, "ai_talk_turn_speed_body", &g_TalkTurnSpeedBodyDeg, 90.f, 720.f);
+	CMD4(CCC_TalkFloat, "ai_talk_body_turn_angle", &g_TalkBodyTurnAngleDeg, 30.f, 120.f);
+	CMD4(CCC_TalkInteger, "ai_talk_wait_turn", &g_TalkWaitTurn, 0, 1);
+	CMD4(CCC_TalkFloat, "ai_talk_wait_start_angle", &g_TalkWaitStartAngleDeg, 5.f, 90.f);
+	CMD4(CCC_TalkFloat, "ai_talk_wait_done_angle", &g_TalkWaitDoneAngleDeg, 5.f, 45.f);
+	CMD4(CCC_TalkFloat, "ai_talk_wait_max_time", &g_TalkWaitMaxTimeSec, 0.3f, 4.0f);
 }
