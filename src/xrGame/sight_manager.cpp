@@ -21,6 +21,7 @@ using MonsterSpace::SBoneRotation;
 static Fvector const	s_danger_factors	= {  .0f,	.50f,	.50f  };
 static Fvector const	s_free_factors		= { .25f,	.25f,	.50f  };
 static float const		s_factor_lerp_speed	= 1.f;
+extern float			g_TalkBodyTurnAngleDeg;
 
 //#define SIGHT_DEBUG
 
@@ -198,7 +199,7 @@ void CSightManager::update			()
 			!object().animation_movement_controlled() &&
 			!actions().empty() &&
 			(current_action().sight_type() == SightManager::eSightTypeObject) &&
-			(angle_difference(object().movement().m_body.current.yaw, object().movement().m_head.target.yaw) > deg2rad(58.f));
+			(angle_difference(object().movement().m_body.current.yaw, object().movement().m_head.target.yaw) > deg2rad(g_TalkBodyTurnAngleDeg));
 		if (talking_body_turn) {
 			m_turning_in_place	= true;
 			object().movement().m_body.target.yaw	= object().movement().m_head.target.yaw;
