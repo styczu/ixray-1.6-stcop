@@ -92,6 +92,16 @@ local function is_in_reached_animpoint(npc)
 	return animpoint ~= nil and animpoint:position_riched() == true
 end
 
+local function is_actor_talking()
+	return db.actor ~= nil
+		and db.actor.is_talking ~= nil
+		and db.actor:is_talking() == true
+end
+
+local function are_greetings_muted_while_talking()
+	return _G.ixray_talk_mute_greetings_while_talking == true and is_actor_talking()
+end
+
 class "Cmeet_manager"
 function Cmeet_manager:__init(npc, storage)
 	self.npc = npc
@@ -155,11 +165,13 @@ function Cmeet_manager:update_state()
             end
         end
     
-        local snd = xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_snd)
-    
-        -- звук, пока в дальнем радиусе  (отыгрывается, даже если мы в ближнем)
-        if tostring(snd) ~= "nil" then
-            xr_sound.set_sound_play(self.npc:id(), snd)
+        if not are_greetings_muted_while_talking() then
+            local snd = xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_snd)
+        
+            -- звук, пока в дальнем радиусе  (отыгрывается, даже если мы в ближнем)
+            if tostring(snd) ~= "nil" then
+                xr_sound.set_sound_play(self.npc:id(), snd)
+            end
         end
     end)
 end
@@ -256,11 +268,15 @@ function Cmeet_manager:update()
         
         	local actor_visible = self.npc:see(db.actor)
         	local suppress_proximity = self:is_generic_proximity_suppressed()
+        	local mute_greetings = are_greetings_muted_while_talking()
+        	if mute_greetings and self.npc:is_talking() then
+        		self.hello_passed = true
+        	end
         
         	-- [meet-weapon-ads-only r3] Neither "use" nor aiming down the sights raises the abuse counter;
         	-- the push after 5 s of aiming belongs to the addon ixray-npc-shot-reaction (0.3.0).
         
-        	if actor_visible and not suppress_proximity then
+        	if actor_visible and not suppress_proximity and not mute_greetings then
         		--printf("%s check distance %s <= %s <= %s", self.npc:name(), distance, tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_snd_distance)), tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_snd_distance)) )
         		if distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_snd_distance)) then
         			-- Коллбек на приближение
