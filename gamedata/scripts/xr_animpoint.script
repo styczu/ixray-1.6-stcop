@@ -7,25 +7,55 @@ end
 -- 55 deg is strictly below CSightManager m_max_right_angle (60 deg) and
 -- m_max_left_angle (90 deg), so a seated/leaning NPC turns head and upper
 -- torso toward the actor during dialogue without triggering body turn-in-place.
+-- Applied directly via npc:set_sight (with state_mgr_direction opt-in) instead
+-- of changing state_mgr look_object, because state_mgr_goap direction_turn
+-- requires animstate_idle_now and would otherwise stand the NPC up and re-sit
+-- them in mid-air.
 local TALK_LOOK_COS = math.cos(math.rad(55))
 
-local function animpoint_look_target(npc, animpoint)
-	if db.actor ~= nil and npc:is_talking() and animpoint.smart_direction ~= nil then
-		local actor_pos = db.actor:position()
-		local npc_pos = npc:position()
-		local dx = actor_pos.x - npc_pos.x
-		local dz = actor_pos.z - npc_pos.z
-		local len = math.sqrt(dx * dx + dz * dz)
-		local sdir = animpoint.smart_direction
-		local s_len = math.sqrt(sdir.x * sdir.x + sdir.z * sdir.z)
-		if len > 0.01 and s_len > 0.01 then
-			local dot = (dx * sdir.x + dz * sdir.z) / (len * s_len)
-			if dot >= TALK_LOOK_COS then
-				return {look_object = db.actor}
-			end
-		end
+local function can_animpoint_talk_look(npc, animpoint, st_mgr)
+	if db.actor == nil or not npc:is_talking() or animpoint.smart_direction == nil then
+		return false
 	end
-	return {look_position = animpoint.look_position}
+	if st_mgr == nil or st_mgr.animstate == nil or st_mgr.animstate.states == nil then
+		return false
+	end
+	local states = st_mgr.animstate.states
+	if states.current_state == nil or states.anim_marker == 1 or states.anim_marker == 2 then
+		return false
+	end
+	local actor_pos = db.actor:position()
+	local npc_pos = npc:position()
+	local dx = actor_pos.x - npc_pos.x
+	local dz = actor_pos.z - npc_pos.z
+	local len = math.sqrt(dx * dx + dz * dz)
+	local sdir = animpoint.smart_direction
+	local s_len = math.sqrt(sdir.x * sdir.x + sdir.z * sdir.z)
+	if len <= 0.01 or s_len <= 0.01 then
+		return false
+	end
+	local dot = (dx * sdir.x + dz * sdir.z) / (len * s_len)
+	return dot >= TALK_LOOK_COS
+end
+
+local function update_animpoint_talk_look(npc, animpoint)
+	local st = db.storage[npc:id()]
+	local st_mgr = st and st.state_mgr or nil
+	if can_animpoint_talk_look(npc, animpoint, st_mgr) then
+		st_mgr.animpoint_talk_look = true
+		npc:set_sight(db.actor, false, false, false)
+	elseif st_mgr ~= nil and st_mgr.animpoint_talk_look == true then
+		st_mgr.animpoint_talk_look = nil
+		npc:set_sight(CSightParams.eSightTypeAnimationDirection, false, false)
+	end
+end
+
+local function clear_animpoint_talk_look(npc)
+	local st = db.storage[npc:id()]
+	local st_mgr = st and st.state_mgr or nil
+	if st_mgr ~= nil and st_mgr.animpoint_talk_look == true then
+		st_mgr.animpoint_talk_look = nil
+	end
 end
 
 local assoc_tbl = 	{
@@ -102,15 +132,18 @@ function action_animpoint:execute()
 --	printf("%s animpoint action %s", self.object:name(), tostring(self.st.animpoint:get_action()))
 --	state_mgr.set_state(self.object, self.st.animpoint:get_action(), nil, nil, nil,
 	state_mgr.set_state(self.object, self.st.animpoint:get_action(), nil, nil,
-						animpoint_look_target(self.object, self.st.animpoint),
+						{look_position = self.st.animpoint.look_position},
 						{animation_position = pos, animation_direction = dir} )
+	update_animpoint_talk_look(self.object, self.st.animpoint)
 
 
 end
 function action_animpoint:net_destroy(npc)
+	clear_animpoint_talk_look(self.object)
 	self.st.animpoint:stop()
 end
 function action_animpoint:finalize()
+	clear_animpoint_talk_look(self.object)
 	self.st.animpoint:stop()
 	action_base.finalize(self)
 end
