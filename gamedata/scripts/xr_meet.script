@@ -189,6 +189,25 @@ function Cmeet_manager:should_meet_on_talking()
 	return true
 end
 
+local function is_actor_aiming_at_npc(npc)
+	return type(xr_conditions) == "table"
+		and type(xr_conditions.actor_aims_at_npc) == "function"
+		and xr_conditions.actor_aims_at_npc(db.actor, npc) == true
+end
+
+function Cmeet_manager:is_generic_proximity_suppressed()
+	if _G.ixray_talk_player_only ~= true then
+		return false
+	end
+	if self.a.meet_section ~= "nil" and self.a.meet_section ~= "meet@generic_lager" then
+		return false
+	end
+	if is_actor_aiming_at_npc(self.npc) then
+		return false
+	end
+	return true
+end
+
 function Cmeet_manager:set_start_distance()
 	return PROF_EVENT_CLOSURE("set_start_distance", function()
         if db.actor == nil then
@@ -209,9 +228,10 @@ function Cmeet_manager:set_start_distance()
         local distance = self.npc:position():distance_to(db.actor:position())
     
         local actor_visible = self.npc:see(db.actor)
+        local suppress_proximity = self:is_generic_proximity_suppressed()
     
-        local is_object_far = actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_distance))
-        local is_object_close = (actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self:should_meet_on_talking()
+        local is_object_far = (not suppress_proximity) and actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_distance))
+        local is_object_close = ((not suppress_proximity) and actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self:should_meet_on_talking()
     
         if is_object_close == true then
             self.hello_passed = true
@@ -235,11 +255,12 @@ function Cmeet_manager:update()
         	local distance = self.npc:position():distance_to(db.actor:position())
         
         	local actor_visible = self.npc:see(db.actor)
+        	local suppress_proximity = self:is_generic_proximity_suppressed()
         
         	-- [meet-weapon-ads-only r3] Neither "use" nor aiming down the sights raises the abuse counter;
         	-- the push after 5 s of aiming belongs to the addon ixray-npc-shot-reaction (0.3.0).
         
-        	if actor_visible then
+        	if actor_visible and not suppress_proximity then
         		--printf("%s check distance %s <= %s <= %s", self.npc:name(), distance, tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_snd_distance)), tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_snd_distance)) )
         		if distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_snd_distance)) then
         			-- Коллбек на приближение
@@ -269,8 +290,8 @@ function Cmeet_manager:update()
         		end
         	end
         	
-        	local is_object_far = actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_distance))
-        	local is_object_close = (actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self:should_meet_on_talking()
+        	local is_object_far = (not suppress_proximity) and actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.far_distance))
+        	local is_object_close = ((not suppress_proximity) and actor_visible and distance <= tonumber(xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))) or self:should_meet_on_talking()
         
         	--printf("!!! %s %s %s", self.npc:name(), tostring(is_object_far), tostring(is_object_close))
         	--printf("%s",  xr_logic.pick_section_from_condlist(db.actor, self.npc, self.a.close_distance))
