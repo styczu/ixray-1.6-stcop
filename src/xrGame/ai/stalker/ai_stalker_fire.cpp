@@ -1389,6 +1389,10 @@ bool CAI_Stalker::can_kill_member							()
 	return					(m_can_kill_member);
 }
 
+// ai_npc_friendly_fire_check (console, not saved): 0 - stalkers fire as in the base game (can_kill_member only);
+// 1 - they also stop before every shot when an ally is in the spread cone (CWeaponMagazined::StopForFriendlyFire).
+int g_NpcFriendlyFireCheck = 0;
+
 bool CAI_Stalker::WouldHitFriendly(const Fvector& Position, const Fvector& Direction, float Dispersion)
 {
 	if (!animation().script_animations().empty())
