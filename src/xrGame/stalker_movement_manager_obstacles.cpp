@@ -29,6 +29,9 @@
 
 static const u32 fail_check_time	= 1000;
 
+// ai_npc_standing_obstacle (ai_stalker.cpp): 0 keeps the base movement without the stall recovery.
+extern int g_NpcStandingObstacle;
+
 stalker_movement_manager_obstacles::stalker_movement_manager_obstacles	(CAI_Stalker *object) :
 	inherited						(object),
 	m_last_dest_vertex_id			(u32(-1)),
@@ -158,7 +161,12 @@ void stalker_movement_manager_obstacles::move_along_path_impl				(CPHMovementCon
 		m_static_obstacles.need_path_to_rebuild())
 		rebuild_path				();
 
-	if (!wait_for_distributed_computation() && move_along_path())
+	// At 0 there is no stall recovery; resetting the count keeps a later switch to 1/2 from using an old time.
+	if (g_NpcStandingObstacle == 0)
+	{
+		ProgressCheckTime = 0;
+	}
+	else if (!wait_for_distributed_computation() && move_along_path())
 	{
 		RecoverBlockedPath(*movement_control);
 	}
