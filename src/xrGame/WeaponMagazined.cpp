@@ -1469,8 +1469,15 @@ void CWeaponMagazined::UpdateSounds	()
 	}
 }
 
+extern int g_NpcFriendlyFireCheck;
+
 bool CWeaponMagazined::StopForFriendlyFire(const Fvector& Position, const Fvector& Direction, int ShotCount)
 {
+	if (!g_NpcFriendlyFireCheck)
+	{
+		return false;
+	}
+
 	CAI_Stalker* Stalker = H_Parent() ? H_Parent()->cast_stalker() : nullptr;
 	if (!Stalker)
 	{
