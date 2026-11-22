@@ -2640,6 +2640,15 @@ public:
 	}
 };
 
+extern int g_NpcFriendlyFireCheck;
+
+class CCC_NpcFriendlyFireCheck : public CCC_Integer
+{
+public:
+	CCC_NpcFriendlyFireCheck(LPCSTR Name, int* Value) : CCC_Integer(Name, Value, 0, 1) {}
+	void Save(IWriter*) override {}
+};
+
 void CCC_RegisterCommands()
 {
 	// options
@@ -2760,6 +2769,7 @@ void CCC_RegisterCommands()
 	CMD3(CCC_Mask64, "ai_use_smart_covers", &psAI_Flags, aiUseSmartCovers);
 	CMD3(CCC_Mask64, "ai_use_smart_covers_animation_slots", &psAI_Flags, (u32)aiUseSmartCoversAnimationSlot);
 	CMD4(CCC_Float, "ai_smart_factor", &g_smart_cover_factor, 0.f, 1000000.f);
+	CMD2(CCC_NpcFriendlyFireCheck, "ai_npc_friendly_fire_check", &g_NpcFriendlyFireCheck);
 	CMD3(CCC_Mask64, "ai_dbg_lua", &psAI_Flags, aiLua);
 #endif // MASTER_GOLD
 
