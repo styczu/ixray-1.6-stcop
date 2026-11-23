@@ -284,15 +284,17 @@ bool CWeapon::install_upgrade_addon(const char* section, bool test)
 		{
 			result |= process_if_exists(section, "holder_range_modifier", m_addon_holder_range_modifier, test);
 			result |= process_if_exists(section, "holder_fov_modifier", m_addon_holder_fov_modifier, test);
-			bUseAltScope = pSettings->line_exist(section, "scopes");
+			const char* scope_sect = pSettings->line_exist(section, "scopes") ? section : cNameSect().c_str();
+			const char* alt_scopes = pSettings->line_exist(scope_sect, "scopes") ? pSettings->r_string(scope_sect, "scopes") : nullptr;
+			bUseAltScope = alt_scopes != nullptr && xr_strcmp(alt_scopes, "none") != 0;
 
 			if (bUseAltScope)
 			{
-				const char* str = pSettings->r_string(section, "scopes");
-				for (int i = 0, count = _GetItemCount(str); i < count; ++i)
+				m_scopes.clear();
+				for (int i = 0, count = _GetItemCount(alt_scopes); i < count; ++i)
 				{
 					string128 scope_section;
-					_GetItem(str, i, scope_section);
+					_GetItem(alt_scopes, i, scope_section);
 
 					if (!xr_strcmp(scope_section, "none"))
 					{
@@ -308,9 +310,12 @@ bool CWeapon::install_upgrade_addon(const char* section, bool test)
 			{
 				if (m_eScopeStatus == ALife::eAddonAttachable)
 				{
-					if (pSettings->line_exist(section, "scopes_sect"))
+					const char* scopes_list_sect = pSettings->line_exist(section, "scopes_sect") ? section
+						: (pSettings->line_exist(cNameSect().c_str(), "scopes_sect") ? cNameSect().c_str() : nullptr);
+					if (scopes_list_sect != nullptr)
 					{
-						const char* str = pSettings->r_string(section, "scopes_sect");
+						m_scopes.clear();
+						const char* str = pSettings->r_string(scopes_list_sect, "scopes_sect");
 						for (int i = 0, count = _GetItemCount(str); i < count; ++i)
 						{
 							string128						scope_section;
@@ -320,7 +325,7 @@ bool CWeapon::install_upgrade_addon(const char* section, bool test)
 					}
 					else
 					{
-						m_scopes.push_back(section);
+						m_scopes.push_back(pSettings->line_exist(section, "scope_name") ? section : cNameSect().c_str());
 					}
 				}
 				else
@@ -342,11 +347,14 @@ bool CWeapon::install_upgrade_addon(const char* section, bool test)
 		m_eSilencerStatus = (ALife::EWeaponAddonStatus)temp_int;
 		if (m_eSilencerStatus == ALife::eAddonAttachable || m_eSilencerStatus == ALife::eAddonPermanent)
 		{
-			m_sSilencerName = pSettings->r_string(section, "silencer_name");
-
-			m_iSilencerX = pSettings->r_s32(section, "silencer_x") * ScaleIcon;
-			m_iSilencerY = pSettings->r_s32(section, "silencer_y") * ScaleIcon;
-			m_sSilencerIconSection = section;
+			const char* addon_sect = pSettings->line_exist(section, "silencer_name") ? section : cNameSect().c_str();
+			if (pSettings->line_exist(addon_sect, "silencer_name"))
+			{
+				m_sSilencerName = pSettings->r_string(addon_sect, "silencer_name");
+				m_iSilencerX = READ_IF_EXISTS(pSettings, r_s32, addon_sect, "silencer_x", 0) * ScaleIcon;
+				m_iSilencerY = READ_IF_EXISTS(pSettings, r_s32, addon_sect, "silencer_y", 0) * ScaleIcon;
+				m_sSilencerIconSection = addon_sect;
+			}
 
 			if (m_eSilencerStatus == ALife::eAddonPermanent)
 				InitAddons();
@@ -361,11 +369,14 @@ bool CWeapon::install_upgrade_addon(const char* section, bool test)
 		m_eGrenadeLauncherStatus = (ALife::EWeaponAddonStatus)temp_int;
 		if (m_eGrenadeLauncherStatus == ALife::eAddonAttachable || m_eGrenadeLauncherStatus == ALife::eAddonPermanent)
 		{
-			m_sGrenadeLauncherName = pSettings->r_string(section, "grenade_launcher_name");
-
-			m_iGrenadeLauncherX = pSettings->r_s32(section, "grenade_launcher_x") * ScaleIcon;
-			m_iGrenadeLauncherY = pSettings->r_s32(section, "grenade_launcher_y") * ScaleIcon;
-			m_sGrenadeLauncherIconSection = section;
+			const char* addon_sect = pSettings->line_exist(section, "grenade_launcher_name") ? section : cNameSect().c_str();
+			if (pSettings->line_exist(addon_sect, "grenade_launcher_name"))
+			{
+				m_sGrenadeLauncherName = pSettings->r_string(addon_sect, "grenade_launcher_name");
+				m_iGrenadeLauncherX = READ_IF_EXISTS(pSettings, r_s32, addon_sect, "grenade_launcher_x", 0) * ScaleIcon;
+				m_iGrenadeLauncherY = READ_IF_EXISTS(pSettings, r_s32, addon_sect, "grenade_launcher_y", 0) * ScaleIcon;
+				m_sGrenadeLauncherIconSection = addon_sect;
+			}
 
 			if (m_eGrenadeLauncherStatus == ALife::eAddonPermanent)
 				InitAddons();
