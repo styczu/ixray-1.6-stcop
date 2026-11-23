@@ -36,6 +36,12 @@ float _nrand(float sigma)
 
 void random_dir(Fvector& tgt_dir, const Fvector& src_dir, float dispersion)
 {
+	if (dispersion <= 0.f)
+	{
+		tgt_dir.set(src_dir).normalize();
+		return;
+	}
+
 	float sigma			= dispersion/3.f;
 	float alpha			= clampr		(_nrand(sigma),-dispersion,dispersion);
 	float theta			= Random.randF	(0,PI);
