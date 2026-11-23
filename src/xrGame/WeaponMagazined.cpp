@@ -3848,6 +3848,12 @@ bool CWeaponMagazined::GetBriefInfo( II_BriefInfo& info )
 bool CWeaponMagazined::install_upgrade_impl(const char* section, bool test)
 {
 	bool result = inherited::install_upgrade_impl(section, test);
+	if (!test && m_eSilencerStatus == ALife::eAddonAttachable && pSettings->line_exist(section, "silencer_status"))
+	{
+		LoadSilencerKoeffs();
+		if (IsSilencerAttached())
+			ApplySilencerKoeffs();
+	}
 
 	const char* str = {};
 
