@@ -32,6 +32,8 @@ namespace WeaponUi
     // 100 at best, 0 at worst, logarithmic, unclamped.
     inline float LogScore(float value, float best, float worst)
     {
+        if (value <= 0.0f)
+            return 100.0f;
         return 100.0f * std::log(worst / value) / std::log(worst / best);
     }
 
@@ -172,6 +174,8 @@ namespace WeaponUi
     // aiming error): C(mix) / d with d = sqrt(w^2 + a^2).
     inline float AccuracyRange(float weaponDeg, float aimingDeg)
     {
+        if (weaponDeg < 0.0f)
+            weaponDeg = 0.0f;
         const float d2 = weaponDeg * weaponDeg + aimingDeg * aimingDeg;
         if (d2 <= 0.0f)
             return HUGE_VALF;
