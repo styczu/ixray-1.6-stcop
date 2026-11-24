@@ -330,6 +330,8 @@ void THudLightTorch::UpdateTorch(CHudItemObject* item, bool& saved_status)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+extern float g_fov;
+
 namespace
 {
 	int g_WeaponLaserColorMode = 0; // 0 = weapon config (LTX), 1 = red 635nm, 2 = green 520nm, 3 = blue 450nm, 4 = yellow
@@ -345,10 +347,19 @@ namespace
 		Fvector hitPos = { 0.0f, 0.0f, 0.0f };
 		Fvector dotSrgb = { 1.0f, 0.04f, 0.02f };
 		float visibleDiam = 0.02f;
+		float sizeScale = 1.0f;
 		float brightness = 1.0f;
 		shared_str textureName;
 		bool active = false;
 	};
+
+	float ComputeCameraZoomScale()
+	{
+		const float currentProjY = std::max(std::abs(Device.mProject._22), 0.25f);
+		const float baseFovDeg = std::clamp(g_fov, 40.0f, 120.0f);
+		const float baseProjY = 1.0f / std::tan(deg2rad(baseFovDeg) * 0.5f);
+		return std::max(1.0f, currentProjY / baseProjY);
+	}
 
 	SActiveLaserDot g_ActiveLaserDot;
 	FactoryPtr<IUIShader>* g_LaserDotMaskShader = nullptr;
@@ -529,8 +540,10 @@ void RenderActiveWeaponLaserDot()
 	const bool isDefaultTex = (xr_stricmp(texName, kDefaultLaserSpotTexture) == 0);
 	const float uvMin = isDefaultTex ? (118.0f / 256.0f) : 0.0f;
 	const float uvMax = isDefaultTex ? (138.0f / 256.0f) : 1.0f;
+	// Compensate for optical / ADS FOV zoom so looking through a magnified scope keeps the dot crisp.
+	const float effectiveDiam = std::max(0.002f * g_ActiveLaserDot.sizeScale, g_ActiveLaserDot.visibleDiam / ComputeCameraZoomScale());
 	// In internal_light_laser_tactical_r2.dds the visible dot (~12 px) spans 60% of the [118..138] (20 px) crop.
-	const float quadHalfAtHit = g_ActiveLaserDot.visibleDiam * (isDefaultTex ? (0.5f / 0.60f) : 0.5f);
+	const float quadHalfAtHit = effectiveDiam * (isDefaultTex ? (0.5f / 0.60f) : 0.5f);
 	// Pull slightly toward the camera so the quad clears oblique surfaces without depth clipping
 	// while still being occluded cleanly by nearer walls, foliage, and HUD weapon geometry.
 	const float bias = std::min(camDist * 0.15f, std::max(0.012f, quadHalfAtHit * 1.15f));
@@ -872,7 +885,9 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 
 	// internal_light_laser_tactical_r2.dds bright core occupies ~11.5/256 (0.045) of the frustum (cone + 5 deg).
 	const float sizeScale = std::clamp(g_WeaponLaserSize, 0.5f, 2.5f);
-	const float visibleDiam = std::clamp(0.010f + hitDist * 0.0030f, 0.010f, 0.30f) * sizeScale;
+	const float hipVisibleDiam = std::clamp(0.010f + hitDist * 0.0030f, 0.010f, 0.30f) * sizeScale;
+	const float zoomScale = isHudMode ? ComputeCameraZoomScale() : 1.0f;
+	const float visibleDiam = std::max(0.002f * sizeScale, hipVisibleDiam / zoomScale);
 	const float desiredHalfTan = visibleDiam / (2.0f * 0.045f * std::max(standOff, 0.05f));
 	const float desiredFov = 2.0f * std::atan(desiredHalfTan);
 	const float currentCone = std::clamp(desiredFov - deg2rad(5.0f), deg2rad(0.5f), deg2rad(60.0f));
@@ -898,7 +913,8 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 		g_ActiveLaserDot.frame = Device.dwFrame;
 		g_ActiveLaserDot.hitPos = hitPos;
 		g_ActiveLaserDot.dotSrgb = dotSrgb;
-		g_ActiveLaserDot.visibleDiam = visibleDiam;
+		g_ActiveLaserDot.visibleDiam = hipVisibleDiam;
+		g_ActiveLaserDot.sizeScale = sizeScale;
 		g_ActiveLaserDot.brightness = std::clamp(g_WeaponLaserBrightness, 0.1f, 5.0f);
 		g_ActiveLaserDot.textureName = ResolveLaserSpotTexture(Section);
 		g_ActiveLaserDot.active = true;
