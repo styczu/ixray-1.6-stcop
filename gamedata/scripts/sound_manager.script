@@ -89,6 +89,11 @@ function sound_manager:update()
             return
         end
     
+        --' IX-Ray (npc-talk-stop-and-face r4): kolejne kwestie opowieści czekają do końca rozmowy gracza
+        if _G.ixray_talk_mute_greetings_while_talking == true and db.actor ~= nil and db.actor:is_talking() then
+            return
+        end
+    
         --' Устанавливаем таймаут ожидания между фразами.
         local t_global = time_global()
         if self.phrase_timeout == nil then
