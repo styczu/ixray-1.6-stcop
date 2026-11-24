@@ -144,9 +144,27 @@ void CSoundPlayer::update_playing_sounds()
 		if ((*I).m_sound->is_playing())
 			(*I).m_sound->set_position(compute_sound_point(*I));
 		else
-			if (!(*I).started() && (Device.dwTimeGlobal >= (*I).m_start_time))
+			if (!(*I).started() && (Device.dwTimeGlobal >= (*I).m_start_time)) {
 				(*I).play_at_pos		(m_object,compute_sound_point(*I));
+				if (m_volume_scale != 1.f)
+					(*I).m_sound->set_volume(m_volume_scale);
+			}
 	}
+}
+
+void CSoundPlayer::set_volume_scale	(float volume_scale)
+{
+	clamp							(volume_scale, 0.f, 1.f);
+	if (m_volume_scale == volume_scale)
+		return;
+
+	m_volume_scale					= volume_scale;
+
+	xr_vector<CSoundSingle>::iterator	I = m_playing_sounds.begin();
+	xr_vector<CSoundSingle>::iterator	E = m_playing_sounds.end();
+	for ( ; I != E; ++I)
+		if ((*I).m_sound->is_playing())
+			(*I).m_sound->set_volume	(m_volume_scale);
 }
 
 bool CSoundPlayer::need_bone_data	() const
@@ -233,8 +251,11 @@ void CSoundPlayer::play				(u32 internal_type, u32 max_start_time, u32 min_start
 	sound_single.m_stop_time	= sound_single.m_start_time + iFloor(sound_single.m_sound->get_length_sec()*1000.0f) + random_time;
 	m_playing_sounds.push_back	(sound_single);
 	
-	if (Device.dwTimeGlobal >= m_playing_sounds.back().m_start_time)
+	if (Device.dwTimeGlobal >= m_playing_sounds.back().m_start_time) {
 		m_playing_sounds.back().play_at_pos(m_object,compute_sound_point(m_playing_sounds.back()));
+		if (m_volume_scale != 1.f)
+			m_playing_sounds.back().m_sound->set_volume(m_volume_scale);
+	}
 }
 
 IC	Fvector CSoundPlayer::compute_sound_point(const CSoundSingle &sound)
