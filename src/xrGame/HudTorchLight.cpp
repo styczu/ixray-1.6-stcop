@@ -7,6 +7,9 @@
 #include "Inventory.h"
 #include "../debug_renderer.h"
 #include "ElectronicsProblemsManager.h"
+#include "../xrEngine/xr_ioc_cmd.h"
+#include <algorithm>
+#include <cmath>
 
 void THudLightTorch::BeginComponent(IECSOwner* O)
 {
@@ -315,6 +318,71 @@ void THudLightTorch::UpdateTorch(CHudItemObject* item, bool& saved_status)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+namespace
+{
+	int g_WeaponLaserColorMode = 0; // 0 = weapon config (LTX), 1 = red 635nm, 2 = green 520nm, 3 = blue 450nm, 4 = yellow
+	float g_WeaponLaserBrightness = 1.0f;
+	float g_WeaponLaserSize = 1.0f;
+
+	class CCC_WeaponLaserInteger : public CCC_Integer
+	{
+	public:
+		CCC_WeaponLaserInteger(const char* N, int* V, int Min, int Max) : CCC_Integer(N, V, Min, Max) {}
+		void Save(IWriter*) override {}
+	};
+
+	class CCC_WeaponLaserFloat : public CCC_Float
+	{
+	public:
+		CCC_WeaponLaserFloat(const char* N, float* V, float Min, float Max) : CCC_Float(N, V, Min, Max) {}
+		void Execute(const char* args) override
+		{
+			const float parsed = static_cast<float>(atof(args));
+			if (!std::isfinite(parsed) || parsed < min - EPS || parsed > max + EPS)
+			{
+				InvalidSyntax();
+				return;
+			}
+			*value = std::clamp(parsed, min, max);
+		}
+		void Save(IWriter*) override {}
+	};
+
+	Fcolor ResolveWeaponLaserColor(const Fcolor& configColor)
+	{
+		Fcolor base = configColor;
+		switch (g_WeaponLaserColorMode)
+		{
+		case 1: // Red 635 nm (L3Harris LA-5B/PEQ)
+			base.set(10.0f, 0.30f, 0.15f, 1.0f);
+			break;
+		case 2: // Green 520 nm
+			base.set(0.30f, 10.0f, 0.35f, 1.0f);
+			break;
+		case 3: // Blue 450 nm
+			base.set(0.25f, 1.20f, 12.0f, 1.0f);
+			break;
+		case 4: // Yellow / amber
+			base.set(9.0f, 6.50f, 0.20f, 1.0f);
+			break;
+		default:
+			break;
+		}
+
+		const float scale = std::clamp(g_WeaponLaserBrightness, 0.1f, 5.0f);
+		Fcolor out;
+		out.set(base.r * scale, base.g * scale, base.b * scale, base.a);
+		return out;
+	}
+} // namespace
+
+void RegisterWeaponLaserConsoleCommands()
+{
+	CMD4(CCC_WeaponLaserInteger, "wpn_laser_color", &g_WeaponLaserColorMode, 0, 4);
+	CMD4(CCC_WeaponLaserFloat, "wpn_laser_brightness", &g_WeaponLaserBrightness, 0.1f, 5.0f);
+	CMD4(CCC_WeaponLaserFloat, "wpn_laser_size", &g_WeaponLaserSize, 0.5f, 2.5f);
+}
+
 void THudLightLaser::BeginComponent(IECSOwner* O)
 {
 	THudLightTorch::BeginComponent(O);
@@ -339,28 +407,31 @@ void THudLightLaser::NewTorchlight(const char* section)
 	}
 
 	Section = section;
-	LightBone = pSettings->r_string(section, "laserdot_attach_bone");
+	LightBone = READ_IF_EXISTS(pSettings, r_string, section, "laserdot_attach_bone", "wpn_body");
 
 	LaserLightDist = READ_IF_EXISTS(pSettings, r_float, section, "laser_light_distance", 15.0f);
 
-	LaserWorkDist = READ_IF_EXISTS(pSettings, r_float, section, "laser_wrok_distance", LaserLightDist * 0.5f);
-	LaserMaxDist = READ_IF_EXISTS(pSettings, r_float, section, "laser_max_distance", LaserWorkDist);
+	LaserWorkDist = READ_IF_EXISTS(pSettings, r_float, section, "laser_work_distance",
+		READ_IF_EXISTS(pSettings, r_float, section, "laser_wrok_distance", LaserLightDist * 0.5f));
+	LaserMaxDist = READ_IF_EXISTS(pSettings, r_float, section, "laser_max_distance", std::max(LaserWorkDist, 80.0f));
 
-	LightColor = READ_IF_EXISTS(pSettings, r_fcolor, section, "laser_light_color", LightColor.set(1, 0, 0, 0));
+	LightColor = READ_IF_EXISTS(pSettings, r_fcolor, section, "laser_light_color", LightColor.set(10.0f, 0.30f, 0.15f, 1.0f));
 
 	RenderLight = ::Render->light_create();
 
-	RenderLight->set_color(LightColor);
+	RenderLight->set_color(ResolveWeaponLaserColor(LightColor));
 	RenderLight->set_range(LaserLightDist);
+	RenderLight->set_virtual_size(0.02f);
 	RenderLight->set_type(IRender_Light::SPOT);
 
-	RenderLight->set_shadow(!!READ_IF_EXISTS(pSettings, r_bool, section, "laser_render_shadow", true));
+	// Unshadowed spot keeps get_LOD() == 1 at long range while still projecting s_lmap in R4.
+	RenderLight->set_shadow(!!READ_IF_EXISTS(pSettings, r_bool, section, "laser_render_shadow", false));
 
 	LightSpotAngle = READ_IF_EXISTS(pSettings, r_fvector2, section, "laser_spot_angle", LightSpotAngle.set(2, 5));
 	LightSpotAngle.mul(M_PI / 180);
 
 	RenderLight->set_cone(LightSpotAngle.x);
-	RenderLight->set_texture(pSettings->r_string(section, "laser_spot_texture"));
+	RenderLight->set_texture(READ_IF_EXISTS(pSettings, r_string, section, "laser_spot_texture", "internal\\internal_light_laser_tactical_r2"));
 
 	LightOffset.x = READ_IF_EXISTS(pSettings, r_float, section, "laserdot_attach_offset_x", 0.0f);
 	LightOffset.y = READ_IF_EXISTS(pSettings, r_float, section, "laserdot_attach_offset_y", 0.0f);
@@ -411,106 +482,121 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 		}
 	}
 
-	if (IsRenderLight)
+	if (!IsRenderLight)
 	{
-		IKinematics* kin = nullptr;
-		Fmatrix xform;
+		RenderLight->set_active(false);
+		return;
+	}
 
-		Fvector lightPos = { 0, 0, 0 };
-		Fvector lightDir = { 0, 0, 1 };
+	Fvector rayPos = { 0, 0, 0 };
+	Fvector rayDir = { 0, 0, 1 };
+	const bool isHudMode = item->GetHUDmode() && item->HudItemData() != nullptr;
 
-		u16 lightBoneId = BI_NONE;
-		u16 lightDirBoneId = BI_NONE;
+	if (isHudMode)
+	{
+		CWeapon* wpn = item->cast_weapon();
+		CActor* actor = item->object().H_Parent() ? item->object().H_Parent()->cast_actor() : nullptr;
+		const u8 state = item->GetState();
+		const bool weaponReady =
+			state == CHudItem::eIdle ||
+			(wpn != nullptr && (state == CWeapon::eFire || state == CWeapon::eFire2 || state == CWeapon::eEmptyClick));
+		const bool actorSprinting = actor != nullptr &&
+			(actor->GetMovementState(ACTOR_DEFS::EMovementStates::eReal) & ACTOR_DEFS::EMoveCommand::mcSprint) != 0;
+		const bool actorSafemode = actor != nullptr && actor->IsSafemode();
 
-		Fvector up, right;
-		bool isHudMode = item->GetHUDmode() && item->HudItemData() != nullptr;
-
-		if (isHudMode)
+		if (!weaponReady || actorSprinting || actorSafemode)
 		{
-			xform = item->HudItemData()->m_item_transform;
-			kin = item->HudItemData()->m_model;
+			RenderLight->set_active(false);
+			return;
+		}
 
-			Fvector curr_light_offset = LightOffset;
-
-			if (CWeapon* wpn = item->cast_weapon())
-			{
-				if (wpn->WpnCanShoot() && wpn->GetAimFactor() > 0.001f)
-				{
-					Fvector aim_offset = Device.vCameraPosition;
-					_lerp(curr_light_offset, aim_offset, wpn->GetAimFactor());
-				}
-			}
-
-			lightBoneId = kin->LL_BoneID(LightBone);
-			kin->LL_GetTransform(lightBoneId).transform_tiny(lightPos, curr_light_offset);
+		if (actor != nullptr)
+		{
+			actor->g_fireParams(item, rayPos, rayDir);
 		}
 		else
 		{
-			xform = item->object().XFORM();
-			kin = item->object().Visual()->dcast_PKinematics();
-
-			lightBoneId = kin->LL_BoneID(LightBone);
-			kin->LL_GetTransform(lightBoneId).transform_tiny(lightPos, LightWorldOffset);
+			rayPos = Device.vCameraPosition;
+			rayDir = Device.vCameraDirection;
 		}
-
-		xform.transform_tiny(lightPos);
-		xform.transform_dir(lightDir);
-
-		if (isHudMode)
+		rayDir.normalize_safe();
+	}
+	else
+	{
+		const Fmatrix& xform = item->object().XFORM();
+		IKinematics* kin = item->object().Visual()->dcast_PKinematics();
+		if (kin == nullptr)
 		{
-			Device.transform_hud2world(lightPos, lightDir);
+			RenderLight->set_active(false);
+			return;
 		}
 
-		Fvector::generate_orthonormal_basis_normalized(lightDir, up, right);;
-
-		collide::rq_result	RQ; RQ.range = LaserMaxDist;
-		collide::rq_target	RT = collide::rqtBoth;
-
-		if (!g_pGameLevel->ObjectSpace.RayPick(lightPos, lightDir, RQ.range, RT, RQ, item->object().H_Root()))
+		const u16 lightBoneId = kin->LL_BoneID(LightBone);
+		if (lightBoneId == BI_NONE)
 		{
-			RQ.range = LaserMaxDist;
-		}
-		
-		float CurrentLightSpotAngle = LightSpotAngle.x;
-
-		if (RQ.range > LaserWorkDist)
-		{
-			float ShiftDistance = RQ.range - LaserWorkDist;
-			lightPos.mad(lightDir, ShiftDistance);
-
-			if (isHudMode)
-			{
-				CurrentLightSpotAngle += (LightSpotAngle.y - LightSpotAngle.x) * ShiftDistance / (LaserMaxDist - LaserWorkDist);
-			}
+			RenderLight->set_active(false);
+			return;
 		}
 
-		RenderLight->set_position(lightPos);
-		RenderLight->set_rotation(lightDir, right);
-		RenderLight->set_cone(CurrentLightSpotAngle);
-
-		RenderLight->set_ignore_object(item->object().H_Root());
-		if (isHudMode)
-		{
-			Fobb obb;
-			Fmatrix trans = item->HudItemData()->m_item_transform;
-			obb.m_rotate.i.set(trans.i);
-			obb.m_rotate.j.set(trans.j);
-			obb.m_rotate.k.set(trans.k);
-			obb.m_halfsize.set(0.005f, 0.005f, 0.005f);
-
-#ifdef DEBUG_DRAW
-			if (forceLPDraw)
-			{
-				Fvector posDebug = lightPos;
-				obb.m_translate.set(posDebug);
-				obb.xform_full(trans);
-				Level().debug_renderer().draw_obb(trans, color_xrgb(255, 0, 0));
-			}
-#endif
-		}
+		kin->LL_GetTransform(lightBoneId).transform_tiny(rayPos, LightWorldOffset);
+		xform.transform_tiny(rayPos);
+		xform.transform_dir(rayDir);
+		rayDir.normalize_safe();
 	}
 
-	RenderLight->set_active(IsRenderLight);
+	collide::rq_result RQ;
+	RQ.range = LaserMaxDist;
+	if (!g_pGameLevel->ObjectSpace.RayPick(rayPos, rayDir, RQ.range, collide::rqtBoth, RQ, item->object().H_Root()))
+	{
+		RenderLight->set_active(false);
+		return;
+	}
+
+	const float hitDist = std::max(RQ.range, 0.05f);
+	Fvector hitPos;
+	hitPos.mad(rayPos, rayDir, hitDist);
+
+	// Place the spotlight closely in front of the impact point so attenuation stays uniform
+	// across distance and the beam terminates shortly behind thin surfaces / NPCs.
+	const float maxStandOff = std::min(hitDist * 0.9f, 2.2f);
+	const float standOff = std::clamp(0.6f + hitDist * 0.03f, std::min(0.08f, maxStandOff), maxStandOff);
+	const float lightRange = std::max(0.45f, standOff * 1.55f);
+
+	Fvector lightPos;
+	lightPos.mad(hitPos, rayDir, -standOff);
+
+	// internal_light_laser_tactical_r2.dds dot occupies ~14/256 (0.0547) of the projected frustum (cone + 5 deg).
+	const float sizeScale = std::clamp(g_WeaponLaserSize, 0.5f, 2.5f);
+	const float targetDotDiam = std::clamp(0.008f + hitDist * 0.0022f, 0.008f, 0.20f) * sizeScale;
+	const float desiredHalfTan = targetDotDiam / (2.0f * 0.0547f * std::max(standOff, 0.05f));
+	const float desiredFov = 2.0f * std::atan(desiredHalfTan);
+	const float currentCone = std::clamp(desiredFov - deg2rad(5.0f), deg2rad(0.5f), deg2rad(60.0f));
+
+	Fvector up, right;
+	Fvector::generate_orthonormal_basis_normalized(rayDir, up, right);
+
+	RenderLight->set_color(ResolveWeaponLaserColor(LightColor));
+	RenderLight->set_range(lightRange);
+	RenderLight->set_position(lightPos);
+	RenderLight->set_rotation(rayDir, right);
+	RenderLight->set_cone(currentCone);
+	RenderLight->set_ignore_object(item->object().H_Root());
+	RenderLight->set_active(true);
+
+#ifdef DEBUG_DRAW
+	if (isHudMode && forceLPDraw)
+	{
+		Fobb obb;
+		Fmatrix trans = item->HudItemData()->m_item_transform;
+		obb.m_rotate.i.set(trans.i);
+		obb.m_rotate.j.set(trans.j);
+		obb.m_rotate.k.set(trans.k);
+		obb.m_halfsize.set(0.005f, 0.005f, 0.005f);
+		obb.m_translate.set(hitPos);
+		obb.xform_full(trans);
+		Level().debug_renderer().draw_obb(trans, color_xrgb(255, 0, 0));
+	}
+#endif
 }
 
 void THudLightLaser::SwitchLaser(bool& saved_status, bool status, bool forced)
