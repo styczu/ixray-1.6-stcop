@@ -8,6 +8,58 @@
 
 sound_table = {}
 
+-- IX-Ray (npc-talk-stop-and-face r4): gdy gracz prowadzi rozmowę, głosy innych
+-- stalkerów są wyciszane, żeby nie zagłuszały rozmówcy. Skryptowe tematy npc_sound
+-- są rejestrowane z maską synchronizacji 1 (sound_theme npc_sound:init_npc,
+-- add_sound(..., 2, 1, ...)), a maska CSoundPlayer 1 przerywa grające i odrzuca
+-- nowe takie dźwięki (także mruczenie silnika), bez okrzyków bojowych. Planer
+-- silnika i npc_sound:reset zerują maskę, dlatego jest odnawiana w update i przed
+-- każdym set_sound_play. Sterowane flagą _G.ixray_talk_mute_greetings_while_talking.
+local TALK_MUTE_SOUND_MASK = 1
+talk_muted = {}
+
+local function is_talk_mute_wanted(npc)
+	local actor = db.actor
+	if actor == nil or npc:id() == actor:id() then
+		return false
+	end
+	if not IsStalker(npc) or not npc:alive() then
+		return false
+	end
+	-- rozmówca gracza mówi dalej
+	if npc:is_talking() then
+		return false
+	end
+	-- okrzyki walki i zagrożenia zostają
+	if npc:best_enemy() ~= nil or npc:best_danger() ~= nil then
+		return false
+	end
+	return true
+end
+
+function refresh_talk_mute(npc_id)
+	local talking = _G.ixray_talk_mute_greetings_while_talking == true
+		and db.actor ~= nil and db.actor:is_talking()
+	if not talking and talk_muted[npc_id] == nil then
+		return
+	end
+	local st = db.storage[npc_id]
+	local npc = st and st.object
+	if npc == nil then
+		talk_muted[npc_id] = nil
+		return
+	end
+	if talking and is_talk_mute_wanted(npc) then
+		npc:set_sound_mask(TALK_MUTE_SOUND_MASK)
+		talk_muted[npc_id] = true
+	elseif talk_muted[npc_id] then
+		talk_muted[npc_id] = nil
+		if npc:alive() then
+			npc:set_sound_mask(0)
+		end
+	end
+end
+
 function set_sound_play(npc_id, sound, faction, point)
     return PROF_EVENT_CLOSURE("set_sound_play", function()
         --printf("SET_SOUND_PLAY. theme[%s] object[%s]", tostring(sound), npc_id)
@@ -34,6 +86,8 @@ function set_sound_play(npc_id, sound, faction, point)
                 end
             end
             --printf("PLAY. theme[%s] object[%s]", tostring(sound), npc_id)
+            -- IX-Ray (r4): reset() powyżej zeruje maskę, odnów wyciszenie przed odtworzeniem
+            refresh_talk_mute(npc_id)
                     if snd_theme:play(npc_id, faction, point) then
                 --printf("PLAY2. theme[%s] object[%s]", tostring(sound), npc_id)
                 --' fill table
@@ -49,6 +103,7 @@ end
 
 function update(npc_id)
 		return PROF_EVENT_CLOSURE("update", function() 
+            refresh_talk_mute(npc_id)
             if sound_table[npc_id] then
             --		local t = type(sound_table[npc_id])
                     if not(sound_table[npc_id]:is_playing(npc_id)) then
@@ -248,6 +303,7 @@ end
 
 function start_game_callback()
 	sound_table = {}
+	talk_muted = {}
 end
 
 function stop_all_sounds()
