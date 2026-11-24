@@ -89,8 +89,9 @@ function sound_manager:update()
             return
         end
     
-        --' IX-Ray (npc-talk-stop-and-face r4): kolejne kwestie opowieści czekają do końca rozmowy gracza
-        if _G.ixray_talk_mute_greetings_while_talking == true and db.actor ~= nil and db.actor:is_talking() then
+        --' IX-Ray (npc-talk-stop-and-face r4/r5): przy całkowitym wyciszeniu (suwak 0%) kolejne kwestie
+        --' opowieści czekają do końca rozmowy gracza; przy przyciszeniu opowieść toczy się dalej, ciszej
+        if xr_sound.is_talk_voice_muted() then
             return
         end
     
