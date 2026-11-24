@@ -347,7 +347,8 @@ void CUIActorMenuBase::PropertiesBoxForSlots(CUICellItem* cell_item, PIItem item
 
 void CUIActorMenuBase::PropertiesBoxForDrop(CUICellItem* cell_item, PIItem item, bool& b_show)
 {
-	if (!item->IsQuestItem())
+	// Quest items: only "move" into the actor stash (mmDeadBodySearch branch below), never drop.
+	if (!item->IsQuestItem() || IsActorStashOpen())
 	{
 		if (m_currMenuMode != mmDeadBodySearch)
 		{
