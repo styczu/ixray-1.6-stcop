@@ -125,6 +125,7 @@ private:
 	SOUND_COLLECTIONS							m_sounds;
 	xr_vector<CSoundSingle>						m_playing_sounds;
 	u32											m_sound_mask;
+	float										m_volume_scale = 1.f;
 	CObject										*m_object;
 	shared_str									m_sound_prefix;
 
@@ -145,6 +146,8 @@ public:
 			void		play						(u32 internal_type, u32 max_start_time = 0, u32 min_start_time = 0, u32 max_stop_time = 0, u32 min_stop_time = 0, u32 id = u32(-1));
 			void		update						(float time_delta);
 	IC		void		set_sound_mask				(u32 sound_mask);
+			void		set_volume_scale			(float volume_scale);
+	IC		float		volume_scale				() const { return m_volume_scale; }
 	IC		void		remove_active_sounds		(u32 sound_mask);
 	IC	const xr_vector<CSoundSingle>&playing_sounds() const;
 	IC		u32			active_sound_count			(bool only_playing = false) const;
