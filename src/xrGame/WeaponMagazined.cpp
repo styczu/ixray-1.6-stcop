@@ -2234,6 +2234,11 @@ void CWeaponMagazined::OnAnimationEnd(u8 state)
 			{
 				UpdateIdleAnimations();
 			}
+			else if (state == eDevice && m_eDevicesFlags.test(EDevicesFlags::df_laser))
+			{
+				m_bTacticalLaserStatus = !m_bTacticalLaserStatus;
+				m_eDevicesFlags.zero();
+			}
 
 			SwitchState(eIdle);
 			break;
@@ -2350,7 +2355,10 @@ void CWeaponMagazined::switch2_Device()
 	}
 	else if (m_eDevicesFlags.test(EDevicesFlags::df_laser))
 	{
-		PlaySound(m_bTacticalTorchStatus ? "sndLaserOff" : "sndLaserOn", get_LastFP());
+		if (m_eSoundsFlags.test(ESoundsFlags::sf_laser))
+		{
+			PlaySound(m_bTacticalLaserStatus ? "sndLaserOff" : "sndLaserOn", get_LastFP());
+		}
 		PlayHUDMotion(SetCurrentStateAnimation("anm_laser_on"), EHudMixType::eMixAll, eDevice);
 	}
 
@@ -2869,11 +2877,26 @@ bool CWeaponMagazined::Action(u16 cmd, u32 flags)
 	}
 	case kLASER:
 	{
-		if (flags & CMD_START && SetKeyRepeatFlag(ACTOR_DEFS::EActorKeyflags::kfLASER) && GetComponent<THudLightLaser>() != nullptr && !IsZoomed() && !IsPending() && GetState() != eFire)
+		if (flags & CMD_START && SetKeyRepeatFlag(ACTOR_DEFS::EActorKeyflags::kfLASER) && GetComponent<THudLightLaser>() != nullptr && !IsPending() && GetState() != eFire)
 		{
-			m_eDevicesFlags.set(EDevicesFlags::df_laser, true);
-			SwitchState(eDevice);
-			return true;
+			if (HudAnimationExist(SetCurrentStateAnimation("anm_laser_on")))
+			{
+				if (!IsZoomed())
+				{
+					m_eDevicesFlags.set(EDevicesFlags::df_laser, true);
+					SwitchState(eDevice);
+					return true;
+				}
+			}
+			else
+			{
+				m_bTacticalLaserStatus = !m_bTacticalLaserStatus;
+				if (m_eSoundsFlags.test(ESoundsFlags::sf_laser))
+				{
+					PlaySound(m_bTacticalLaserStatus ? "sndLaserOn" : "sndLaserOff", get_LastFP());
+				}
+				return true;
+			}
 		}
 		break;
 	}
