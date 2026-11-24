@@ -47,6 +47,7 @@ class_<CScriptGameObject> script_register_game_object2(class_<CScriptGameObject>
 		.def("add_combat_sound",			(u32 (CScriptGameObject::*)(const char*,u32,ESoundTypes,u32,u32,u32,const char*))(&CScriptGameObject::add_combat_sound))
 		.def("remove_sound",				&CScriptGameObject::remove_sound)
 		.def("set_sound_mask",				&CScriptGameObject::set_sound_mask)
+		.def("set_sound_volume_scale",		&CScriptGameObject::set_sound_volume_scale)
 		.def("play_sound",					(void (CScriptGameObject::*)(u32))(&CScriptGameObject::play_sound))
 		.def("play_sound",					(void (CScriptGameObject::*)(u32,u32))(&CScriptGameObject::play_sound))
 		.def("play_sound",					(void (CScriptGameObject::*)(u32,u32,u32))(&CScriptGameObject::play_sound))
