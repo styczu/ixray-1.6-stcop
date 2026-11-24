@@ -112,6 +112,7 @@ protected:
 	bool						CanUpgradeItem				(PIItem item);
 	void						ActivatePropertiesBox		();
 	bool						IsAllowPlaceToInvBox		(CUICellItem* itm); // FFx0001
+	bool						IsActorStashOpen			();
 	bool						IsAllowTakeFromInvBox		(CUICellItem* itm); // FFx0001
 	void						ColorizeItem				(CUICellItem* itm, bool colorize);
 
