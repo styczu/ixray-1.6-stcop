@@ -576,6 +576,7 @@ public:
 			u32					add_combat_sound		(const char* prefix, u32 max_count, ESoundTypes type, u32 priority, u32 mask, u32 internal_type, const char* bone_name);
 			void				remove_sound			(u32 internal_type);
 			void				set_sound_mask			(u32 sound_mask);
+			void				set_sound_volume_scale	(float volume_scale);
 			void				set_sight				(SightManager::ESightType sight_type, Fvector *vector3d, u32 dwLookOverDelay);
 			void				set_sight				(SightManager::ESightType sight_type, bool torso_look, bool path);
 			void				set_sight				(SightManager::ESightType sight_type, Fvector &vector3d, bool torso_look);
