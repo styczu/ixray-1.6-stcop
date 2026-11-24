@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "UIActorMenuBase.h"
 #include "../InventoryOwner.h"
+#include "../InventoryBox.h"
 #include "../Level.h"
 #include "UIDragDropReferenceList.h"
 #include "UICellCustomItems.h"
@@ -953,7 +954,8 @@ void CUIActorMenuBase::PutAllToPartner(CUIWindow* w, void* d)
 	while (Iter < GetActorList()->ItemsCount())
 	{
 		CUICellItem* ci = GetActorList()->GetItemIdx(Iter);
-		if (!ToDeadBodyBag(ci, false))
+		// Quest items stay in the backpack; put them in the stash one by one.
+		if (((PIItem)ci->m_pData)->IsQuestItem() || !ToDeadBodyBag(ci, false))
 		{
 			++Iter;
 		}
@@ -1537,6 +1539,21 @@ void CUIActorMenuBase::MoveAllCurrentItem(u32 item_amount)
 }
 
 // FFx0001
+// Actor stash: inventory box whose spawn custom data has [level_spot] actor_box
+// (the same marker bind_physic_object.script uses for the PDA stash spot).
+bool CUIActorMenuBase::IsActorStashOpen()
+{
+	if (m_currMenuMode != mmDeadBodySearch || GetPartner())
+		return false;
+
+	CInventoryBox* box = GetInvBox();
+	if (!box)
+		return false;
+
+	CInifile* ini = box->spawn_ini();
+	return ini && ini->line_exist("level_spot", "actor_box");
+}
+
 bool CUIActorMenuBase::IsAllowPlaceToInvBox(CUICellItem* itm)
 {
 	if (!m_isInvBoxCanPlaceItem) 
@@ -1730,7 +1747,7 @@ void CUIActorMenuBase::ToPartnerTradeBagAll(u32 item_amount)
 bool CUIActorMenuBase::ToDeadBodyBag(CUICellItem* itm, bool b_use_cursor_pos)
 {
 	PIItem quest_item = (PIItem)itm->m_pData;
-	if (quest_item->IsQuestItem())
+	if (quest_item->IsQuestItem() && !IsActorStashOpen())
 		return false;
 
 	if ( GetPartner() )
