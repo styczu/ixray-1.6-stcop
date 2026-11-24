@@ -175,6 +175,9 @@ void CGamePersistent::OnAppStart()
 
 void CGamePersistent::OnAppEnd	()
 {
+	extern void DestroyWeaponLaserDotResources();
+	DestroyWeaponLaserDotResources();
+
 	DestroySpawnManagerWindow();
 
 	if(m_pMainMenu->IsActive())
@@ -198,6 +201,9 @@ void CGamePersistent::Start		(const char* op)
 
 void CGamePersistent::Disconnect()
 {
+	extern void DestroyWeaponLaserDotResources();
+	DestroyWeaponLaserDotResources();
+
 	// destroy ambient particles
 	Particles::Details::Destroy(ambient_particles);
 
@@ -984,6 +990,9 @@ void CGamePersistent::OnRenderPPUI_main()
 	if (g_pGameLevel != nullptr)
 	{
 		Level().BulletManager().Render();
+
+		extern void RenderActiveWeaponLaserDot();
+		RenderActiveWeaponLaserDot();
 
 		HUD().draw_prims();
 	}
