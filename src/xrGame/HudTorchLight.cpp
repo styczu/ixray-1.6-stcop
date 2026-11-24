@@ -337,19 +337,173 @@ namespace
 	int g_WeaponLaserColorMode = 0; // 0 = weapon config (LTX), 1 = red 635nm, 2 = green 520nm, 3 = blue 450nm, 4 = yellow
 	float g_WeaponLaserBrightness = 1.0f;
 	float g_WeaponLaserSize = 1.0f;
+	int g_WeaponLaserBeamMode = 1; // 0 = off, 1 = auto (night/fog/rain/dark interiors), 2 = always
+	float g_WeaponLaserBeamIntensity = 1.0f;
 
 	constexpr const char* kDefaultLaserSpotTexture = "internal\\internal_light_laser_tactical_r2";
+
+	// BEGIN_LASER_BEAM_PURE_MATH
+	float LaserSmoothstep(float edge0, float edge1, float x)
+	{
+		if (std::abs(edge1 - edge0) < 1e-6f)
+		{
+			return (x >= edge1) ? 1.0f : 0.0f;
+		}
+		const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+		return t * t * (3.0f - 2.0f * t);
+	}
+
+	struct SLaserBeamEnvInput
+	{
+		float sunLum = 0.0f;
+		float hemiLum = 0.0f;
+		float ambientLum = 0.0f;
+		float rainDensity = 0.0f;
+		float fogDistance = 350.0f;
+		float fogDensity = 0.9f;
+		float visDistance = 1.0f;
+		float actorHemi = 0.08f;
+		bool isIndoorRender = false;
+	};
+
+	struct SLaserBeamEnvResult
+	{
+		float autoVisibility = 0.0f;
+		float dayGain = 1.0f;
+		float atmospheric = 0.0f;
+	};
+
+	SLaserBeamEnvResult EvaluateLaserBeamEnvironment(const SLaserBeamEnvInput& in)
+	{
+		SLaserBeamEnvResult out;
+
+		const float outdoorLum = std::max(0.0f, in.sunLum) + std::max(0.0f, in.hemiLum) + std::max(0.0f, in.ambientLum);
+		const float nightFactor = in.isIndoorRender ? 0.0f : LaserSmoothstep(0.42f, 0.08f, outdoorLum);
+
+		// In R4 CROS_impl scales open-sky hemi by ps_r2_dhemi_sky_scale (default 0.08).
+		// Open sky sits near ~0.08, shaded eaves near ~0.04, dark interiors/underground drop below ~0.025.
+		const float hemiDark = LaserSmoothstep(0.038f, 0.010f, std::max(0.0f, in.actorHemi));
+		const float indoorFactor = in.isIndoorRender ? std::max(hemiDark, 0.65f) : hemiDark;
+
+		// X-Ray weathers commonly keep fog_density at 0.90 even in clear skies and control fog thickness via fog_distance.
+		const float safeVis = std::max(in.visDistance, 0.25f);
+		const float rawFogDist = std::max(1.0f, in.fogDistance / safeVis);
+		const float effectiveFogSpan = rawFogDist / std::max(in.fogDensity, 0.05f);
+		const float fogFactor = in.isIndoorRender ? 0.0f : LaserSmoothstep(230.0f, 65.0f, effectiveFogSpan);
+
+		const float rainExposure = in.isIndoorRender ? 0.0f : std::clamp(in.actorHemi / 0.05f, 0.20f, 1.0f);
+		const float rainFactor = LaserSmoothstep(0.08f, 0.75f, std::clamp(in.rainDensity, 0.0f, 1.0f)) * rainExposure;
+
+		const float cNight = nightFactor * 0.85f;
+		const float cIndoor = indoorFactor * 0.85f;
+		const float cFog = fogFactor * 0.90f;
+		const float cRain = rainFactor * 0.60f;
+		out.autoVisibility = 1.0f - (1.0f - cNight) * (1.0f - cIndoor) * (1.0f - cFog) * (1.0f - cRain);
+		out.atmospheric = std::max(fogFactor, rainFactor);
+
+		// Compensate R4 HDR auto-exposure so default intensity=1.0 stays subtly readable both in dark night
+		// (scene HDR ~0.005..0.03) and in daytime fog/rain/always-on mode (scene HDR ~0.3..1.5).
+		const float effectiveSceneLum = in.isIndoorRender
+			? std::max(0.0f, in.actorHemi) * 4.0f
+			: outdoorLum * std::clamp(in.actorHemi / 0.06f, 0.15f, 1.0f);
+		out.dayGain = std::clamp(1.0f + effectiveSceneLum * 4.8f, 1.0f, 7.5f);
+
+		return out;
+	}
+
+	float ResolveLaserBeamModeVisibility(int beamMode, float autoVisibility)
+	{
+		if (beamMode <= 0)
+		{
+			return 0.0f;
+		}
+		if (beamMode >= 2)
+		{
+			return std::max(0.65f, std::clamp(autoVisibility, 0.0f, 1.0f));
+		}
+		return std::clamp(autoVisibility, 0.0f, 1.0f);
+	}
+
+	float ComputeLaserBeamAimZoomFade(float aimFactor, bool hasScopeTexture, float zoomScale)
+	{
+		const float clampedAim = std::clamp(aimFactor, 0.0f, 1.0f);
+		const float scope2DFade = hasScopeTexture ? LaserSmoothstep(0.65f, 0.15f, clampedAim) : 1.0f;
+		const float adsFactor = 1.0f - 0.35f * clampedAim;
+		const float zoomFade = LaserSmoothstep(2.4f, 1.45f, std::max(1.0f, zoomScale));
+		return scope2DFade * adsFactor * zoomFade;
+	}
+
+	float ComputeLaserBeamDustModulation(float wx, float wy, float wz, float timeSec, float atmospheric)
+	{
+		const float p1 = std::sin(wx * 2.7f + wz * 2.1f + timeSec * 0.55f)
+			* std::cos(wy * 3.1f - wx * 1.6f - timeSec * 0.42f);
+		const float p2 = std::sin(wx * 6.3f - wy * 5.2f + wz * 4.9f - timeSec * 0.95f);
+		const float wave = 0.65f * p1 + 0.35f * p2;
+		const float amp = 0.24f + 0.10f * std::clamp(atmospheric, 0.0f, 1.0f);
+		return std::clamp(1.0f + amp * wave, 0.62f, 1.38f);
+	}
+
+	void ComputeLaserBeamRenderWidthAndCoverage(
+		float physHalfW,
+		float camDist,
+		float projY,
+		float targetHeight,
+		float minHalfPixels,
+		float& outRenderHalfW,
+		float& outCoverage)
+	{
+		const float safePhys = std::max(physHalfW, 1e-5f);
+		const float safeDist = std::max(camDist, 0.05f);
+		const float safeProjY = std::max(std::abs(projY), 0.25f);
+		const float safeHeight = std::max(targetHeight, 240.0f);
+		const float minScreenHalfW = safeDist * (minHalfPixels / (0.5f * safeHeight * safeProjY));
+		if (safePhys < minScreenHalfW)
+		{
+			outRenderHalfW = minScreenHalfW;
+			outCoverage = safePhys / minScreenHalfW;
+		}
+		else
+		{
+			outRenderHalfW = safePhys;
+			outCoverage = 1.0f;
+		}
+	}
+
+	float ComputeLaserBeamVertexScaleForLinear(float targetLinear)
+	{
+		if (targetLinear <= 1e-6f)
+		{
+			return 0.0f;
+		}
+		// effects\\bullet_tracer uses stub_srgb: out.rgb = pow(tex.rgb * vColor.rgb * 0.6f, 2.2f).
+		return std::clamp(std::pow(targetLinear, 1.0f / 2.2f) / 0.6f, 0.0f, 1.0f);
+	}
+	// END_LASER_BEAM_PURE_MATH
 
 	struct SActiveLaserDot
 	{
 		const void* owner = nullptr;
+		const attachable_hud_item* hudItem = nullptr;
+		u16 hudAttachIdx = u16(-1);
+		u16 lightBoneId = BI_NONE;
 		u32 frame = 0;
 		Fvector hitPos = { 0.0f, 0.0f, 0.0f };
+		Fvector rayDir = { 0.0f, 0.0f, 1.0f };
+		Fvector lightOffset = { 0.0f, 0.0f, 0.0f };
+		Fvector fallbackEmitterWorld = { 0.0f, 0.0f, 0.0f };
+		Fvector beamTargetPos = { 0.0f, 0.0f, 0.0f };
 		Fvector dotSrgb = { 1.0f, 0.04f, 0.02f };
 		float visibleDiam = 0.02f;
 		float sizeScale = 1.0f;
 		float brightness = 1.0f;
+		float aimFactor = 0.0f;
+		float beamAutoVis = 0.0f;
+		float beamDayGain = 1.0f;
+		float beamAtmospheric = 0.0f;
 		shared_str textureName;
+		bool hasDot = false;
+		bool hasBeam = false;
+		bool hasScopeTexture = false;
 		bool active = false;
 	};
 
@@ -362,6 +516,10 @@ namespace
 	}
 
 	SActiveLaserDot g_ActiveLaserDot;
+	float g_SmoothedBeamAutoVis = -1.0f;
+	float g_SmoothedBeamDayGain = -1.0f;
+	float g_SmoothedBeamAtmospheric = -1.0f;
+	u32 g_SmoothedBeamFrame = 0;
 	FactoryPtr<IUIShader>* g_LaserDotMaskShader = nullptr;
 	FactoryPtr<IUIShader>* g_LaserDotAddShader = nullptr;
 	shared_str g_LaserDotShaderTexture;
@@ -371,8 +529,217 @@ namespace
 		if (owner == nullptr || g_ActiveLaserDot.owner == owner)
 		{
 			g_ActiveLaserDot.active = false;
+			g_ActiveLaserDot.hasDot = false;
+			g_ActiveLaserDot.hasBeam = false;
 			g_ActiveLaserDot.owner = nullptr;
+			g_ActiveLaserDot.hudItem = nullptr;
 		}
+	}
+
+	u32 EncodeLaserBeamColor(const Fvector& dotSrgb, float targetLinear)
+	{
+		const float vScale = ComputeLaserBeamVertexScaleForLinear(targetLinear);
+		if (vScale <= 0.0f)
+		{
+			return color_rgba(0u, 0u, 0u, 0u);
+		}
+		const u32 r = static_cast<u32>(std::clamp(std::lround(dotSrgb.x * vScale * 255.0f), 0L, 255L));
+		const u32 g = static_cast<u32>(std::clamp(std::lround(dotSrgb.y * vScale * 255.0f), 0L, 255L));
+		const u32 b = static_cast<u32>(std::clamp(std::lround(dotSrgb.z * vScale * 255.0f), 0L, 255L));
+		return color_rgba(r, g, b, 255u);
+	}
+
+	void RenderActiveWeaponLaserBeam(
+		const Fvector& beamEndPos,
+		bool terminatesAtDot,
+		bool isDefaultTex,
+		float zoomScale)
+	{
+		if (g_WeaponLaserBeamMode <= 0 || !g_ActiveLaserDot.hasBeam || !(*g_LaserDotAddShader)->inited())
+		{
+			return;
+		}
+
+		const float modeVis = ResolveLaserBeamModeVisibility(g_WeaponLaserBeamMode, g_ActiveLaserDot.beamAutoVis);
+		const float aimZoomFade = ComputeLaserBeamAimZoomFade(
+			g_ActiveLaserDot.aimFactor,
+			g_ActiveLaserDot.hasScopeTexture,
+			zoomScale);
+		const float intensity = std::clamp(g_WeaponLaserBeamIntensity, 0.1f, 3.0f);
+		const float baseCoreLinear = 0.017f * intensity * modeVis * aimZoomFade * g_ActiveLaserDot.beamDayGain;
+		if (baseCoreLinear <= 5e-5f)
+		{
+			return;
+		}
+
+		// Recompute emitter world position from live HUD transform in the render pass to avoid 1-frame lag.
+		Fvector emitterPos = g_ActiveLaserDot.fallbackEmitterWorld;
+		if (g_player_hud != nullptr && g_ActiveLaserDot.hudAttachIdx < 2)
+		{
+			attachable_hud_item* liveHud = g_player_hud->attached_item(g_ActiveLaserDot.hudAttachIdx);
+			if (liveHud != nullptr && liveHud == g_ActiveLaserDot.hudItem)
+			{
+				Fvector localPos = g_ActiveLaserDot.lightOffset;
+				if (liveHud->m_model != nullptr &&
+					g_ActiveLaserDot.lightBoneId != BI_NONE &&
+					g_ActiveLaserDot.lightBoneId < liveHud->m_model->LL_BoneCount())
+				{
+					liveHud->m_model->LL_GetTransform(g_ActiveLaserDot.lightBoneId).transform_tiny(localPos, g_ActiveLaserDot.lightOffset);
+				}
+				liveHud->m_item_transform.transform_tiny(localPos);
+				Device.transform_hud2world(localPos);
+				emitterPos = localPos;
+			}
+		}
+
+		if (!std::isfinite(emitterPos.x) || !std::isfinite(emitterPos.y) || !std::isfinite(emitterPos.z) ||
+			!std::isfinite(beamEndPos.x) || !std::isfinite(beamEndPos.y) || !std::isfinite(beamEndPos.z))
+		{
+			return;
+		}
+
+		Fvector beamVec;
+		beamVec.sub(beamEndPos, emitterPos);
+		const float forwardProj = beamVec.dotproduct(g_ActiveLaserDot.rayDir);
+		const float rawLen = beamVec.magnitude();
+		if (forwardProj < 0.08f || rawLen < 0.08f)
+		{
+			return;
+		}
+
+		Fvector beamDir = beamVec;
+		beamDir.div(rawLen);
+
+		// Keep the beam start safely ahead of the world near plane; HUD weapon geometry in RDepth (rmNear)
+		// cleanly clips any portion of the ribbon behind the LA-5B/PEQ housing.
+		Fvector beamStart = emitterPos;
+		Fvector camToEmitter;
+		camToEmitter.sub(emitterPos, Device.vCameraPosition);
+		const float emitterCamZ = camToEmitter.dotproduct(Device.vCameraDirection);
+		const float minCamZ = std::max(Device.fViewportNear, 0.05f) + 0.03f;
+		if (emitterCamZ < minCamZ)
+		{
+			const float dirCamZ = beamDir.dotproduct(Device.vCameraDirection);
+			if (dirCamZ <= 0.05f)
+			{
+				return;
+			}
+			const float push = (minCamZ - emitterCamZ) / dirCamZ;
+			if (push >= rawLen - 0.06f)
+			{
+				return;
+			}
+			beamStart.mad(beamDir, push);
+		}
+
+		Fvector activeVec;
+		activeVec.sub(beamEndPos, beamStart);
+		const float beamLen = activeVec.magnitude();
+		if (beamLen < 0.06f)
+		{
+			return;
+		}
+
+		// Smoothly attenuate when the muzzle approaches within centimeters of an obstacle.
+		const float closeRangeFade = LaserSmoothstep(0.08f, 0.25f, forwardProj);
+
+		// Because beamStart + t*beamDir is a straight line, cross(beamDir, camPos - P(t)) = cross(beamDir, camPos - beamStart)
+		// is constant along the entire beam, guaranteeing a twist-free camera-facing ribbon.
+		Fvector toCamStart;
+		toCamStart.sub(Device.vCameraPosition, beamStart);
+		Fvector side;
+		side.crossproduct(beamDir, toCamStart);
+		const float sideLenSq = side.square_magnitude();
+		if (sideLenSq > 1e-8f)
+		{
+			side.div(std::sqrt(sideLenSq));
+		}
+		else
+		{
+			side = Device.vCameraRight;
+		}
+
+		constexpr int kMaxSegments = 28;
+		const float haloRatio = 0.14f + 0.14f * std::clamp(g_ActiveLaserDot.beamAtmospheric, 0.0f, 1.0f);
+		const bool drawHalo = (baseCoreLinear * closeRangeFade * haloRatio) > 8e-5f;
+		const int layerCount = drawHalo ? 2 : 1;
+
+		const u32 maxQuads = UIRender->VBuffMaxSize() / static_cast<u32>(sizeof(IUIRender::r_vertLIT<6>));
+		const int segCount = std::min(kMaxSegments, static_cast<int>(maxQuads / static_cast<u32>(layerCount)));
+		if (segCount < 1)
+		{
+			return;
+		}
+
+		const float projY = std::max(std::abs(Device.mProject._22), 0.25f);
+		const float viewH = static_cast<float>(std::max<u32>(Device.TargetHeight, 240u));
+		const float uMin = isDefaultTex ? (119.0f / 256.0f) : 0.0f;
+		const float uMax = isDefaultTex ? (136.5f / 256.0f) : 1.0f;
+		const float vMid = isDefaultTex ? (128.5f / 256.0f) : 0.5f;
+		const float timeSec = Device.fTimeGlobal;
+		const float fadeInDist = std::min(0.08f, beamLen * 0.22f);
+		const float fadeOutDist = terminatesAtDot ? std::min(0.10f, beamLen * 0.15f) : (beamLen * 0.35f);
+
+		auto emitRibbonLayer = [&](float baseHalfW, float divergence, float layerEnergyScale, float minHalfPx)
+		{
+			Fvector prevL, prevR;
+			u32 prevClr = 0u;
+			for (int i = 0; i <= segCount; ++i)
+			{
+				const float u = static_cast<float>(i) / static_cast<float>(segCount);
+				// Concentrate segments closer to the weapon where screen space length and dust detail are largest.
+				const float s = 0.25f * u + 0.75f * u * u;
+				const float dist = s * beamLen;
+
+				Fvector pos;
+				pos.mad(beamStart, beamDir, dist);
+
+				const float camDist = Device.vCameraPosition.distance_to(pos);
+				const float physHalfW = baseHalfW + dist * divergence;
+				float renderHalfW = physHalfW;
+				float coverage = 1.0f;
+				ComputeLaserBeamRenderWidthAndCoverage(physHalfW, camDist, projY, viewH, minHalfPx, renderHalfW, coverage);
+
+				const float startFade = 0.30f + 0.70f * LaserSmoothstep(0.0f, fadeInDist, dist);
+				const float distToEnd = beamLen - dist;
+				const float endMin = terminatesAtDot ? 0.35f : 0.0f;
+				const float endFade = endMin + (1.0f - endMin) * LaserSmoothstep(0.0f, fadeOutDist, distToEnd);
+				const float distFade = 1.0f / (1.0f + dist * 0.045f);
+				const float dustMod = ComputeLaserBeamDustModulation(pos.x, pos.y, pos.z, timeSec, g_ActiveLaserDot.beamAtmospheric);
+
+				const float segLinear = baseCoreLinear * closeRangeFade * layerEnergyScale * coverage * startFade * endFade * distFade * dustMod;
+				const u32 clr = EncodeLaserBeamColor(g_ActiveLaserDot.dotSrgb, segLinear);
+
+				Fvector halfSide = side;
+				halfSide.mul(renderHalfW);
+				Fvector curL, curR;
+				curL.sub(pos, halfSide);
+				curR.add(pos, halfSide);
+
+				if (i > 0)
+				{
+					UIRender->PushPoint(prevL.x, prevL.y, prevL.z, prevClr, uMin, vMid);
+					UIRender->PushPoint(curL.x, curL.y, curL.z, clr, uMin, vMid);
+					UIRender->PushPoint(curR.x, curR.y, curR.z, clr, uMax, vMid);
+					UIRender->PushPoint(prevL.x, prevL.y, prevL.z, prevClr, uMin, vMid);
+					UIRender->PushPoint(curR.x, curR.y, curR.z, clr, uMax, vMid);
+					UIRender->PushPoint(prevR.x, prevR.y, prevR.z, prevClr, uMax, vMid);
+				}
+
+				prevL = curL;
+				prevR = curR;
+				prevClr = clr;
+			}
+		};
+
+		UIRender->SetShader(**g_LaserDotAddShader);
+		UIRender->StartPrimitive(static_cast<u32>(layerCount * segCount * 6), IUIRender::ptTriList, IUIRender::pttLIT);
+		if (drawHalo)
+		{
+			emitRibbonLayer(0.0065f, 0.00085f, haloRatio, 2.25f);
+		}
+		emitRibbonLayer(0.0018f, 0.00022f, 1.0f, 1.35f);
+		UIRender->FlushPrimitive();
 	}
 
 	const char* ResolveLaserSpotTexture(const char* section)
@@ -459,12 +826,21 @@ void RegisterWeaponLaserConsoleCommands()
 	CMD4(CCC_WeaponLaserInteger, "wpn_laser_color", &g_WeaponLaserColorMode, 0, 4);
 	CMD4(CCC_WeaponLaserFloat, "wpn_laser_brightness", &g_WeaponLaserBrightness, 0.1f, 5.0f);
 	CMD4(CCC_WeaponLaserFloat, "wpn_laser_size", &g_WeaponLaserSize, 0.5f, 2.5f);
+	CMD4(CCC_WeaponLaserInteger, "wpn_laser_beam", &g_WeaponLaserBeamMode, 0, 2);
+	CMD4(CCC_WeaponLaserFloat, "wpn_laser_beam_intensity", &g_WeaponLaserBeamIntensity, 0.1f, 3.0f);
 }
 
 void DestroyWeaponLaserDotResources()
 {
 	g_ActiveLaserDot.active = false;
+	g_ActiveLaserDot.hasDot = false;
+	g_ActiveLaserDot.hasBeam = false;
 	g_ActiveLaserDot.owner = nullptr;
+	g_ActiveLaserDot.hudItem = nullptr;
+	g_SmoothedBeamAutoVis = -1.0f;
+	g_SmoothedBeamDayGain = -1.0f;
+	g_SmoothedBeamAtmospheric = -1.0f;
+	g_SmoothedBeamFrame = 0;
 	g_LaserDotShaderTexture = nullptr;
 
 	if (g_LaserDotMaskShader != nullptr)
@@ -500,8 +876,12 @@ void RenderActiveWeaponLaserDot()
 
 	if (Device.dwFrame > g_ActiveLaserDot.frame + 1)
 	{
-		g_ActiveLaserDot.active = false;
-		g_ActiveLaserDot.owner = nullptr;
+		ClearActiveLaserDotForOwner(nullptr);
+		return;
+	}
+
+	if (!g_ActiveLaserDot.hasDot && (!g_ActiveLaserDot.hasBeam || g_WeaponLaserBeamMode <= 0))
+	{
 		return;
 	}
 
@@ -528,30 +908,50 @@ void RenderActiveWeaponLaserDot()
 		g_LaserDotShaderTexture = texName;
 	}
 
-	Fvector toCam;
-	toCam.sub(Device.vCameraPosition, g_ActiveLaserDot.hitPos);
-	const float camDist = toCam.magnitude();
-	if (camDist < 0.08f)
+	const bool isDefaultTex = (xr_stricmp(texName, kDefaultLaserSpotTexture) == 0);
+	const float zoomScale = ComputeCameraZoomScale();
+
+	UIRender->CacheSetXformWorld(Fidentity);
+	UIRender->CacheSetView(Device.mView);
+	UIRender->CacheSetProject(Device.mProject);
+	UIRender->CacheSetCullMode(ERHI_CULLMODE::NONE);
+
+	bool drawDot = false;
+	Fvector drawPos = g_ActiveLaserDot.beamTargetPos;
+	float quadHalf = 0.0f;
+	const float uvMin = isDefaultTex ? (118.0f / 256.0f) : 0.0f;
+	const float uvMax = isDefaultTex ? (138.0f / 256.0f) : 1.0f;
+
+	if (g_ActiveLaserDot.hasDot)
+	{
+		Fvector toCam;
+		toCam.sub(Device.vCameraPosition, g_ActiveLaserDot.hitPos);
+		const float camDist = toCam.magnitude();
+		if (camDist >= 0.08f)
+		{
+			toCam.div(camDist);
+			// Compensate for optical / ADS FOV zoom so looking through a magnified scope keeps the dot crisp.
+			const float effectiveDiam = std::max(0.002f * g_ActiveLaserDot.sizeScale, g_ActiveLaserDot.visibleDiam / zoomScale);
+			// In internal_light_laser_tactical_r2.dds the visible dot (~12 px) spans 60% of the [118..138] (20 px) crop.
+			const float quadHalfAtHit = effectiveDiam * (isDefaultTex ? (0.5f / 0.60f) : 0.5f);
+			// Pull slightly toward the camera so the quad clears oblique surfaces without depth clipping
+			// while still being occluded cleanly by nearer walls, foliage, and HUD weapon geometry.
+			const float bias = std::min(camDist * 0.15f, std::max(0.012f, quadHalfAtHit * 1.15f));
+			const float drawDist = std::max(camDist - bias, 0.05f);
+			quadHalf = quadHalfAtHit * (drawDist / camDist);
+			drawPos.mad(g_ActiveLaserDot.hitPos, toCam, bias);
+			drawDot = true;
+		}
+	}
+
+	// Draw the optional subtle 3D beam first so Pass 1 of the laser dot preserves a crisp core at the tip.
+	const Fvector& beamEndPos = drawDot ? drawPos : g_ActiveLaserDot.beamTargetPos;
+	RenderActiveWeaponLaserBeam(beamEndPos, drawDot, isDefaultTex, zoomScale);
+
+	if (!drawDot)
 	{
 		return;
 	}
-	toCam.div(camDist);
-
-	const bool isDefaultTex = (xr_stricmp(texName, kDefaultLaserSpotTexture) == 0);
-	const float uvMin = isDefaultTex ? (118.0f / 256.0f) : 0.0f;
-	const float uvMax = isDefaultTex ? (138.0f / 256.0f) : 1.0f;
-	// Compensate for optical / ADS FOV zoom so looking through a magnified scope keeps the dot crisp.
-	const float effectiveDiam = std::max(0.002f * g_ActiveLaserDot.sizeScale, g_ActiveLaserDot.visibleDiam / ComputeCameraZoomScale());
-	// In internal_light_laser_tactical_r2.dds the visible dot (~12 px) spans 60% of the [118..138] (20 px) crop.
-	const float quadHalfAtHit = effectiveDiam * (isDefaultTex ? (0.5f / 0.60f) : 0.5f);
-	// Pull slightly toward the camera so the quad clears oblique surfaces without depth clipping
-	// while still being occluded cleanly by nearer walls, foliage, and HUD weapon geometry.
-	const float bias = std::min(camDist * 0.15f, std::max(0.012f, quadHalfAtHit * 1.15f));
-	const float drawDist = std::max(camDist - bias, 0.05f);
-	const float quadHalf = quadHalfAtHit * (drawDist / camDist);
-
-	Fvector drawPos;
-	drawPos.mad(g_ActiveLaserDot.hitPos, toCam, bias);
 
 	Fvector vr = Device.vCameraRight;
 	vr.mul(quadHalf);
@@ -576,11 +976,6 @@ void RenderActiveWeaponLaserDot()
 	const u32 maskA = static_cast<u32>(std::clamp(std::lround(maskAlphaF * 255.0f), 0L, 255L));
 	const u32 maskColor = color_rgba(colR, colG, colB, maskA);
 	const u32 addColor = color_rgba(colR, colG, colB, 255u);
-
-	UIRender->CacheSetXformWorld(Fidentity);
-	UIRender->CacheSetView(Device.mView);
-	UIRender->CacheSetProject(Device.mProject);
-	UIRender->CacheSetCullMode(ERHI_CULLMODE::NONE);
 
 	auto emitQuad = [&](u32 clr)
 	{
@@ -734,11 +1129,15 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 	Fvector rayPos = { 0, 0, 0 };
 	Fvector rayDir = { 0, 0, 1 };
 	const bool isHudMode = item->GetHUDmode() && item->HudItemData() != nullptr;
+	CWeapon* hudWpn = nullptr;
+	CActor* hudActor = nullptr;
 
 	if (isHudMode)
 	{
 		CWeapon* wpn = item->cast_weapon();
 		CActor* actor = item->object().H_Parent() ? item->object().H_Parent()->cast_actor() : nullptr;
+		hudWpn = wpn;
+		hudActor = actor;
 		const u8 state = item->GetState();
 		const bool weaponReady =
 			state == CHudItem::eIdle ||
@@ -863,65 +1262,148 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 
 	collide::rq_result RQ;
 	RQ.range = LaserMaxDist;
-	if (!g_pGameLevel->ObjectSpace.RayPick(rayPos, rayDir, RQ.range, collide::rqtBoth, RQ, item->object().H_Root()))
-	{
-		RenderLight->set_active(false);
-		ClearActiveLaserDotForOwner(this);
-		return;
-	}
+	const bool hasHit = !!g_pGameLevel->ObjectSpace.RayPick(rayPos, rayDir, RQ.range, collide::rqtBoth, RQ, item->object().H_Root());
 
-	const float hitDist = std::max(RQ.range, 0.05f);
-	Fvector hitPos;
-	hitPos.mad(rayPos, rayDir, hitDist);
-
-	// Place the spotlight closely in front of the impact point with a 2.2x range ratio
-	// (GetLightAttention ~0.445 vs ~0.186 at 1.55x) while terminating shortly behind thin targets.
-	const float maxStandOff = std::min(hitDist * 0.9f, 1.1f);
-	const float standOff = std::clamp(0.30f + hitDist * 0.02f, std::min(0.08f, maxStandOff), maxStandOff);
-	const float lightRange = std::max(0.45f, standOff * 2.2f);
-
-	Fvector lightPos;
-	lightPos.mad(hitPos, rayDir, -standOff);
-
-	// internal_light_laser_tactical_r2.dds bright core occupies ~11.5/256 (0.045) of the frustum (cone + 5 deg).
 	const float sizeScale = std::clamp(g_WeaponLaserSize, 0.5f, 2.5f);
-	const float hipVisibleDiam = std::clamp(0.010f + hitDist * 0.0030f, 0.010f, 0.30f) * sizeScale;
-	const float zoomScale = isHudMode ? ComputeCameraZoomScale() : 1.0f;
-	const float visibleDiam = std::max(0.002f * sizeScale, hipVisibleDiam / zoomScale);
-	const float desiredHalfTan = visibleDiam / (2.0f * 0.045f * std::max(standOff, 0.05f));
-	const float desiredFov = 2.0f * std::atan(desiredHalfTan);
-	const float currentCone = std::clamp(desiredFov - deg2rad(5.0f), deg2rad(0.5f), deg2rad(60.0f));
-
-	Fvector up, right;
-	Fvector::generate_orthonormal_basis_normalized(rayDir, up, right);
-
 	Fcolor spotColor;
 	Fvector dotSrgb;
 	ResolveWeaponLaserColors(LightColor, spotColor, dotSrgb);
 
-	RenderLight->set_color(spotColor);
-	RenderLight->set_range(lightRange);
-	RenderLight->set_position(lightPos);
-	RenderLight->set_rotation(rayDir, right);
-	RenderLight->set_cone(currentCone);
-	RenderLight->set_ignore_object(item->object().H_Root());
-	RenderLight->set_active(true);
+	Fvector hitPos;
+	float hipVisibleDiam = 0.010f * sizeScale;
+	if (hasHit)
+	{
+		const float hitDist = std::max(RQ.range, 0.05f);
+		hitPos.mad(rayPos, rayDir, hitDist);
+
+		// Place the spotlight closely in front of the impact point with a 2.2x range ratio
+		// (GetLightAttention ~0.445 vs ~0.186 at 1.55x) while terminating shortly behind thin targets.
+		const float maxStandOff = std::min(hitDist * 0.9f, 1.1f);
+		const float standOff = std::clamp(0.30f + hitDist * 0.02f, std::min(0.08f, maxStandOff), maxStandOff);
+		const float lightRange = std::max(0.45f, standOff * 2.2f);
+
+		Fvector lightPos;
+		lightPos.mad(hitPos, rayDir, -standOff);
+
+		// internal_light_laser_tactical_r2.dds bright core occupies ~11.5/256 (0.045) of the frustum (cone + 5 deg).
+		hipVisibleDiam = std::clamp(0.010f + hitDist * 0.0030f, 0.010f, 0.30f) * sizeScale;
+		const float zoomScale = isHudMode ? ComputeCameraZoomScale() : 1.0f;
+		const float visibleDiam = std::max(0.002f * sizeScale, hipVisibleDiam / zoomScale);
+		const float desiredHalfTan = visibleDiam / (2.0f * 0.045f * std::max(standOff, 0.05f));
+		const float desiredFov = 2.0f * std::atan(desiredHalfTan);
+		const float currentCone = std::clamp(desiredFov - deg2rad(5.0f), deg2rad(0.5f), deg2rad(60.0f));
+
+		Fvector up, right;
+		Fvector::generate_orthonormal_basis_normalized(rayDir, up, right);
+
+		RenderLight->set_color(spotColor);
+		RenderLight->set_range(lightRange);
+		RenderLight->set_position(lightPos);
+		RenderLight->set_rotation(rayDir, right);
+		RenderLight->set_cone(currentCone);
+		RenderLight->set_ignore_object(item->object().H_Root());
+		RenderLight->set_active(true);
+	}
+	else
+	{
+		RenderLight->set_active(false);
+		if (!isHudMode || g_WeaponLaserBeamMode <= 0)
+		{
+			ClearActiveLaserDotForOwner(this);
+			return;
+		}
+		hitPos.mad(rayPos, rayDir, LaserMaxDist);
+	}
 
 	if (isHudMode)
 	{
+		const attachable_hud_item* hudData = item->HudItemData();
+		const bool canRenderBeam = item->need_renderable();
+		if (!hasHit && (!canRenderBeam || g_WeaponLaserBeamMode <= 0))
+		{
+			ClearActiveLaserDotForOwner(this);
+			return;
+		}
+
+		SLaserBeamEnvInput envIn;
+		if (g_pGamePersistent != nullptr &&
+			g_pGamePersistent->pEnvironment != nullptr &&
+			g_pGamePersistent->Environment().CurrentEnv != nullptr)
+		{
+			const CEnvDescriptorMixer& env = *g_pGamePersistent->Environment().CurrentEnv;
+			auto rgbLum = [](const Fvector3& c) -> float
+			{
+				return 0.2126f * std::max(0.0f, c.x) + 0.7152f * std::max(0.0f, c.y) + 0.0722f * std::max(0.0f, c.z);
+			};
+			envIn.sunLum = rgbLum(env.sun_color);
+			envIn.hemiLum = 0.2126f * std::max(0.0f, env.hemi_color.x)
+				+ 0.7152f * std::max(0.0f, env.hemi_color.y)
+				+ 0.0722f * std::max(0.0f, env.hemi_color.z);
+			envIn.ambientLum = rgbLum(env.ambient);
+			envIn.rainDensity = env.rain_density;
+			envIn.fogDistance = env.fog_distance;
+			envIn.fogDensity = env.fog_density;
+		}
+		envIn.visDistance = psVisDistance;
+		envIn.isIndoorRender = (::Render != nullptr && ::Render->InIndoor());
+		if (hudActor != nullptr && hudActor->renderable_ROS() != nullptr)
+		{
+			envIn.actorHemi = hudActor->renderable_ROS()->get_luminocity_hemi();
+		}
+
+		const SLaserBeamEnvResult envRes = EvaluateLaserBeamEnvironment(envIn);
+		if (g_SmoothedBeamAutoVis < 0.0f)
+		{
+			g_SmoothedBeamAutoVis = envRes.autoVisibility;
+			g_SmoothedBeamDayGain = envRes.dayGain;
+			g_SmoothedBeamAtmospheric = envRes.atmospheric;
+			g_SmoothedBeamFrame = Device.dwFrame;
+		}
+		else if (g_SmoothedBeamFrame != Device.dwFrame)
+		{
+			const float smoothAlpha = std::clamp(Device.fTimeDelta * 3.5f, 0.0f, 1.0f);
+			g_SmoothedBeamAutoVis += (envRes.autoVisibility - g_SmoothedBeamAutoVis) * smoothAlpha;
+			g_SmoothedBeamDayGain += (envRes.dayGain - g_SmoothedBeamDayGain) * smoothAlpha;
+			g_SmoothedBeamAtmospheric += (envRes.atmospheric - g_SmoothedBeamAtmospheric) * smoothAlpha;
+			g_SmoothedBeamFrame = Device.dwFrame;
+		}
+
+		const u16 lightBoneId = (hudData->m_model != nullptr && LightBone != nullptr) ? hudData->m_model->LL_BoneID(LightBone) : BI_NONE;
+		Fvector fallbackEmitter = LightOffset;
+		if (hudData->m_model != nullptr && lightBoneId != BI_NONE)
+		{
+			hudData->m_model->LL_GetTransform(lightBoneId).transform_tiny(fallbackEmitter, LightOffset);
+		}
+		hudData->m_item_transform.transform_tiny(fallbackEmitter);
+		Device.transform_hud2world(fallbackEmitter);
+
 		g_ActiveLaserDot.owner = this;
+		g_ActiveLaserDot.hudItem = hudData;
+		g_ActiveLaserDot.hudAttachIdx = hudData->m_attach_place_idx;
+		g_ActiveLaserDot.lightBoneId = lightBoneId;
 		g_ActiveLaserDot.frame = Device.dwFrame;
 		g_ActiveLaserDot.hitPos = hitPos;
+		g_ActiveLaserDot.rayDir = rayDir;
+		g_ActiveLaserDot.lightOffset = LightOffset;
+		g_ActiveLaserDot.fallbackEmitterWorld = fallbackEmitter;
+		g_ActiveLaserDot.beamTargetPos = hitPos;
 		g_ActiveLaserDot.dotSrgb = dotSrgb;
 		g_ActiveLaserDot.visibleDiam = hipVisibleDiam;
 		g_ActiveLaserDot.sizeScale = sizeScale;
 		g_ActiveLaserDot.brightness = std::clamp(g_WeaponLaserBrightness, 0.1f, 5.0f);
+		g_ActiveLaserDot.aimFactor = item->GetAimFactor();
+		g_ActiveLaserDot.beamAutoVis = g_SmoothedBeamAutoVis;
+		g_ActiveLaserDot.beamDayGain = g_SmoothedBeamDayGain;
+		g_ActiveLaserDot.beamAtmospheric = g_SmoothedBeamAtmospheric;
 		g_ActiveLaserDot.textureName = ResolveLaserSpotTexture(Section);
+		g_ActiveLaserDot.hasDot = hasHit;
+		g_ActiveLaserDot.hasBeam = canRenderBeam;
+		g_ActiveLaserDot.hasScopeTexture = (hudWpn != nullptr && hudWpn->ZoomTexture() != nullptr);
 		g_ActiveLaserDot.active = true;
 	}
 
 #ifdef DEBUG_DRAW
-	if (isHudMode && forceLPDraw)
+	if (isHudMode && hasHit && forceLPDraw)
 	{
 		Fobb obb;
 		Fmatrix trans = item->HudItemData()->m_item_transform;
