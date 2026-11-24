@@ -113,6 +113,18 @@ void CScriptGameObject::set_sound_mask(u32 sound_mask)
 	}
 }
 
+void CScriptGameObject::set_sound_volume_scale(float volume_scale)
+{
+	if (CCreature* monster = object().cast_creature())
+	{
+		monster->sound().set_volume_scale(volume_scale);
+	}
+	else
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError, "CSoundPlayer : cannot access class member set_sound_volume_scale!");
+	}
+}
+
 void CScriptGameObject::play_sound(u32 internal_type)
 {
 	if (CCreature* monster = object().cast_creature())
