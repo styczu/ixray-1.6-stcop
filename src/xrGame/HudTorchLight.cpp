@@ -478,6 +478,32 @@ namespace
 		// effects\\bullet_tracer uses stub_srgb: out.rgb = pow(tex.rgb * vColor.rgb * 0.6f, 2.2f).
 		return std::clamp(std::pow(targetLinear, 1.0f / 2.2f) / 0.6f, 0.0f, 1.0f);
 	}
+
+	bool ComputeLaserBeamRibbonRightAxis(
+		float beamDirX, float beamDirY, float beamDirZ,
+		float toCamX, float toCamY, float toCamZ,
+		float& outRightX, float& outRightY, float& outRightZ)
+	{
+		// cross(toCam, beamDir) yields a camera-facing ribbon right vector so that strips
+		// (prevL, curL, curC) and (prevC, curC, curR) have CW front-facing screen winding
+		// in Direct3D LH clip space (never back-face culled).
+		const float rx = toCamY * beamDirZ - toCamZ * beamDirY;
+		const float ry = toCamZ * beamDirX - toCamX * beamDirZ;
+		const float rz = toCamX * beamDirY - toCamY * beamDirX;
+		const float lenSq = rx * rx + ry * ry + rz * rz;
+		if (lenSq <= 1e-8f)
+		{
+			outRightX = 0.0f;
+			outRightY = 0.0f;
+			outRightZ = 0.0f;
+			return false;
+		}
+		const float invLen = 1.0f / std::sqrt(lenSq);
+		outRightX = rx * invLen;
+		outRightY = ry * invLen;
+		outRightZ = rz * invLen;
+		return true;
+	}
 	// END_LASER_BEAM_PURE_MATH
 
 	struct SActiveLaserDot
@@ -552,7 +578,6 @@ namespace
 	void RenderActiveWeaponLaserBeam(
 		const Fvector& beamEndPos,
 		bool terminatesAtDot,
-		bool isDefaultTex,
 		float zoomScale)
 	{
 		if (g_WeaponLaserBeamMode <= 0 || !g_ActiveLaserDot.hasBeam || !(*g_LaserDotAddShader)->inited())
@@ -566,7 +591,7 @@ namespace
 			g_ActiveLaserDot.hasScopeTexture,
 			zoomScale);
 		const float intensity = std::clamp(g_WeaponLaserBeamIntensity, 0.1f, 3.0f);
-		const float baseCoreLinear = 0.017f * intensity * modeVis * aimZoomFade * g_ActiveLaserDot.beamDayGain;
+		const float baseCoreLinear = 0.020f * intensity * modeVis * aimZoomFade * g_ActiveLaserDot.beamDayGain;
 		if (baseCoreLinear <= 5e-5f)
 		{
 			return;
@@ -643,29 +668,28 @@ namespace
 		// Smoothly attenuate when the muzzle approaches within centimeters of an obstacle.
 		const float closeRangeFade = LaserSmoothstep(0.08f, 0.25f, forwardProj);
 
-		// Because beamStart + t*beamDir is a straight line, cross(beamDir, camPos - P(t)) = cross(beamDir, camPos - beamStart)
-		// is constant along the entire beam, guaranteeing a twist-free camera-facing ribbon.
+		// Because beamStart + t*beamDir is a straight line, cross(camPos - P(t), beamDir) = cross(camPos - beamStart, beamDir)
+		// is constant along the entire beam, guaranteeing a twist-free CW front-facing ribbon.
 		Fvector toCamStart;
 		toCamStart.sub(Device.vCameraPosition, beamStart);
-		Fvector side;
-		side.crossproduct(beamDir, toCamStart);
-		const float sideLenSq = side.square_magnitude();
-		if (sideLenSq > 1e-8f)
+		Fvector right;
+		if (!ComputeLaserBeamRibbonRightAxis(
+			beamDir.x, beamDir.y, beamDir.z,
+			toCamStart.x, toCamStart.y, toCamStart.z,
+			right.x, right.y, right.z))
 		{
-			side.div(std::sqrt(sideLenSq));
-		}
-		else
-		{
-			side = Device.vCameraRight;
+			right = Device.vCameraRight;
 		}
 
-		constexpr int kMaxSegments = 28;
+		constexpr int kMaxSegments = 24;
 		const float haloRatio = 0.14f + 0.14f * std::clamp(g_ActiveLaserDot.beamAtmospheric, 0.0f, 1.0f);
 		const bool drawHalo = (baseCoreLinear * closeRangeFade * haloRatio) > 8e-5f;
 		const int layerCount = drawHalo ? 2 : 1;
 
-		const u32 maxQuads = UIRender->VBuffMaxSize() / static_cast<u32>(sizeof(IUIRender::r_vertLIT<6>));
-		const int segCount = std::min(kMaxSegments, static_cast<int>(maxQuads / static_cast<u32>(layerCount)));
+		// Each segment uses a 3-vertex cross-section (edge 0 -> center spine -> edge 0 = 2 quads = 12 verts)
+		// sampling constant center UV (0.5, 0.5), producing an alias-free (1 - |t|)^2.2 bell profile through stub_srgb.
+		const u32 maxSegments = UIRender->VBuffMaxSize() / static_cast<u32>(sizeof(IUIRender::r_vertLIT<12>));
+		const int segCount = std::min(kMaxSegments, static_cast<int>(maxSegments / static_cast<u32>(layerCount)));
 		if (segCount < 1)
 		{
 			return;
@@ -673,16 +697,15 @@ namespace
 
 		const float projY = std::max(std::abs(Device.mProject._22), 0.25f);
 		const float viewH = static_cast<float>(std::max<u32>(Device.TargetHeight, 240u));
-		const float uMin = isDefaultTex ? (119.0f / 256.0f) : 0.0f;
-		const float uMax = isDefaultTex ? (136.5f / 256.0f) : 1.0f;
-		const float vMid = isDefaultTex ? (128.5f / 256.0f) : 0.5f;
+		constexpr float uvCenter = 0.5f;
+		const u32 edgeClr = color_rgba(0u, 0u, 0u, 0u);
 		const float timeSec = Device.fTimeGlobal;
 		const float fadeInDist = std::min(0.08f, beamLen * 0.22f);
 		const float fadeOutDist = terminatesAtDot ? std::min(0.10f, beamLen * 0.15f) : (beamLen * 0.35f);
 
 		auto emitRibbonLayer = [&](float baseHalfW, float divergence, float layerEnergyScale, float minHalfPx)
 		{
-			Fvector prevL, prevR;
+			Fvector prevL, prevC, prevR;
 			u32 prevClr = 0u;
 			for (int i = 0; i <= segCount; ++i)
 			{
@@ -691,10 +714,10 @@ namespace
 				const float s = 0.25f * u + 0.75f * u * u;
 				const float dist = s * beamLen;
 
-				Fvector pos;
-				pos.mad(beamStart, beamDir, dist);
+				Fvector curC;
+				curC.mad(beamStart, beamDir, dist);
 
-				const float camDist = Device.vCameraPosition.distance_to(pos);
+				const float camDist = Device.vCameraPosition.distance_to(curC);
 				const float physHalfW = baseHalfW + dist * divergence;
 				float renderHalfW = physHalfW;
 				float coverage = 1.0f;
@@ -705,40 +728,52 @@ namespace
 				const float endMin = terminatesAtDot ? 0.35f : 0.0f;
 				const float endFade = endMin + (1.0f - endMin) * LaserSmoothstep(0.0f, fadeOutDist, distToEnd);
 				const float distFade = 1.0f / (1.0f + dist * 0.045f);
-				const float dustMod = ComputeLaserBeamDustModulation(pos.x, pos.y, pos.z, timeSec, g_ActiveLaserDot.beamAtmospheric);
+				const float dustMod = ComputeLaserBeamDustModulation(curC.x, curC.y, curC.z, timeSec, g_ActiveLaserDot.beamAtmospheric);
 
 				const float segLinear = baseCoreLinear * closeRangeFade * layerEnergyScale * coverage * startFade * endFade * distFade * dustMod;
 				const u32 clr = EncodeLaserBeamColor(g_ActiveLaserDot.dotSrgb, segLinear);
 
-				Fvector halfSide = side;
-				halfSide.mul(renderHalfW);
+				Fvector halfRight = right;
+				halfRight.mul(renderHalfW);
 				Fvector curL, curR;
-				curL.sub(pos, halfSide);
-				curR.add(pos, halfSide);
+				curL.sub(curC, halfRight);
+				curR.add(curC, halfRight);
 
 				if (i > 0)
 				{
-					UIRender->PushPoint(prevL.x, prevL.y, prevL.z, prevClr, uMin, vMid);
-					UIRender->PushPoint(curL.x, curL.y, curL.z, clr, uMin, vMid);
-					UIRender->PushPoint(curR.x, curR.y, curR.z, clr, uMax, vMid);
-					UIRender->PushPoint(prevL.x, prevL.y, prevL.z, prevClr, uMin, vMid);
-					UIRender->PushPoint(curR.x, curR.y, curR.z, clr, uMax, vMid);
-					UIRender->PushPoint(prevR.x, prevR.y, prevR.z, prevClr, uMax, vMid);
+					// Left half-ribbon (edge 0 -> center spine): CW front-facing
+					UIRender->PushPoint(prevL.x, prevL.y, prevL.z, edgeClr, uvCenter, uvCenter);
+					UIRender->PushPoint(curL.x, curL.y, curL.z, edgeClr, uvCenter, uvCenter);
+					UIRender->PushPoint(curC.x, curC.y, curC.z, clr, uvCenter, uvCenter);
+					UIRender->PushPoint(prevL.x, prevL.y, prevL.z, edgeClr, uvCenter, uvCenter);
+					UIRender->PushPoint(curC.x, curC.y, curC.z, clr, uvCenter, uvCenter);
+					UIRender->PushPoint(prevC.x, prevC.y, prevC.z, prevClr, uvCenter, uvCenter);
+
+					// Right half-ribbon (center spine -> edge 0): CW front-facing
+					UIRender->PushPoint(prevC.x, prevC.y, prevC.z, prevClr, uvCenter, uvCenter);
+					UIRender->PushPoint(curC.x, curC.y, curC.z, clr, uvCenter, uvCenter);
+					UIRender->PushPoint(curR.x, curR.y, curR.z, edgeClr, uvCenter, uvCenter);
+					UIRender->PushPoint(prevC.x, prevC.y, prevC.z, prevClr, uvCenter, uvCenter);
+					UIRender->PushPoint(curR.x, curR.y, curR.z, edgeClr, uvCenter, uvCenter);
+					UIRender->PushPoint(prevR.x, prevR.y, prevR.z, edgeClr, uvCenter, uvCenter);
 				}
 
 				prevL = curL;
+				prevC = curC;
 				prevR = curR;
 				prevClr = clr;
 			}
 		};
 
 		UIRender->SetShader(**g_LaserDotAddShader);
-		UIRender->StartPrimitive(static_cast<u32>(layerCount * segCount * 6), IUIRender::ptTriList, IUIRender::pttLIT);
+		// SetShader applies the shader's rasterizer state (CULL_BACK by default); disable culling after SetShader.
+		UIRender->CacheSetCullMode(ERHI_CULLMODE::NONE);
+		UIRender->StartPrimitive(static_cast<u32>(layerCount * segCount * 12), IUIRender::ptTriList, IUIRender::pttLIT);
 		if (drawHalo)
 		{
-			emitRibbonLayer(0.0065f, 0.00085f, haloRatio, 2.25f);
+			emitRibbonLayer(0.0160f, 0.0018f, haloRatio, 4.2f);
 		}
-		emitRibbonLayer(0.0018f, 0.00022f, 1.0f, 1.35f);
+		emitRibbonLayer(0.0055f, 0.00055f, 1.0f, 2.4f);
 		UIRender->FlushPrimitive();
 	}
 
@@ -914,7 +949,6 @@ void RenderActiveWeaponLaserDot()
 	UIRender->CacheSetXformWorld(Fidentity);
 	UIRender->CacheSetView(Device.mView);
 	UIRender->CacheSetProject(Device.mProject);
-	UIRender->CacheSetCullMode(ERHI_CULLMODE::NONE);
 
 	bool drawDot = false;
 	Fvector drawPos = g_ActiveLaserDot.beamTargetPos;
@@ -946,7 +980,7 @@ void RenderActiveWeaponLaserDot()
 
 	// Draw the optional subtle 3D beam first so Pass 1 of the laser dot preserves a crisp core at the tip.
 	const Fvector& beamEndPos = drawDot ? drawPos : g_ActiveLaserDot.beamTargetPos;
-	RenderActiveWeaponLaserBeam(beamEndPos, drawDot, isDefaultTex, zoomScale);
+	RenderActiveWeaponLaserBeam(beamEndPos, drawDot, zoomScale);
 
 	if (!drawDot)
 	{
@@ -991,6 +1025,7 @@ void RenderActiveWeaponLaserDot()
 	if ((*g_LaserDotMaskShader)->inited())
 	{
 		UIRender->SetShader(**g_LaserDotMaskShader);
+		UIRender->CacheSetCullMode(ERHI_CULLMODE::NONE);
 		UIRender->StartPrimitive(6, IUIRender::ptTriList, IUIRender::pttLIT);
 		emitQuad(maskColor);
 		UIRender->FlushPrimitive();
@@ -1003,6 +1038,7 @@ void RenderActiveWeaponLaserDot()
 		const u32 maxQuads = std::max<u32>(1u, UIRender->VBuffMaxSize() / static_cast<u32>(sizeof(IUIRender::r_vertLIT<6>)));
 		const int safePasses = std::min(desiredPasses, static_cast<int>(maxQuads));
 		UIRender->SetShader(**g_LaserDotAddShader);
+		UIRender->CacheSetCullMode(ERHI_CULLMODE::NONE);
 		UIRender->StartPrimitive(static_cast<u32>(safePasses * 6), IUIRender::ptTriList, IUIRender::pttLIT);
 		for (int i = 0; i < safePasses; ++i)
 		{
