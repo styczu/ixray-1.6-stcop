@@ -342,6 +342,7 @@ namespace
 	int g_WeaponLaserBeamMode = 1; // 0 = off, 1 = auto (night/fog/rain/dark interiors), 2 = always
 	float g_WeaponLaserBeamIntensity = 1.0f;
 	int g_WeaponLaserAimMode = 0; // 0 = point of impact (g_fireParams), 1 = weapon axis, 2 = hybrid (aim while still/ADS, weapon axis while moving/firing/reloading/colliding)
+	float g_WeaponLaserHybridSpeed = 1.0f; // 0.2..5.0 centering speed multiplier in hybrid mode
 
 	constexpr const char* kDefaultLaserSpotTexture = "internal\\internal_light_laser_tactical_r2";
 
@@ -853,10 +854,10 @@ namespace
 		float dt = 0.0f;
 		float aimFactor = 0.0f;
 		float camTurnSpeed = 0.0f;
+		float centerSpeed = 1.0f;
 		bool actorMoving = false;
 		bool actorSprinting = false;
 		bool actorSafemode = false;
-		bool weaponFiring = false;
 		bool weaponBusy = false;
 		bool hasWallCollision = false;
 	};
@@ -876,6 +877,8 @@ namespace
 	float StepLaserHybridWeight(SLaserHybridState& state, const SLaserHybridInput& in)
 	{
 		const float safeDt = std::clamp(in.dt, 0.0f, 0.25f);
+		const float safeSpeed = std::clamp(in.centerSpeed, 0.2f, 5.0f);
+		const float holdScale = 1.0f / std::max(safeSpeed, 1.0f);
 		const bool forcedWeaponAxis = in.weaponBusy || in.actorSprinting || in.actorSafemode || in.hasWallCollision;
 		const float turnFactor = LaserSmoothstep(0.45f, 1.80f, std::max(0.0f, in.camTurnSpeed));
 
@@ -884,7 +887,7 @@ namespace
 		if (forcedWeaponAxis)
 		{
 			target = 1.0f;
-			state.holdTimer = 0.16f;
+			state.holdTimer = 0.16f * holdScale;
 		}
 		else
 		{
@@ -897,15 +900,15 @@ namespace
 			}
 			else
 			{
-				const float activity = (in.actorMoving || in.weaponFiring) ? 1.0f : 0.0f;
+				const float activity = in.actorMoving ? 1.0f : 0.0f;
 				const float hipTarget = std::max(activity, turnFactor);
-				if (in.actorMoving || in.weaponFiring)
+				if (in.actorMoving)
 				{
-					state.holdTimer = std::max(state.holdTimer, 0.20f);
+					state.holdTimer = std::max(state.holdTimer, 0.20f * holdScale);
 				}
 				else if (turnFactor >= 0.50f)
 				{
-					state.holdTimer = std::max(state.holdTimer, 0.10f);
+					state.holdTimer = std::max(state.holdTimer, 0.10f * holdScale);
 				}
 				target = hipTarget * (1.0f - adsSuppression);
 				if (enteringAds)
@@ -934,7 +937,7 @@ namespace
 			}
 			else
 			{
-				const float tauDown = enteringAds ? 0.14f : 0.35f;
+				const float tauDown = (enteringAds ? 0.14f : 0.35f) / safeSpeed;
 				const float alpha = 1.0f - std::exp(-safeDt / tauDown);
 				state.weight += (target - state.weight) * alpha;
 			}
@@ -1506,6 +1509,7 @@ void RegisterWeaponLaserConsoleCommands()
 	CMD4(CCC_WeaponLaserInteger, "wpn_laser_beam", &g_WeaponLaserBeamMode, 0, 2);
 	CMD4(CCC_WeaponLaserFloat, "wpn_laser_beam_intensity", &g_WeaponLaserBeamIntensity, 0.1f, 3.0f);
 	CMD4(CCC_WeaponLaserInteger, "wpn_laser_mode", &g_WeaponLaserAimMode, 0, 2);
+	CMD4(CCC_WeaponLaserFloat, "wpn_laser_hybrid_speed", &g_WeaponLaserHybridSpeed, 0.2f, 5.0f);
 }
 
 void DestroyWeaponLaserDotResources()
@@ -1995,10 +1999,10 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 			hybridIn.camTurnSpeed = (actor != nullptr)
 				? std::hypot(actor->fFPCamYawMagnitude, actor->fFPCamPitchMagnitude)
 				: 0.0f;
+			hybridIn.centerSpeed = g_WeaponLaserHybridSpeed;
 			hybridIn.actorMoving = actorMoving;
 			hybridIn.actorSprinting = actorSprinting;
 			hybridIn.actorSafemode = isSafemode;
-			hybridIn.weaponFiring = weaponFiring;
 			hybridIn.weaponBusy = !weaponReady;
 			hybridIn.hasWallCollision = hasWallCollision;
 			hudWeaponAxisWeight = StepLaserHybridWeight(g_LaserHybridState, hybridIn);
