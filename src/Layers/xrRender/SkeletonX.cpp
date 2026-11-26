@@ -12,6 +12,30 @@
 #endif
 
 #include "SkeletonX.h"
+#include <cctype>
+#include <cmath>
+#include <cstring>
+
+static bool diag_pdog_skelx_match(const char* s)
+{
+	if (!s || !*s) return false;
+	static const char needle[] = "pseudodog";
+	for (const char* p = s; *p; ++p)
+	{
+		size_t i = 0;
+		while (needle[i] && p[i] && std::tolower(static_cast<unsigned char>(p[i])) == needle[i])
+			++i;
+		if (!needle[i]) return true;
+	}
+	return false;
+}
+
+static float diag_pdog_skelx_det3x3(const Fmatrix& m)
+{
+	return m._11 * (m._22 * m._33 - m._23 * m._32)
+		 - m._12 * (m._21 * m._33 - m._23 * m._31)
+		 + m._13 * (m._21 * m._32 - m._22 * m._31);
+}
 
 struct vertRender// T&B are not skinned, because in R2 skinning occurs always in hardware
 {
@@ -355,6 +379,137 @@ void CSkeletonX::_Render(ref_geom& hGeom, u32 vCount, u32 iOffset, u32 pCount)
 			RCache.set_xform_world_old(Parent->mOldWorldMartrix);
 	}
 #endif
+
+	if (phase_normal && Parent && diag_pdog_skelx_match(Parent->dbg_name.c_str()))
+	{
+		const u16 bcount = Parent->LL_BoneCount();
+		const u16 jaw_id  = Parent->LL_BoneID("bone01");
+		const u16 head_id = Parent->LL_BoneID("bip01_head");
+		const u16 jaw2_id = Parent->LL_BoneID("bone02");
+
+		bool uses_jaw = false;
+		u16 max_used = 0;
+		if (RenderMode == RM_SINGLE)
+		{
+			max_used = u16(RMS_boneid);
+			uses_jaw = (jaw_id != BI_NONE && u16(RMS_boneid) == jaw_id);
+		}
+		else
+		{
+			for (u32 ui = 0; ui < BonesUsed.size(); ++ui)
+			{
+				if (BonesUsed[ui] > max_used) max_used = BonesUsed[ui];
+				if (jaw_id != BI_NONE && BonesUsed[ui] == jaw_id) uses_jaw = true;
+			}
+		}
+
+		bool is_ragdoll = false;
+		if (head_id != BI_NONE && head_id < bcount)
+			is_ragdoll = (Parent->bone_instances[head_id].callback_type() == bctPhysics);
+		if (!is_ragdoll && jaw_id != BI_NONE && jaw_id < bcount)
+			is_ragdoll = (Parent->bone_instances[jaw_id].callback_type() == bctPhysics);
+
+		const char* anom = nullptr;
+		if (jaw_id != BI_NONE && jaw_id < bcount)
+		{
+			const Fmatrix& JR = Parent->bone_instances[jaw_id].mRenderTransform;
+			if (!Parent->LL_GetBoneVisible(jaw_id))
+				anom = "jaw_invis";
+			else if (!_valid(JR) || std::fabs(diag_pdog_skelx_det3x3(JR) - 1.f) > 0.05f)
+				anom = "jaw_bad_R";
+			else if (RenderMode >= RM_SKINNING_1B && uses_jaw && RMS_bonecount <= jaw_id)
+				anom = "rms_too_small";
+			else if (head_id != BI_NONE && head_id < bcount &&
+				Parent->bone_instances[jaw_id].mTransform.c.distance_to(Parent->bone_instances[head_id].mTransform.c) > 0.25f)
+				anom = "jaw_far";
+		}
+
+		if (anom || is_ragdoll)
+		{
+			struct SkelXSlot
+			{
+				const void* parent = nullptr;
+				u16 child = u16(-1);
+				u32 anom_cnt = 0;
+				u32 last_anom_ms = 0;
+				bool logged_ragdoll = false;
+			};
+			static xrCriticalSection s_sx_cs;
+			static SkelXSlot s_sx_slots[128];
+			static u32 s_sx_next = 0;
+
+			const u32 now_ms = RDEVICE.dwTimeGlobal;
+			bool do_log = false;
+			const char* kind = "RAGDOLL_RENDER";
+			{
+				xrCriticalSectionGuard g(&s_sx_cs);
+				SkelXSlot* slot = nullptr;
+				for (auto& s : s_sx_slots)
+				{
+					if (s.parent == Parent && s.child == ChildIDX) { slot = &s; break; }
+				}
+				if (!slot)
+				{
+					slot = &s_sx_slots[s_sx_next++ & 127];
+					*slot = SkelXSlot{};
+					slot->parent = Parent;
+					slot->child = ChildIDX;
+				}
+				if (anom)
+				{
+					if (slot->anom_cnt < 3 && (slot->anom_cnt == 0 || now_ms - slot->last_anom_ms >= 500))
+					{
+						slot->anom_cnt++;
+						slot->last_anom_ms = now_ms;
+						do_log = true;
+						kind = anom;
+					}
+				}
+				else if (is_ragdoll && !slot->logged_ragdoll)
+				{
+					slot->logged_ragdoll = true;
+					do_log = true;
+					kind = "RAGDOLL_RENDER";
+				}
+			}
+
+			if (do_log)
+			{
+				Msg("[DIAG_PDOG] SkelX(%s) K=%p vis='%s' child=%u rm=%u vis_c=%d rms_cnt=%u rms_bid=%u bcount=%u used_n=%u max_used=%u uses_jaw=%d jaw=%u mask=0x%016llX",
+					kind, Parent, Parent->dbg_name.c_str(), unsigned(ChildIDX), unsigned(RenderMode), int(visible),
+					unsigned(RenderMode >= RM_SKINNING_1B ? RMS_bonecount : 0),
+					unsigned(RenderMode == RM_SINGLE ? RMS_boneid : 0),
+					unsigned(bcount), unsigned(BonesUsed.size()), unsigned(max_used), int(uses_jaw), unsigned(jaw_id),
+					static_cast<unsigned long long>(Parent->LL_GetBonesVisible()._visimask.flags));
+				if (jaw_id != BI_NONE && jaw_id < bcount)
+				{
+					const Fmatrix& M = Parent->bone_instances[jaw_id].mRenderTransform;
+					const Fmatrix& O = Parent->bone_instances[jaw_id].mRenderTransform_old;
+					Msg("[DIAG_PDOG] SkelX_GPU_JAW K=%p b=%u detR=%.4f row0=(%.4f,%.4f,%.4f,%.4f) row1=(%.4f,%.4f,%.4f,%.4f) row2=(%.4f,%.4f,%.4f,%.4f) old_c=(%.4f,%.4f,%.4f)",
+						Parent, unsigned(jaw_id), diag_pdog_skelx_det3x3(M),
+						M.i.x, M.j.x, M.k.x, M.c.x,
+						M.i.y, M.j.y, M.k.y, M.c.y,
+						M.i.z, M.j.z, M.k.z, M.c.z,
+						O.c.x, O.c.y, O.c.z);
+				}
+				if (head_id != BI_NONE && head_id < bcount)
+				{
+					const Fmatrix& M = Parent->bone_instances[head_id].mRenderTransform;
+					Msg("[DIAG_PDOG] SkelX_GPU_HEAD K=%p b=%u detR=%.4f row0=(%.4f,%.4f,%.4f,%.4f) row1=(%.4f,%.4f,%.4f,%.4f) row2=(%.4f,%.4f,%.4f,%.4f)",
+						Parent, unsigned(head_id), diag_pdog_skelx_det3x3(M),
+						M.i.x, M.j.x, M.k.x, M.c.x,
+						M.i.y, M.j.y, M.k.y, M.c.y,
+						M.i.z, M.j.z, M.k.z, M.c.z);
+				}
+				if (jaw2_id != BI_NONE && jaw2_id < bcount)
+				{
+					const Fmatrix& M = Parent->bone_instances[jaw2_id].mRenderTransform;
+					Msg("[DIAG_PDOG] SkelX_GPU_JAW2 K=%p b=%u detR=%.4f c=(%.4f,%.4f,%.4f)",
+						Parent, unsigned(jaw2_id), diag_pdog_skelx_det3x3(M), M.c.x, M.c.y, M.c.z);
+				}
+			}
+		}
+	}
 
 	//RCache.stat.r.s_dynamic.add		(vCount);
 	switch (RenderMode)

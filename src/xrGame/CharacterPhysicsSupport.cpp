@@ -34,6 +34,47 @@ bool dbg_draw_ragdoll_spawn = false;
 #endif // DEBUG
 
 #include "../xrEngine/device.h"
+#include <cctype>
+#include <cmath>
+#include <cstring>
+
+static bool diag_pdog_cps_match(const char* s)
+{
+	if (!s || !*s) return false;
+	static const char needle[] = "pseudodog";
+	for (const char* p = s; *p; ++p)
+	{
+		size_t i = 0;
+		while (needle[i] && p[i] && std::tolower(static_cast<unsigned char>(p[i])) == needle[i])
+			++i;
+		if (!needle[i]) return true;
+	}
+	return false;
+}
+
+static float diag_pdog_cps_det3x3(const Fmatrix& m)
+{
+	return m._11 * (m._22 * m._33 - m._23 * m._32)
+		 - m._12 * (m._21 * m._33 - m._23 * m._31)
+		 + m._13 * (m._21 * m._32 - m._22 * m._31);
+}
+
+static void diag_pdog_cps_dump_bone(IKinematics* K, u16 bid, u16 obj_id, const char* tag)
+{
+	if (!K || bid == BI_NONE || bid >= K->LL_BoneCount()) return;
+	CBoneInstance& bi = K->LL_GetBoneInstance(bid);
+	const char* bn = K->LL_BoneName_dbg(bid);
+	const Fmatrix& T = bi.mTransform;
+	const Fmatrix& R = bi.mRenderTransform;
+	Msg("[DIAG_PDOG] %s id=%u b=%u(%s) vis=%d cb=%p cbt=%u cbow=%d detT=%.4f detR=%.4f "
+		"T.i=(%.3f,%.3f,%.3f) T.j=(%.3f,%.3f,%.3f) T.k=(%.3f,%.3f,%.3f) T.c=(%.4f,%.4f,%.4f) "
+		"R.i=(%.3f,%.3f,%.3f) R.j=(%.3f,%.3f,%.3f) R.k=(%.3f,%.3f,%.3f) R.c=(%.4f,%.4f,%.4f)",
+		tag, unsigned(obj_id), unsigned(bid), bn ? bn : "?", int(K->LL_GetBoneVisible(bid)),
+		reinterpret_cast<void*>(bi.callback()), unsigned(bi.callback_type()), int(bi.callback_overwrite()),
+		diag_pdog_cps_det3x3(T), diag_pdog_cps_det3x3(R),
+		T.i.x, T.i.y, T.i.z, T.j.x, T.j.y, T.j.z, T.k.x, T.k.y, T.k.z, T.c.x, T.c.y, T.c.z,
+		R.i.x, R.i.y, R.i.z, R.j.x, R.j.y, R.j.z, R.k.x, R.k.y, R.k.z, R.c.x, R.c.y, R.c.z);
+}
 
 #define USE_SMART_HITS
 #define USE_IK
@@ -244,6 +285,10 @@ void CCharacterPhysicsSupport::SpawnInitPhysics( CSE_Abstract* e )
 	VERIFY( po );
 
 	PHNETSTATE_VECTOR& saved_bones=po->saved_bones.bones;
+	const bool diag_pdog_is_target = !m_EntityAlife.g_Alive() && diag_pdog_cps_match(m_EntityAlife.cNameVisual().c_str());
+	const bool diag_saved_flag = po->_flags.test(CSE_PHSkeleton::flSavedData);
+	const size_t diag_saved_n = saved_bones.size();
+	const u16 diag_sync_n = m_EntityAlife.PHGetSyncItemsNumber();
 	if( po->_flags.test(CSE_PHSkeleton::flSavedData) &&
 		saved_bones.size() != m_EntityAlife.PHGetSyncItemsNumber()
 		)
@@ -253,6 +298,17 @@ void CCharacterPhysicsSupport::SpawnInitPhysics( CSE_Abstract* e )
 #endif
 		po->_flags.set(CSE_PHSkeleton::flSavedData, false );
 		saved_bones.clear();
+	}
+	if (diag_pdog_is_target)
+	{
+		IKinematics* K = PKinematics(m_EntityAlife.Visual());
+		Msg("[DIAG_PDOG] CPS::SpawnInitPhysics id=%u K=%p vis='%s' flSaved=%d saved_n=%zu sync_n=%u cleared=%d mask=0x%016llX saved_mask=0x%016llX root=%u",
+			unsigned(m_EntityAlife.ID()), K, m_EntityAlife.cNameVisual().c_str(),
+			int(diag_saved_flag), diag_saved_n, unsigned(diag_sync_n),
+			int(diag_saved_flag && diag_saved_n != diag_sync_n),
+			static_cast<unsigned long long>(K ? K->LL_GetBonesVisible()._visimask.flags : 0),
+			static_cast<unsigned long long>(po->saved_bones.bones_mask._visimask.flags),
+			unsigned(K ? K->LL_GetBoneRoot() : 0));
 	}
 
 }
@@ -397,6 +453,16 @@ void CCharacterPhysicsSupport::KillHit(SHit& H)
 
 void CCharacterPhysicsSupport::in_Hit(SHit& H, bool is_killing)
 {
+	if ((is_killing || !m_EntityAlife.g_Alive()) && diag_pdog_cps_match(m_EntityAlife.cNameVisual().c_str()))
+	{
+		IKinematics* K = PKinematics(m_EntityAlife.Visual());
+		const char* bn = (K && H.bone() < K->LL_BoneCount()) ? K->LL_BoneName_dbg(H.bone()) : "?";
+		Msg("[DIAG_PDOG] CPS::in_Hit id=%u name='%s' vis='%s' alive=%d killing=%d block=%d shell=%p bone=%u(%s) type=%u dmg=%.2f imp=%.2f phys_imp=%.2f dir=(%.3f,%.3f,%.3f)",
+			unsigned(m_EntityAlife.ID()), m_EntityAlife.Name(), m_EntityAlife.cNameVisual().c_str(),
+			int(m_EntityAlife.g_Alive()), int(is_killing), int(m_flags.test(fl_block_hit)), m_pPhysicsShell,
+			unsigned(H.bone()), bn ? bn : "?", unsigned(H.type()), H.damage(), H.impulse, H.phys_impulse(),
+			H.direction().x, H.direction().y, H.direction().z);
+	}
 	m_sv_hit = H;
 	m_hit_valide_time = Device.dwTimeGlobal + hit_valide_time;
 	if (esRemoved == m_eState)
@@ -544,6 +610,96 @@ void CCharacterPhysicsSupport::in_UpdateCL()
 		UpdateDeathAnims();
 
 		m_character_shell_control.UpdateFrictionAndJointResistanse(m_pPhysicsShell);
+
+		if (diag_pdog_cps_match(m_EntityAlife.cNameVisual().c_str()))
+		{
+			IKinematics* K = PKinematics(m_EntityAlife.Visual());
+			if (K && K->LL_BoneCount() > 0)
+			{
+				const u16 head_id = K->LL_BoneID("bip01_head");
+				const u16 jaw_id  = K->LL_BoneID("bone01");
+				const u16 jaw2_id = K->LL_BoneID("bone02");
+				const bool shell_en = m_pPhysicsShell->isEnabled();
+				const u32 death_dt = Device.dwTimeGlobal - m_EntityAlife.GetLevelDeathTime();
+
+				const char* anom = nullptr;
+				float dist_hj = -1.f;
+				if (jaw_id != BI_NONE && jaw_id < K->LL_BoneCount())
+				{
+					const CBoneInstance& jbi = K->LL_GetBoneInstance(jaw_id);
+					if (head_id != BI_NONE && head_id < K->LL_BoneCount())
+						dist_hj = jbi.mTransform.c.distance_to(K->LL_GetBoneInstance(head_id).mTransform.c);
+					if (!K->LL_GetBoneVisible(jaw_id))
+						anom = "jaw_invis";
+					else if (!_valid(jbi.mTransform) || !_valid(jbi.mRenderTransform))
+						anom = "jaw_nan";
+					else if (std::fabs(diag_pdog_cps_det3x3(jbi.mTransform) - 1.f) > 0.05f ||
+							 std::fabs(diag_pdog_cps_det3x3(jbi.mRenderTransform) - 1.f) > 0.05f)
+						anom = "jaw_bad_det";
+					else if (dist_hj > 0.25f)
+						anom = "jaw_far";
+				}
+
+				struct CpsSlot
+				{
+					u16 id = u16(-1);
+					const void* shell = nullptr;
+					bool logged_settled = false;
+					u32 anom_cnt = 0;
+					u32 last_anom_ms = 0;
+				};
+				static xrCriticalSection s_cps_cs;
+				static CpsSlot s_cps_slots[64];
+				static u32 s_cps_next = 0;
+
+				bool do_log = false;
+				const char* kind = "SETTLED";
+				{
+					xrCriticalSectionGuard g(&s_cps_cs);
+					CpsSlot* slot = nullptr;
+					for (auto& s : s_cps_slots)
+					{
+						if (s.id == m_EntityAlife.ID() && s.shell == m_pPhysicsShell) { slot = &s; break; }
+					}
+					if (!slot)
+					{
+						slot = &s_cps_slots[s_cps_next++ & 63];
+						*slot = CpsSlot{};
+						slot->id = m_EntityAlife.ID();
+						slot->shell = m_pPhysicsShell;
+					}
+					if (anom)
+					{
+						if (slot->anom_cnt < 3 && (slot->anom_cnt == 0 || Device.dwTimeGlobal - slot->last_anom_ms >= 500))
+						{
+							slot->anom_cnt++;
+							slot->last_anom_ms = Device.dwTimeGlobal;
+							do_log = true;
+							kind = anom;
+						}
+					}
+					else if (!slot->logged_settled && (!shell_en || death_dt >= 2000))
+					{
+						slot->logged_settled = true;
+						do_log = true;
+						kind = shell_en ? "SETTLED_2S" : "SETTLED_SLEEP";
+					}
+				}
+
+				if (do_log)
+				{
+					Msg("[DIAG_PDOG] CPS::UpdateCL(%s) id=%u K=%p shell=%p vis='%s' en=%d elems=%u has_e18=%d mask=0x%016llX dist_hj=%.4f xform.c=(%.3f,%.3f,%.3f)",
+						kind, unsigned(m_EntityAlife.ID()), K, m_pPhysicsShell, m_EntityAlife.cNameVisual().c_str(),
+						int(shell_en), unsigned(m_pPhysicsShell->get_ElementsNumber()),
+						int(jaw_id != BI_NONE && m_pPhysicsShell->get_Element(jaw_id) != nullptr),
+						static_cast<unsigned long long>(K->LL_GetBonesVisible()._visimask.flags),
+						dist_hj, mXFORM.c.x, mXFORM.c.y, mXFORM.c.z);
+					diag_pdog_cps_dump_bone(K, head_id, m_EntityAlife.ID(), "UpdateCL");
+					diag_pdog_cps_dump_bone(K, jaw_id,  m_EntityAlife.ID(), "UpdateCL");
+					diag_pdog_cps_dump_bone(K, jaw2_id, m_EntityAlife.ID(), "UpdateCL");
+				}
+			}
+		}
 
 	}
 	else if (TIKLimbsController* LimbContorller = m_EntityAlife.GetComponent<TIKLimbsController>())
@@ -983,6 +1139,25 @@ void CCharacterPhysicsSupport::CreateShell(CObject* who, Fvector& dp, Fvector& v
 	}
 
 	m_pPhysicsShell->SetIgnoreSmall();
+
+	if (diag_pdog_cps_match(m_EntityAlife.cNameVisual().c_str()))
+	{
+		const u16 head_id = K->LL_BoneID("bip01_head");
+		const u16 jaw_id  = K->LL_BoneID("bone01");
+		const u16 jaw2_id = K->LL_BoneID("bone02");
+		Msg("[DIAG_PDOG] CPS::CreateShell id=%u K=%p shell=%p vis='%s' mask=0x%016llX root=%u anim_root=%u bcount=%u elems=%u has_eHead=%d has_eJaw=%d has_eJaw2=%d",
+			unsigned(m_EntityAlife.ID()), K, m_pPhysicsShell, m_EntityAlife.cNameVisual().c_str(),
+			static_cast<unsigned long long>(K->LL_GetBonesVisible()._visimask.flags),
+			unsigned(K->LL_GetBoneRoot()), unsigned(anim_root), unsigned(K->LL_BoneCount()),
+			unsigned(m_pPhysicsShell->get_ElementsNumber()),
+			int(head_id != BI_NONE && m_pPhysicsShell->get_Element(head_id) != nullptr),
+			int(jaw_id  != BI_NONE && m_pPhysicsShell->get_Element(jaw_id)  != nullptr),
+			int(jaw2_id != BI_NONE && m_pPhysicsShell->get_Element(jaw2_id) != nullptr));
+		diag_pdog_cps_dump_bone(K, head_id, m_EntityAlife.ID(), "CreateShell");
+		diag_pdog_cps_dump_bone(K, jaw_id,  m_EntityAlife.ID(), "CreateShell");
+		diag_pdog_cps_dump_bone(K, jaw2_id, m_EntityAlife.ID(), "CreateShell");
+	}
+
 	AddActiveWeaponCollision();
 }
 

@@ -17,6 +17,22 @@
 #include "PHElementInline.h"
 #include "PhysicsShellAnimator.h"
 #include "PHShellBuildJoint.h"
+#include <cctype>
+#include <cstring>
+
+static bool diag_pdog_phsh_match(const char* s)
+{
+	if (!s || !*s) return false;
+	static const char needle[] = "pseudodog";
+	for (const char* p = s; *p; ++p)
+	{
+		size_t i = 0;
+		while (needle[i] && p[i] && std::tolower(static_cast<unsigned char>(p[i])) == needle[i])
+			++i;
+		if (!needle[i]) return true;
+	}
+	return false;
+}
 
 #ifdef DEBUG
 #	include "debug_output.h"
@@ -684,6 +700,16 @@ void CPHShell::AddElementRecursive(CPhysicsElement* root_e, u16 id, Fmatrix glob
 	bool lvis_check = false;
 	if (!mask.is(id))
 	{
+		if (m_pKinematics && diag_pdog_phsh_match(m_pKinematics->getDebugName().c_str()))
+		{
+			const char* bn = m_pKinematics->LL_BoneName_dbg(id);
+			if (!bn || (std::strcmp(bn, "bip01_ponytail1") != 0 && std::strcmp(bn, "bip01_ponytail2") != 0))
+			{
+				Msg("[DIAG_PDOG] AddElemRec_SKIP_INVIS shell=%p K=%p vis='%s' bone=%u(%s) mask=0x%016llX",
+					this, m_pKinematics, m_pKinematics->getDebugName().c_str(),
+					unsigned(id), bn ? bn : "?", static_cast<unsigned long long>(mask._visimask.flags));
+			}
+		}
 		u16	num_children = bone_data.GetNumChildren();
 		for (u16 i = 0; i < num_children; ++i)
 		{
@@ -816,6 +842,21 @@ void CPHShell::AddElementRecursive(CPhysicsElement* root_e, u16 id, Fmatrix glob
 		{
 			c_iter->second.joint = J;
 			c_iter->second.element = E;
+		}
+	}
+
+	if (m_pKinematics && diag_pdog_phsh_match(m_pKinematics->getDebugName().c_str()))
+	{
+		const char* bn = m_pKinematics->LL_BoneName_dbg(id);
+		if (bn && std::strcmp(bn, "bone01") == 0)
+		{
+			Msg("[DIAG_PDOG] AddElemRec_JAW shell=%p K=%p vis='%s' bone=%u mask=0x%016llX jtype=%d shape=%u no_shape=%d breakable=%d added=%d E_self=%u J=%p J_type=%d elems=%zu joints=%zu fm.c=(%.4f,%.4f,%.4f)",
+				this, m_pKinematics, m_pKinematics->getDebugName().c_str(),
+				unsigned(id), static_cast<unsigned long long>(mask._visimask.flags),
+				int(joint_data.type), unsigned(bone_data.get_shape().type), int(no_physics_shape(bone_data.get_shape())),
+				int(breakable), int(element_added), unsigned(E ? E->m_SelfID : BI_NONE),
+				J, J ? int(J->eType) : -1, elements.size(), joints.size(),
+				fm_position.c.x, fm_position.c.y, fm_position.c.z);
 		}
 	}
 

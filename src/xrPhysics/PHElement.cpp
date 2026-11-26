@@ -35,7 +35,31 @@
 #include "PHShell.h"
 #include "PHElement.h"
 #include "PHElementInline.h"
+#include <cctype>
+#include <cmath>
+#include <cstring>
 extern CPHWorld*				ph_world;
+
+static bool diag_pdog_phel_match(const char* s)
+{
+	if (!s || !*s) return false;
+	static const char needle[] = "pseudodog";
+	for (const char* p = s; *p; ++p)
+	{
+		size_t i = 0;
+		while (needle[i] && p[i] && std::tolower(static_cast<unsigned char>(p[i])) == needle[i])
+			++i;
+		if (!needle[i]) return true;
+	}
+	return false;
+}
+
+static float diag_pdog_phel_det3x3(const Fmatrix& m)
+{
+	return m._11 * (m._22 * m._33 - m._23 * m._32)
+		 - m._12 * (m._21 * m._33 - m._23 * m._31)
+		 + m._13 * (m._21 * m._32 - m._22 * m._31);
+}
 
 
 
@@ -914,6 +938,126 @@ void CPHElement::BonesCallBack( CBoneInstance* B )
 	VERIFY( valid_pos( B->mTransform.c, phBoundaries ) );
 
 	CalculateBoneTransform( B->mTransform );
+
+	if (m_shell && m_shell->PKinematics() && PhysicsRefObject() && diag_pdog_phel_match(PhysicsRefObject()->ObjectNameVisual()))
+	{
+		const u16 jaw_id = m_shell->PKinematics()->LL_BoneID("bone01");
+		if (m_SelfID == jaw_id || (jaw_id == BI_NONE && m_SelfID == 18))
+		{
+			const u16 head_id = m_shell->PKinematics()->LL_BoneID("bip01_head");
+			const dReal* bp = m_body ? dBodyGetPosition(m_body) : nullptr;
+			const dReal* bq = m_body ? dBodyGetQuaternion(m_body) : nullptr;
+			const dReal* lv = m_body ? dBodyGetLinearVel(m_body) : nullptr;
+			const dReal* av = m_body ? dBodyGetAngularVel(m_body) : nullptr;
+			const bool body_en = m_body ? (dBodyIsEnabled(m_body) != 0) : false;
+			const float q2 = bq ? (bq[0]*bq[0] + bq[1]*bq[1] + bq[2]*bq[2] + bq[3]*bq[3]) : 0.f;
+			const float detT = diag_pdog_phel_det3x3(B->mTransform);
+
+			float dist_hb = -1.f;
+			if (bp && head_id != BI_NONE)
+			{
+				if (CPhysicsElement* he = m_shell->get_Element(head_id))
+				{
+					Fmatrix hm;
+					he->GetGlobalTransformDynamic(&hm);
+					Fvector jv; jv.set(float(bp[0]), float(bp[1]), float(bp[2]));
+					dist_hb = jv.distance_to(hm.c);
+				}
+			}
+
+			CPhysicsJoint* J = m_shell->get_Joint(m_SelfID);
+			const bool j_act = J && J->bActive;
+			const float j_ang = (j_act && J->IsHingeJoint()) ? J->GetAxisAngle(0) : -999.f;
+			const float j_rate = (j_act && J->IsHingeJoint()) ? J->GetAxisAngleRate(0) : 0.f;
+
+			const char* anom = nullptr;
+			if (!_valid(B->mTransform) || std::fabs(detT - 1.f) > 0.05f)
+				anom = "bad_out_mT";
+			else if (!bq || std::fabs(q2 - 1.f) > 0.05f)
+				anom = "bad_body_q";
+			else if (dist_hb > 0.30f)
+				anom = "jaw_body_far";
+			else if (j_ang > -900.f && std::fabs(j_ang) > 0.8f)
+				anom = "hinge_over_limit";
+
+			struct PhElSlot
+			{
+				const void* el = nullptr;
+				bool logged_init = false;
+				bool logged_sleep = false;
+				u32 anom_cnt = 0;
+				u32 cb_calls = 0;
+				u32 last_anom_call = 0;
+			};
+			static xrCriticalSection s_pe_cs;
+			static PhElSlot s_pe_slots[64];
+			static u32 s_pe_next = 0;
+
+			bool do_log = false;
+			const char* kind = "INIT";
+			{
+				xrCriticalSectionGuard g(&s_pe_cs);
+				PhElSlot* slot = nullptr;
+				for (auto& s : s_pe_slots)
+				{
+					if (s.el == this) { slot = &s; break; }
+				}
+				if (!slot)
+				{
+					slot = &s_pe_slots[s_pe_next++ & 63];
+					*slot = PhElSlot{};
+					slot->el = this;
+				}
+				slot->cb_calls++;
+				if (anom)
+				{
+					if (slot->anom_cnt < 4 && (slot->anom_cnt == 0 || slot->cb_calls - slot->last_anom_call >= 30))
+					{
+						slot->anom_cnt++;
+						slot->last_anom_call = slot->cb_calls;
+						do_log = true;
+						kind = anom;
+					}
+				}
+				else if (!slot->logged_init)
+				{
+					slot->logged_init = true;
+					do_log = true;
+					kind = "INIT";
+				}
+				else if (!body_en && !slot->logged_sleep)
+				{
+					slot->logged_sleep = true;
+					do_log = true;
+					kind = "SLEEP";
+				}
+			}
+
+			if (do_log)
+			{
+				Fvector p0, p1;
+				Fquaternion iq0, iq1;
+				m_body_interpolation.GetPosition(p0, 0);
+				m_body_interpolation.GetPosition(p1, 1);
+				m_body_interpolation.GetRotation(iq0, 0);
+				m_body_interpolation.GetRotation(iq1, 1);
+				const Fmatrix& T = B->mTransform;
+				Msg("[DIAG_PDOG] PHElemCB(%s) id=%u el=%p self=%u act=%d en=%d actv=%d dist_hb=%.4f j_act=%d j_type=%d j_hinge=%d j_ang=%.4f j_rate=%.4f detT=%.4f "
+					"bp=(%.4f,%.4f,%.4f) bq=(%.4f,%.4f,%.4f,%.4f) q2=%.5f lv=(%.3f,%.3f,%.3f) av=(%.3f,%.3f,%.3f) "
+					"ip0=(%.4f,%.4f,%.4f) ip1=(%.4f,%.4f,%.4f) iq0=(%.4f,%.4f,%.4f,%.4f) iq1=(%.4f,%.4f,%.4f,%.4f) out.c=(%.4f,%.4f,%.4f)",
+					kind, unsigned(PhysicsRefObject()->ObjectID()), this, unsigned(m_SelfID),
+					int(isActive()), int(body_en), int(m_flags.test(flActivating)), dist_hb,
+					int(j_act), J ? int(J->eType) : -1, int(J && J->IsHingeJoint()), j_ang, j_rate, detT,
+					bp ? float(bp[0]) : 0.f, bp ? float(bp[1]) : 0.f, bp ? float(bp[2]) : 0.f,
+					bq ? float(bq[0]) : 0.f, bq ? float(bq[1]) : 0.f, bq ? float(bq[2]) : 0.f, bq ? float(bq[3]) : 0.f, q2,
+					lv ? float(lv[0]) : 0.f, lv ? float(lv[1]) : 0.f, lv ? float(lv[2]) : 0.f,
+					av ? float(av[0]) : 0.f, av ? float(av[1]) : 0.f, av ? float(av[2]) : 0.f,
+					p0.x, p0.y, p0.z, p1.x, p1.y, p1.z,
+					iq0.w, iq0.x, iq0.y, iq0.z, iq1.w, iq1.x, iq1.y, iq1.z,
+					T.c.x, T.c.y, T.c.z);
+			}
+		}
+	}
 
 	VERIFY_RMATRIX( B->mTransform );
 	VERIFY( valid_pos( B->mTransform.c, phBoundaries ) );

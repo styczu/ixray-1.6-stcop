@@ -14,6 +14,23 @@
 #include "ai_space.h"
 #include "game_graph.h"
 #include "PHDestroyable.h"
+#include <cctype>
+#include <cmath>
+#include <cstring>
+
+static bool diag_pdog_phskel_match(const char* s)
+{
+	if (!s || !*s) return false;
+	static const char needle[] = "pseudodog";
+	for (const char* p = s; *p; ++p)
+	{
+		size_t i = 0;
+		while (needle[i] && p[i] && std::tolower(static_cast<unsigned char>(p[i])) == needle[i])
+			++i;
+		if (!needle[i]) return true;
+	}
+	return false;
+}
 
 #define F_MAX         3.402823466e+38F
 
@@ -99,6 +116,18 @@ bool CPHSkeleton::Spawn(CSE_Abstract *D)
 			K= smart_cast<IKinematics*>(obj->Visual());
 			if(K)
 			{
+				if (diag_pdog_phskel_match(obj->cNameVisual().c_str()))
+				{
+					const Fvector& mn = po->saved_bones.get_min();
+					const Fvector& mx = po->saved_bones.get_max();
+					Msg("[DIAG_PDOG] PHSkel::Spawn id=%u K=%p vis='%s' flSaved=%d saved_n=%zu saved_root=%u saved_mask=0x%016llX cur_mask=0x%016llX min=(%.3f,%.3f,%.3f) max=(%.3f,%.3f,%.3f)",
+						unsigned(obj->ID()), K, obj->cNameVisual().c_str(),
+						int(po->_flags.test(CSE_PHSkeleton::flSavedData)),
+						po->saved_bones.bones.size(), unsigned(po->saved_bones.root_bone),
+						static_cast<unsigned long long>(po->saved_bones.bones_mask._visimask.flags),
+						static_cast<unsigned long long>(K->LL_GetBonesVisible()._visimask.flags),
+						mn.x, mn.y, mn.z, mx.x, mx.y, mx.z);
+				}
 				K->LL_SetBoneRoot(po->saved_bones.root_bone);
 				K->LL_SetBonesVisible(po->saved_bones.bones_mask);
 			}
@@ -227,10 +256,39 @@ void CPHSkeleton::SaveNetState(NET_Packet& P)
 		P.w_u64(K ? _vm._visimask_ex.flags : u64(-1));
 	}
 
+	const bool diag_pdog = diag_pdog_phskel_match(obj->cNameVisual().c_str());
+	const u16 diag_head = (diag_pdog && K) ? K->LL_BoneID("bip01_head") : BI_NONE;
+	const u16 diag_jaw  = (diag_pdog && K) ? K->LL_BoneID("bone01") : BI_NONE;
+	const u16 diag_jaw2 = (diag_pdog && K) ? K->LL_BoneID("bone02") : BI_NONE;
+	if (diag_pdog)
+	{
+		Msg("[DIAG_PDOG] PHSkel::SaveNetState id=%u K=%p vis='%s' m_flags=0x%02X mask=0x%016llX root=%u sync_n=%u min=(%.3f,%.3f,%.3f) max=(%.3f,%.3f,%.3f)",
+			unsigned(obj->ID()), K, obj->cNameVisual().c_str(), unsigned(m_flags.get()),
+			static_cast<unsigned long long>(K ? _vm._visimask.flags : u64(-1)),
+			unsigned(K ? K->LL_GetBoneRoot() : 0), unsigned(bones_number),
+			min.x, min.y, min.z, max.x, max.y, max.z);
+	}
+
 	for(u16 i=0;i<bones_number;i++)
 	{
 		SPHNetState state;
 		obj->PHGetSyncItem(i)->get_State(state);
+		if (diag_pdog)
+		{
+			CPhysicsElement* E = (pPhysicsShell && i < pPhysicsShell->get_ElementsNumber())
+				? pPhysicsShell->get_ElementByStoreOrder(i) : nullptr;
+			const int sid = E ? int(E->m_SelfID) : -1;
+			const float q2 = state.quaternion.w*state.quaternion.w + state.quaternion.x*state.quaternion.x
+						   + state.quaternion.y*state.quaternion.y + state.quaternion.z*state.quaternion.z;
+			const bool key_bone = (E && (E->m_SelfID == diag_head || E->m_SelfID == diag_jaw || E->m_SelfID == diag_jaw2));
+			if (key_bone || !_valid(state.position) || std::fabs(q2 - 1.f) > 0.05f)
+			{
+				Msg("[DIAG_PDOG] SaveEl id=%u idx=%u self=%d en=%d pos=(%.4f,%.4f,%.4f) q=(%.4f,%.4f,%.4f,%.4f) q2=%.5f",
+					unsigned(obj->ID()), unsigned(i), sid, int(state.enabled),
+					state.position.x, state.position.y, state.position.z,
+					state.quaternion.w, state.quaternion.x, state.quaternion.y, state.quaternion.z, q2);
+			}
+		}
 		state.net_Save(P,min,max);
 	}
 }
@@ -269,6 +327,16 @@ void CPHSkeleton::LoadNetState(NET_Packet& P)
 void CPHSkeleton::RestoreNetState(CSE_PHSkeleton* po)
 {
 	VERIFY( po );
+	CPhysicsShellHolder* diag_obj = PPhysicsShellHolder();
+	const bool diag_pdog = diag_obj && diag_pdog_phskel_match(diag_obj->cNameVisual().c_str());
+	if (diag_pdog)
+	{
+		Msg("[DIAG_PDOG] PHSkel::RestoreNetState id=%u vis='%s' flSaved=%d saved_n=%zu sync_n=%u saved_mask=0x%016llX",
+			unsigned(diag_obj->ID()), diag_obj->cNameVisual().c_str(),
+			int(po->_flags.test(CSE_PHSkeleton::flSavedData)),
+			po->saved_bones.bones.size(), unsigned(diag_obj->PHGetSyncItemsNumber()),
+			static_cast<unsigned long long>(po->saved_bones.bones_mask._visimask.flags));
+	}
 	if(!po->_flags.test(CSE_PHSkeleton::flSavedData))
 		return;
 	CPhysicsShellHolder* obj=PPhysicsShellHolder();
@@ -281,10 +349,33 @@ void CPHSkeleton::RestoreNetState(CSE_PHSkeleton* po)
 		obj->PPhysicsShell()->Disable();
 	}
 
+	IKinematics* diag_K = diag_pdog ? PKinematics(obj->Visual()) : nullptr;
+	const u16 diag_head = diag_K ? diag_K->LL_BoneID("bip01_head") : BI_NONE;
+	const u16 diag_jaw  = diag_K ? diag_K->LL_BoneID("bone01") : BI_NONE;
+	const u16 diag_jaw2 = diag_K ? diag_K->LL_BoneID("bone02") : BI_NONE;
+	CPhysicsShell* diag_sh = diag_pdog ? obj->PPhysicsShell() : nullptr;
+
 	if( saved_bones.size() == obj->PHGetSyncItemsNumber() )
 		for( u16 bone=0; e!=i; i++, bone++ )
 		{
 			R_ASSERT(bone<obj->PHGetSyncItemsNumber());
+			if (diag_pdog)
+			{
+				CPhysicsElement* E = (diag_sh && bone < diag_sh->get_ElementsNumber())
+					? diag_sh->get_ElementByStoreOrder(bone) : nullptr;
+				const int sid = E ? int(E->m_SelfID) : -1;
+				const SPHNetState& st = *i;
+				const float q2 = st.quaternion.w*st.quaternion.w + st.quaternion.x*st.quaternion.x
+							   + st.quaternion.y*st.quaternion.y + st.quaternion.z*st.quaternion.z;
+				const bool key_bone = (E && (E->m_SelfID == diag_head || E->m_SelfID == diag_jaw || E->m_SelfID == diag_jaw2));
+				if (key_bone || !_valid(st.position) || std::fabs(q2 - 1.f) > 0.05f)
+				{
+					Msg("[DIAG_PDOG] RestoreEl id=%u idx=%u self=%d en=%d pos=(%.4f,%.4f,%.4f) q=(%.4f,%.4f,%.4f,%.4f) q2=%.5f",
+						unsigned(obj->ID()), unsigned(bone), sid, int(st.enabled),
+						st.position.x, st.position.y, st.position.z,
+						st.quaternion.w, st.quaternion.x, st.quaternion.y, st.quaternion.z, q2);
+				}
+			}
 			obj->PHGetSyncItem(bone)->set_State(*i);
 		}
 	saved_bones.clear();

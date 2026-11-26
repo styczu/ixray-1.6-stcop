@@ -1,5 +1,8 @@
 //---------------------------------------------------------------------------
 #include 	"stdafx.h"
+#include <cstdio>
+#include <cctype>
+#include <cstring>
 
 #include	"SkeletonX.h"
 #include "../../xrEngine/Fmesh.h"
@@ -456,12 +459,66 @@ void CKinematics::Release		()
 	inherited::Release();
 }
 
+static bool diag_pdog_skelc_match(const char* s)
+{
+	if (!s || !*s) return false;
+	static const char needle[] = "pseudodog";
+	for (const char* p = s; *p; ++p)
+	{
+		size_t i = 0;
+		while (needle[i] && p[i] && std::tolower(static_cast<unsigned char>(p[i])) == needle[i])
+			++i;
+		if (!needle[i]) return true;
+	}
+	return false;
+}
+
+static void diag_pdog_skelc_log_stack(const char* tag)
+{
+#ifdef _WIN32
+	void* frames[16] = {};
+	USHORT count = CaptureStackBackTrace(1, 16, frames, nullptr);
+	char buf[2048];
+	buf[0] = 0;
+	size_t pos = 0;
+	for (USHORT i = 0; i < count; ++i)
+	{
+		HMODULE mod = nullptr;
+		char mod_path[MAX_PATH] = {};
+		const char* mod_name = "?";
+		unsigned long long rva = static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(frames[i]));
+		if (GetModuleHandleExA(
+				GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+				reinterpret_cast<LPCSTR>(frames[i]), &mod) && mod)
+		{
+			rva = static_cast<unsigned long long>(
+				reinterpret_cast<uintptr_t>(frames[i]) - reinterpret_cast<uintptr_t>(mod));
+			if (GetModuleFileNameA(mod, mod_path, MAX_PATH) > 0)
+			{
+				const char* slash = std::strrchr(mod_path, '\\');
+				mod_name = slash ? (slash + 1) : mod_path;
+			}
+		}
+		int n = std::snprintf(buf + pos, sizeof(buf) - pos, "%s%s+0x%llX",
+			(i ? " <- " : ""), mod_name, rva);
+		if (n <= 0 || pos + static_cast<size_t>(n) >= sizeof(buf))
+			break;
+		pos += static_cast<size_t>(n);
+	}
+	Msg("[DIAG_PDOG] %s stack(%u): %s", tag, static_cast<unsigned>(count), buf);
+#else
+	(void)tag;
+#endif
+}
+
 void CKinematics::LL_SetBoneVisible(u16 bone_id, bool val, bool bRecursive)
 {
 	VERIFY2(bone_id < LL_BoneCount(), make_string<const char*>("visual_name: %s, bone: %s, bone_id: %d", dbg_name.c_str(), LL_BoneName_dbg(bone_id), bone_id));
 
 	if (bone_id == BI_NONE || bone_id >= LL_BoneCount())
 		return;
+
+	const u64 diag_mask_before = visimask._visimask.flags;
 
 	visimask.set(bone_id, val);
 
@@ -482,6 +539,35 @@ void CKinematics::LL_SetBoneVisible(u16 bone_id, bool val, bool bRecursive)
 	}
 
 	bone_instances[bone_id].mRenderTransform.mul_43(bone_instances[bone_id].mTransform,(*bones)[bone_id]->m2b_transform);
+
+	if (diag_pdog_skelc_match(dbg_name.c_str()))
+	{
+		const char* bname = LL_BoneName_dbg(bone_id);
+		const bool is_jaw = bname && (std::strcmp(bname, "bone01") == 0 || std::strcmp(bname, "bone02") == 0);
+		if (!val || is_jaw)
+		{
+			const Fvector& tc = bone_instances[bone_id].mTransform.c;
+			const Fvector& rc = bone_instances[bone_id].mRenderTransform.c;
+			Msg("[DIAG_PDOG] LL_SetBoneVisible K=%p vis='%s' bone=%u(%s) val=%d rec=%d mask=0x%016llX->0x%016llX T.c=(%.4f,%.4f,%.4f) R.c=(%.4f,%.4f,%.4f)",
+				this, dbg_name.c_str(), unsigned(bone_id), bname ? bname : "?", int(val), int(bRecursive),
+				static_cast<unsigned long long>(diag_mask_before),
+				static_cast<unsigned long long>(visimask._visimask.flags),
+				tc.x, tc.y, tc.z, rc.x, rc.y, rc.z);
+			static thread_local u32 diag_rec_depth = 0;
+			if (diag_rec_depth == 0)
+				diag_pdog_skelc_log_stack("LL_SetBoneVisible");
+			if (bRecursive)
+			{
+				++diag_rec_depth;
+				for (CBoneData* BD : (*bones)[bone_id]->children)
+					LL_SetBoneVisible(BD->GetSelfID(), val, bRecursive);
+				--diag_rec_depth;
+				Visibility_Invalidate();
+				return;
+			}
+		}
+	}
+
 	if(bRecursive)
 	{
 		for(CBoneData* BD : (*bones)[bone_id]->children)
@@ -492,6 +578,7 @@ void CKinematics::LL_SetBoneVisible(u16 bone_id, bool val, bool bRecursive)
 
 void CKinematics::LL_SetBonesVisible(VisMask mask)
 {
+	const u64 diag_mask_before = visimask._visimask.flags;
 	visimask.zero();
 	for(u32 b = 0; b < bones->size(); b++)
 	{
@@ -504,6 +591,37 @@ void CKinematics::LL_SetBonesVisible(VisMask mask)
         	A.scale			(0.f,0.f,0.f);
 	        B.mul_43		(A,(*bones)[b]->m2b_transform);
         }
+	}
+	if (diag_pdog_skelc_match(dbg_name.c_str()))
+	{
+		const u16 jaw_id = LL_BoneID("bone01");
+		bool any_hidden = false;
+		for (u32 b = 0; b < bones->size(); ++b)
+		{
+			if (!mask.is(b)) { any_hidden = true; break; }
+		}
+		if (jaw_id != BI_NONE && jaw_id < bones->size())
+		{
+			const Fvector& tc = bone_instances[jaw_id].mTransform.c;
+			const Fvector& rc = bone_instances[jaw_id].mRenderTransform.c;
+			Msg("[DIAG_PDOG] LL_SetBonesVisible K=%p vis='%s' bcount=%zu mask=0x%016llX->0x%016llX in=0x%016llX jaw(%u)_vis=%d T.c=(%.4f,%.4f,%.4f) R.c=(%.4f,%.4f,%.4f)",
+				this, dbg_name.c_str(), bones->size(),
+				static_cast<unsigned long long>(diag_mask_before),
+				static_cast<unsigned long long>(visimask._visimask.flags),
+				static_cast<unsigned long long>(mask._visimask.flags),
+				unsigned(jaw_id), int(visimask.is(jaw_id)),
+				tc.x, tc.y, tc.z, rc.x, rc.y, rc.z);
+		}
+		else
+		{
+			Msg("[DIAG_PDOG] LL_SetBonesVisible K=%p vis='%s' bcount=%zu mask=0x%016llX->0x%016llX in=0x%016llX jaw=NONE",
+				this, dbg_name.c_str(), bones->size(),
+				static_cast<unsigned long long>(diag_mask_before),
+				static_cast<unsigned long long>(visimask._visimask.flags),
+				static_cast<unsigned long long>(mask._visimask.flags));
+		}
+		if (any_hidden)
+			diag_pdog_skelc_log_stack("LL_SetBonesVisible");
 	}
 	CalculateBones_Invalidate();
 	Visibility_Invalidate();
