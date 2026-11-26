@@ -341,7 +341,7 @@ namespace
 	float g_WeaponLaserSize = 1.0f;
 	int g_WeaponLaserBeamMode = 1; // 0 = off, 1 = auto (night/fog/rain/dark interiors), 2 = always
 	float g_WeaponLaserBeamIntensity = 1.0f;
-	int g_WeaponLaserAimMode = 0; // 0 = point of impact (g_fireParams), 1 = weapon axis (live HUD barrel, always on while enabled)
+	int g_WeaponLaserAimMode = 0; // 0 = point of impact (g_fireParams), 1 = weapon axis, 2 = hybrid (aim while still/ADS, weapon axis while moving/firing/reloading/colliding)
 
 	constexpr const char* kDefaultLaserSpotTexture = "internal\\internal_light_laser_tactical_r2";
 
@@ -847,6 +847,135 @@ namespace
 		});
 		return outRestCam.z >= 0.96f;
 	}
+
+	struct SLaserHybridInput
+	{
+		float dt = 0.0f;
+		float aimFactor = 0.0f;
+		float camTurnSpeed = 0.0f;
+		bool actorMoving = false;
+		bool actorSprinting = false;
+		bool actorSafemode = false;
+		bool weaponFiring = false;
+		bool weaponBusy = false;
+		bool hasWallCollision = false;
+	};
+
+	struct SLaserHybridState
+	{
+		float weight = 0.0f;
+		float holdTimer = 0.0f;
+
+		void Reset()
+		{
+			weight = 0.0f;
+			holdTimer = 0.0f;
+		}
+	};
+
+	float StepLaserHybridWeight(SLaserHybridState& state, const SLaserHybridInput& in)
+	{
+		const float safeDt = std::clamp(in.dt, 0.0f, 0.25f);
+		const bool forcedWeaponAxis = in.weaponBusy || in.actorSprinting || in.actorSafemode || in.hasWallCollision;
+		const float turnFactor = LaserSmoothstep(0.45f, 1.80f, std::max(0.0f, in.camTurnSpeed));
+
+		float target = 0.0f;
+		bool enteringAds = false;
+		if (forcedWeaponAxis)
+		{
+			target = 1.0f;
+			state.holdTimer = 0.16f;
+		}
+		else
+		{
+			const float adsSuppression = LaserSmoothstep(0.05f, 0.75f, std::clamp(in.aimFactor, 0.0f, 1.0f));
+			enteringAds = (adsSuppression > 0.05f);
+			if (adsSuppression >= 0.999f)
+			{
+				target = 0.0f;
+				state.holdTimer = 0.0f;
+			}
+			else
+			{
+				const float activity = (in.actorMoving || in.weaponFiring) ? 1.0f : 0.0f;
+				const float hipTarget = std::max(activity, turnFactor);
+				if (in.actorMoving || in.weaponFiring)
+				{
+					state.holdTimer = std::max(state.holdTimer, 0.20f);
+				}
+				else if (turnFactor >= 0.50f)
+				{
+					state.holdTimer = std::max(state.holdTimer, 0.10f);
+				}
+				target = hipTarget * (1.0f - adsSuppression);
+				if (enteringAds)
+				{
+					state.holdTimer = 0.0f;
+				}
+			}
+		}
+
+		if (safeDt <= 0.0f)
+		{
+			return std::clamp(state.weight, 0.0f, 1.0f);
+		}
+
+		if (target > state.weight)
+		{
+			const float tauUp = forcedWeaponAxis ? 0.10f : 0.22f;
+			const float alpha = 1.0f - std::exp(-safeDt / tauUp);
+			state.weight += (target - state.weight) * alpha;
+		}
+		else if (target < state.weight)
+		{
+			if (!enteringAds && state.holdTimer > 0.0f)
+			{
+				state.holdTimer = std::max(0.0f, state.holdTimer - safeDt);
+			}
+			else
+			{
+				const float tauDown = enteringAds ? 0.14f : 0.35f;
+				const float alpha = 1.0f - std::exp(-safeDt / tauDown);
+				state.weight += (target - state.weight) * alpha;
+			}
+		}
+
+		if (target <= 0.0f && state.weight < 1e-4f)
+		{
+			state.weight = 0.0f;
+		}
+		else if (target >= 1.0f && state.weight > 1.0f - 1e-4f)
+		{
+			state.weight = 1.0f;
+		}
+		state.weight = std::clamp(state.weight, 0.0f, 1.0f);
+		return state.weight;
+	}
+
+	SLaserVec3 BlendLaserDirections(const SLaserVec3& aimDir, const SLaserVec3& axisDir, float weight)
+	{
+		const float w = std::clamp(weight, 0.0f, 1.0f);
+		const SLaserVec3 a = NormalizeLaserVec3(aimDir);
+		const SLaserVec3 b = NormalizeLaserVec3(axisDir);
+		if (w <= 1e-5f)
+		{
+			return a;
+		}
+		if (w >= 1.0f - 1e-5f)
+		{
+			return b;
+		}
+		const float dotAB = a.x * b.x + a.y * b.y + a.z * b.z;
+		if (dotAB < -0.5f)
+		{
+			return (w >= 0.5f) ? b : a;
+		}
+		return NormalizeLaserVec3({
+			a.x + (b.x - a.x) * w,
+			a.y + (b.y - a.y) * w,
+			a.z + (b.z - a.z) * w,
+		}, b);
+	}
 	// END_LASER_BEAM_PURE_MATH
 
 	struct SActiveLaserDot
@@ -862,11 +991,14 @@ namespace
 		Fvector fallbackEmitterWorld = { 0.0f, 0.0f, 0.0f };
 		Fvector beamTargetPos = { 0.0f, 0.0f, 0.0f };
 		Fvector zeroRestCam = { 0.0f, 0.0f, 1.0f };
+		Fvector aimPosCam = { 0.0f, 0.0f, 0.0f };
+		Fvector aimDirCam = { 0.0f, 0.0f, 1.0f };
 		Fvector dotSrgb = { 1.0f, 0.04f, 0.02f };
 		float visibleDiam = 0.02f;
 		float sizeScale = 1.0f;
 		float brightness = 1.0f;
 		float aimFactor = 0.0f;
+		float weaponAxisWeight = 0.0f;
 		float beamAutoVis = 0.0f;
 		float beamDayGain = 1.0f;
 		float beamAtmospheric = 0.0f;
@@ -910,6 +1042,8 @@ namespace
 
 	SActiveLaserDot g_ActiveLaserDot;
 	SLaserZeroCache g_LaserZeroCache;
+	SLaserHybridState g_LaserHybridState;
+	u32 g_LaserHybridFrame = 0;
 	float g_SmoothedBeamAutoVis = -1.0f;
 	float g_SmoothedBeamDayGain = -1.0f;
 	float g_SmoothedBeamAtmospheric = -1.0f;
@@ -926,8 +1060,11 @@ namespace
 			g_ActiveLaserDot.hasDot = false;
 			g_ActiveLaserDot.hasBeam = false;
 			g_ActiveLaserDot.useWeaponAxis = false;
+			g_ActiveLaserDot.weaponAxisWeight = 0.0f;
 			g_ActiveLaserDot.hasZeroRest = false;
 			g_ActiveLaserDot.zeroRestCam.set(0.0f, 0.0f, 1.0f);
+			g_ActiveLaserDot.aimPosCam.set(0.0f, 0.0f, 0.0f);
+			g_ActiveLaserDot.aimDirCam.set(0.0f, 0.0f, 1.0f);
 			g_ActiveLaserDot.owner = nullptr;
 			g_ActiveLaserDot.hudItem = nullptr;
 		}
@@ -938,6 +1075,35 @@ namespace
 		if (owner == nullptr || g_LaserZeroCache.owner == owner)
 		{
 			g_LaserZeroCache.Reset();
+		}
+	}
+
+	void ClipLaserOriginToCameraWall(Fvector& ioRayPos, CObject* ignoreObj)
+	{
+		if (g_pGameLevel == nullptr)
+		{
+			return;
+		}
+		Fvector camToOrigin;
+		camToOrigin.sub(ioRayPos, Device.vCameraPosition);
+		const float camToOriginLen = camToOrigin.magnitude();
+		if (camToOriginLen > 0.02f)
+		{
+			Fvector camToOriginDir = camToOrigin;
+			camToOriginDir.div(camToOriginLen);
+			collide::rq_result clipRQ;
+			clipRQ.range = camToOriginLen;
+			if (g_pGameLevel->ObjectSpace.RayPick(
+				Device.vCameraPosition,
+				camToOriginDir,
+				clipRQ.range,
+				collide::rqtBoth,
+				clipRQ,
+				ignoreObj))
+			{
+				const float safeDist = std::max(0.0f, clipRQ.range - 0.02f);
+				ioRayPos.mad(Device.vCameraPosition, camToOriginDir, safeDist);
+			}
 		}
 	}
 
@@ -1048,30 +1214,7 @@ namespace
 		outRayDir = worldDir;
 
 		// Prevent the ray origin from starting behind a wall when the HUD muzzle clips into close geometry.
-		if (g_pGameLevel != nullptr)
-		{
-			Fvector camToEmitter;
-			camToEmitter.sub(worldPos, Device.vCameraPosition);
-			const float camToEmitterLen = camToEmitter.magnitude();
-			if (camToEmitterLen > 0.02f)
-			{
-				Fvector camToEmitterDir = camToEmitter;
-				camToEmitterDir.div(camToEmitterLen);
-				collide::rq_result clipRQ;
-				clipRQ.range = camToEmitterLen;
-				if (g_pGameLevel->ObjectSpace.RayPick(
-					Device.vCameraPosition,
-					camToEmitterDir,
-					clipRQ.range,
-					collide::rqtBoth,
-					clipRQ,
-					ignoreObj))
-				{
-					const float safeDist = std::max(0.0f, clipRQ.range - 0.02f);
-					outRayPos.mad(Device.vCameraPosition, camToEmitterDir, safeDist);
-				}
-			}
-		}
+		ClipLaserOriginToCameraWall(outRayPos, ignoreObj);
 
 		return true;
 	}
@@ -1362,7 +1505,7 @@ void RegisterWeaponLaserConsoleCommands()
 	CMD4(CCC_WeaponLaserFloat, "wpn_laser_size", &g_WeaponLaserSize, 0.5f, 2.5f);
 	CMD4(CCC_WeaponLaserInteger, "wpn_laser_beam", &g_WeaponLaserBeamMode, 0, 2);
 	CMD4(CCC_WeaponLaserFloat, "wpn_laser_beam_intensity", &g_WeaponLaserBeamIntensity, 0.1f, 3.0f);
-	CMD4(CCC_WeaponLaserInteger, "wpn_laser_mode", &g_WeaponLaserAimMode, 0, 1);
+	CMD4(CCC_WeaponLaserInteger, "wpn_laser_mode", &g_WeaponLaserAimMode, 0, 2);
 }
 
 void DestroyWeaponLaserDotResources()
@@ -1371,11 +1514,16 @@ void DestroyWeaponLaserDotResources()
 	g_ActiveLaserDot.hasDot = false;
 	g_ActiveLaserDot.hasBeam = false;
 	g_ActiveLaserDot.useWeaponAxis = false;
+	g_ActiveLaserDot.weaponAxisWeight = 0.0f;
 	g_ActiveLaserDot.hasZeroRest = false;
 	g_ActiveLaserDot.zeroRestCam.set(0.0f, 0.0f, 1.0f);
+	g_ActiveLaserDot.aimPosCam.set(0.0f, 0.0f, 0.0f);
+	g_ActiveLaserDot.aimDirCam.set(0.0f, 0.0f, 1.0f);
 	g_ActiveLaserDot.owner = nullptr;
 	g_ActiveLaserDot.hudItem = nullptr;
 	g_LaserZeroCache.Reset();
+	g_LaserHybridState.Reset();
+	g_LaserHybridFrame = 0;
 	g_SmoothedBeamAutoVis = -1.0f;
 	g_SmoothedBeamDayGain = -1.0f;
 	g_SmoothedBeamAtmospheric = -1.0f;
@@ -1443,7 +1591,7 @@ void RenderActiveWeaponLaserDot()
 				CObject* ignoreObj = (liveHud->m_parent_hud_item != nullptr)
 					? liveHud->m_parent_hud_item->object().H_Root()
 					: nullptr;
-				Fvector liveEmitter, liveRayPos, liveRayDir;
+				Fvector liveEmitter, liveAxisRayPos, liveAxisRayDir;
 				const Fvector* liveZeroRest = g_ActiveLaserDot.hasZeroRest ? &g_ActiveLaserDot.zeroRestCam : nullptr;
 				if (ComputeHudWeaponAxisRay(
 					liveHud,
@@ -1452,10 +1600,40 @@ void RenderActiveWeaponLaserDot()
 					liveZeroRest,
 					ignoreObj,
 					liveEmitter,
-					liveRayPos,
-					liveRayDir))
+					liveAxisRayPos,
+					liveAxisRayDir))
 				{
 					effectiveEmitter = liveEmitter;
+					Fvector liveRayPos = liveAxisRayPos;
+					Fvector liveRayDir = liveAxisRayDir;
+
+					const float w = std::clamp(g_ActiveLaserDot.weaponAxisWeight, 0.0f, 1.0f);
+					if (w < 0.999f)
+					{
+						Fvector liveAimPos = Device.vCameraPosition;
+						liveAimPos.mad(Device.vCameraRight, g_ActiveLaserDot.aimPosCam.x);
+						liveAimPos.mad(Device.vCameraTop, g_ActiveLaserDot.aimPosCam.y);
+						liveAimPos.mad(Device.vCameraDirection, g_ActiveLaserDot.aimPosCam.z);
+
+						Fvector liveAimDir;
+						liveAimDir.mul(Device.vCameraRight, g_ActiveLaserDot.aimDirCam.x);
+						liveAimDir.mad(Device.vCameraTop, g_ActiveLaserDot.aimDirCam.y);
+						liveAimDir.mad(Device.vCameraDirection, g_ActiveLaserDot.aimDirCam.z);
+						liveAimDir.normalize_safe();
+
+						liveRayPos.set(
+							liveAimPos.x + (liveAxisRayPos.x - liveAimPos.x) * w,
+							liveAimPos.y + (liveAxisRayPos.y - liveAimPos.y) * w,
+							liveAimPos.z + (liveAxisRayPos.z - liveAimPos.z) * w);
+						ClipLaserOriginToCameraWall(liveRayPos, ignoreObj);
+
+						const SLaserVec3 blended = BlendLaserDirections(
+							{ liveAimDir.x, liveAimDir.y, liveAimDir.z },
+							{ liveAxisRayDir.x, liveAxisRayDir.y, liveAxisRayDir.z },
+							w);
+						liveRayDir.set(blended.x, blended.y, blended.z);
+					}
+
 					effectiveRayDir = liveRayDir;
 
 					const float maxDist = std::max(g_ActiveLaserDot.laserMaxDist, 1.0f);
@@ -1748,11 +1926,14 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 	Fvector rayPos = { 0, 0, 0 };
 	Fvector rayDir = { 0, 0, 1 };
 	const bool isHudMode = item->GetHUDmode() && item->HudItemData() != nullptr;
-	const bool useWeaponAxis = isHudMode && (g_WeaponLaserAimMode >= 1);
+	bool useWeaponAxis = false;
+	float hudWeaponAxisWeight = 0.0f;
 	CWeapon* hudWpn = nullptr;
 	CActor* hudActor = nullptr;
 	Fvector hudFallbackEmitter = { 0, 0, 0 };
 	Fvector hudZeroRestCam = { 0.0f, 0.0f, 1.0f };
+	Fvector hudAimPosCam = { 0.0f, 0.0f, 0.0f };
+	Fvector hudAimDirCam = { 0.0f, 0.0f, 1.0f };
 	bool hasHudFallbackEmitter = false;
 	bool hasHudZeroRest = false;
 	u16 hudLightBoneId = BI_NONE;
@@ -1767,9 +1948,11 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 		hudLightBoneId = (hudData->m_model != nullptr && LightBone != nullptr) ? hudData->m_model->LL_BoneID(LightBone) : BI_NONE;
 
 		const u8 state = item->GetState();
+		const bool weaponFiring = (wpn != nullptr && (state == CWeapon::eFire || state == CWeapon::eFire2));
 		const bool weaponReady =
 			state == CHudItem::eIdle ||
-			(wpn != nullptr && (state == CWeapon::eFire || state == CWeapon::eFire2 || state == CWeapon::eEmptyClick));
+			weaponFiring ||
+			(wpn != nullptr && state == CWeapon::eEmptyClick);
 		const bool actorSprinting = actor != nullptr &&
 			(actor->GetMovementState(ACTOR_DEFS::EMovementStates::eReal) & ACTOR_DEFS::EMoveCommand::mcSprint) != 0;
 		const bool actorSafemode = actor != nullptr && actor->IsSafemode();
@@ -1781,8 +1964,49 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 			return;
 		}
 
-		bool haveWeaponAxisRay = false;
-		if (useWeaponAxis)
+		const EHudOffsetType hudOffsetIdx = item->GetCurrentHudOffsetIdx();
+		const float aimFactor = item->GetAimFactor();
+		const float safeModeFactor = (wpn != nullptr) ? wpn->m_fSafeModeRotationFactor : 0.0f;
+		const bool isSafemode = actorSafemode || hudOffsetIdx == EHudOffsetType::eSafemode || safeModeFactor > 0.01f;
+		const bool isGrenadeMode = (hudOffsetIdx == EHudOffsetType::eAimGL) || (wpn != nullptr && wpn->IsGrenadeMode());
+		const bool actorMoving = actor != nullptr && actor->AnyMove();
+		const Fvector& collRot = hudData->m_collision_inertia_rot;
+		const Fvector& collPos = hudData->m_collision_inertia_pos;
+		const bool hasWallCollision = (collRot.square_magnitude() > EPS_S || collPos.square_magnitude() > EPS_S);
+
+		if (g_WeaponLaserAimMode <= 0)
+		{
+			hudWeaponAxisWeight = 0.0f;
+			g_LaserHybridState.weight = 0.0f;
+			g_LaserHybridState.holdTimer = 0.0f;
+		}
+		else if (g_WeaponLaserAimMode == 1)
+		{
+			hudWeaponAxisWeight = 1.0f;
+			g_LaserHybridState.weight = 1.0f;
+			g_LaserHybridState.holdTimer = 0.0f;
+		}
+		else
+		{
+			SLaserHybridInput hybridIn;
+			hybridIn.dt = (g_LaserHybridFrame != Device.dwFrame) ? Device.fTimeDelta : 0.0f;
+			g_LaserHybridFrame = Device.dwFrame;
+			hybridIn.aimFactor = aimFactor;
+			hybridIn.camTurnSpeed = (actor != nullptr)
+				? std::hypot(actor->fFPCamYawMagnitude, actor->fFPCamPitchMagnitude)
+				: 0.0f;
+			hybridIn.actorMoving = actorMoving;
+			hybridIn.actorSprinting = actorSprinting;
+			hybridIn.actorSafemode = isSafemode;
+			hybridIn.weaponFiring = weaponFiring;
+			hybridIn.weaponBusy = !weaponReady;
+			hybridIn.hasWallCollision = hasWallCollision;
+			hudWeaponAxisWeight = StepLaserHybridWeight(g_LaserHybridState, hybridIn);
+		}
+
+		// Keep rest-pose auto-zeroing calibrated in both Weapon Axis (1) and Hybrid (2) modes
+		// so transitions between point-of-impact and weapon-axis stay seamless with zero jump.
+		if (g_WeaponLaserAimMode >= 1)
 		{
 			Fvector rawBoneDirCam;
 			if (TryComputeHudBoneDirCam(hudData, hudLightBoneId, rawBoneDirCam))
@@ -1797,7 +2021,6 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 					g_LaserZeroCache.lightBoneId = hudLightBoneId;
 				}
 
-				const EHudOffsetType hudOffsetIdx = item->GetCurrentHudOffsetIdx();
 				const bool isAimIdx = (hudOffsetIdx == EHudOffsetType::eAim || hudOffsetIdx == EHudOffsetType::eAimAlt);
 				if (isAimIdx && g_LaserZeroCache.aimOffsetIdx != hudOffsetIdx)
 				{
@@ -1808,14 +2031,9 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 				const Fvector& aimRot = hudData->m_measures.m_hands_positions.hands_offsets[1][g_LaserZeroCache.aimOffsetIdx];
 				const Fvector& savedRot = hudData->m_measures.m_hands_positions.hands_offsets_saved[1];
 				const Fvector& defaultHandsRot = hudData->m_measures.m_hands_positions.hands_offsets_tune[1][EHudOffsetType::eDefault];
-				const float aimFactor = item->GetAimFactor();
-				const float safeModeFactor = (wpn != nullptr) ? wpn->m_fSafeModeRotationFactor : 0.0f;
-				const bool isSafemode = actorSafemode || hudOffsetIdx == EHudOffsetType::eSafemode || safeModeFactor > 0.01f;
-				const bool isGrenadeMode = (hudOffsetIdx == EHudOffsetType::eAimGL) || (wpn != nullptr && wpn->IsGrenadeMode());
-				const bool actorMoving = actor != nullptr && actor->AnyMove();
 				const bool camTurning = actor != nullptr &&
 					(std::abs(actor->fFPCamYawMagnitude) >= 0.02f || std::abs(actor->fFPCamPitchMagnitude) >= 0.02f);
-				const bool noCollision = hudData->m_collision_inertia_rot.square_magnitude() < 1e-6f;
+				const bool noCollision = collRot.square_magnitude() < 1e-6f;
 				const bool noInertionRot = hudData->m_measures.m_hands_attach_real[1].similar(defaultHandsRot, 0.08f);
 
 				SLaserZeroSampleInput sampleIn;
@@ -1842,7 +2060,13 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 					hudZeroRestCam.set(restCamOut.x, restCamOut.y, restCamOut.z);
 				}
 			}
+		}
 
+		Fvector axisRayPos = { 0, 0, 0 };
+		Fvector axisRayDir = { 0, 0, 1 };
+		bool haveWeaponAxisRay = false;
+		if (hudWeaponAxisWeight > 0.001f)
+		{
 			haveWeaponAxisRay = ComputeHudWeaponAxisRay(
 				hudData,
 				hudLightBoneId,
@@ -1850,49 +2074,56 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 				hasHudZeroRest ? &hudZeroRestCam : nullptr,
 				item->object().H_Root(),
 				hudFallbackEmitter,
-				rayPos,
-				rayDir);
+				axisRayPos,
+				axisRayDir);
 			hasHudFallbackEmitter = haveWeaponAxisRay;
 		}
 
-		if (!haveWeaponAxisRay)
+		useWeaponAxis = haveWeaponAxisRay && (hudWeaponAxisWeight > 0.001f);
+
+		if (haveWeaponAxisRay && hudWeaponAxisWeight >= 0.999f)
 		{
+			rayPos = axisRayPos;
+			rayDir = axisRayDir;
+		}
+		else
+		{
+			Fvector aimRayPos = { 0, 0, 0 };
+			Fvector aimRayDir = { 0, 0, 1 };
 			if (actor != nullptr)
 			{
-				actor->g_fireParams(item, rayPos, rayDir);
+				actor->g_fireParams(item, aimRayPos, aimRayDir);
 			}
 			else
 			{
-				rayPos = Device.vCameraPosition;
-				rayDir = Device.vCameraDirection;
+				aimRayPos = Device.vCameraPosition;
+				aimRayDir = Device.vCameraDirection;
 			}
-			rayDir.normalize_safe();
+			aimRayDir.normalize_safe();
 
 			// Follow HUD weapon collision deflection (attachable_hud_item::update_hud_additional)
 			// so approaching an obstacle tilts the laser beam upward along with the barrel.
-			const Fvector& collRot = hudData->m_collision_inertia_rot;
-			const Fvector& collPos = hudData->m_collision_inertia_pos;
-			if (collRot.square_magnitude() > EPS_S || collPos.square_magnitude() > EPS_S)
+			if (hasWallCollision)
 			{
 				Fvector camRight = Device.vCameraRight;
 				Fvector camUp;
-				camUp.crossproduct(rayDir, camRight);
+				camUp.crossproduct(aimRayDir, camRight);
 				if (camUp.square_magnitude() > EPS_S)
 				{
 					camUp.normalize();
-					camRight.crossproduct(camUp, rayDir);
+					camRight.crossproduct(camUp, aimRayDir);
 					camRight.normalize();
 				}
 				else
 				{
-					Fvector::generate_orthonormal_basis_normalized(rayDir, camUp, camRight);
+					Fvector::generate_orthonormal_basis_normalized(aimRayDir, camUp, camRight);
 				}
 
 				Fmatrix camBasis;
 				camBasis.identity();
 				camBasis.i.set(camRight);
 				camBasis.j.set(camUp);
-				camBasis.k.set(rayDir);
+				camBasis.k.set(aimRayDir);
 
 				if (collPos.square_magnitude() > EPS_S)
 				{
@@ -1905,14 +2136,14 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 						offsetDir.div(offsetLen);
 						collide::rq_result shiftRQ;
 						shiftRQ.range = offsetLen;
-						if (g_pGameLevel->ObjectSpace.RayPick(rayPos, offsetDir, shiftRQ.range, collide::rqtBoth, shiftRQ, item->object().H_Root()))
+						if (g_pGameLevel->ObjectSpace.RayPick(aimRayPos, offsetDir, shiftRQ.range, collide::rqtBoth, shiftRQ, item->object().H_Root()))
 						{
 							const float safeDist = std::max(0.0f, shiftRQ.range - 0.03f);
-							rayPos.mad(offsetDir, safeDist);
+							aimRayPos.mad(offsetDir, safeDist);
 						}
 						else
 						{
-							rayPos.add(worldPosOffset);
+							aimRayPos.add(worldPosOffset);
 						}
 					}
 				}
@@ -1933,9 +2164,42 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 					hudCollisionZ.rotateZ(collRot.z);
 					hudCollision.mulA_43(hudCollisionZ);
 
-					camBasis.transform_dir(rayDir, hudCollision.k);
-					rayDir.normalize_safe();
+					camBasis.transform_dir(aimRayDir, hudCollision.k);
+					aimRayDir.normalize_safe();
 				}
+			}
+
+			if (haveWeaponAxisRay && hudWeaponAxisWeight > 0.001f)
+			{
+				Fvector aimPosRel;
+				aimPosRel.sub(aimRayPos, Device.vCameraPosition);
+				hudAimPosCam.set(
+					aimPosRel.dotproduct(Device.vCameraRight),
+					aimPosRel.dotproduct(Device.vCameraTop),
+					aimPosRel.dotproduct(Device.vCameraDirection));
+				hudAimDirCam.set(
+					aimRayDir.dotproduct(Device.vCameraRight),
+					aimRayDir.dotproduct(Device.vCameraTop),
+					aimRayDir.dotproduct(Device.vCameraDirection));
+				hudAimDirCam.normalize_safe();
+
+				rayPos.set(
+					aimRayPos.x + (axisRayPos.x - aimRayPos.x) * hudWeaponAxisWeight,
+					aimRayPos.y + (axisRayPos.y - aimRayPos.y) * hudWeaponAxisWeight,
+					aimRayPos.z + (axisRayPos.z - aimRayPos.z) * hudWeaponAxisWeight);
+				ClipLaserOriginToCameraWall(rayPos, item->object().H_Root());
+
+				const SLaserVec3 blended = BlendLaserDirections(
+					{ aimRayDir.x, aimRayDir.y, aimRayDir.z },
+					{ axisRayDir.x, axisRayDir.y, axisRayDir.z },
+					hudWeaponAxisWeight);
+				rayDir.set(blended.x, blended.y, blended.z);
+			}
+			else
+			{
+				rayPos = aimRayPos;
+				rayDir = aimRayDir;
+				hudWeaponAxisWeight = 0.0f;
 			}
 		}
 	}
@@ -2113,8 +2377,11 @@ void THudLightLaser::UpdateTorchFromObject(CHudItem* item) const
 		g_ActiveLaserDot.hasBeam = canRenderBeam;
 		g_ActiveLaserDot.hasScopeTexture = (hudWpn != nullptr && hudWpn->ZoomTexture() != nullptr);
 		g_ActiveLaserDot.useWeaponAxis = useWeaponAxis;
+		g_ActiveLaserDot.weaponAxisWeight = hudWeaponAxisWeight;
 		g_ActiveLaserDot.hasZeroRest = hasHudZeroRest;
 		g_ActiveLaserDot.zeroRestCam = hudZeroRestCam;
+		g_ActiveLaserDot.aimPosCam = hudAimPosCam;
+		g_ActiveLaserDot.aimDirCam = hudAimDirCam;
 		g_ActiveLaserDot.active = true;
 	}
 
