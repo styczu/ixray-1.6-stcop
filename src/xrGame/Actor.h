@@ -357,6 +357,8 @@ protected:
 	s32						m_ShotRndSeed;
 
 	bool					m_bOutBorder;
+	u8 SavedEquipmentFlags = 0;
+	void RestoreSavedEquipment();
 private:
 	void					SwitchOutBorder(bool new_border_state);
 

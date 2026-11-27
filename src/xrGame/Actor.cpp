@@ -1800,6 +1800,11 @@ void CActor::UpdateCL()
 	PROF_EVENT("CActor UpdateCL");
 	m_ammo_merge_ready = true;
 
+	if (SavedEquipmentFlags != 0)
+	{
+		RestoreSavedEquipment();
+	}
+
 	if (g_dedicated_server && g_Alive())
 	{
 		CheckFlyhack();
